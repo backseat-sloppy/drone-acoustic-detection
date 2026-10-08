@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "dad bench (latency, the headline figure)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "dad.cli",
+      "args": ["bench"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}/src" }
+    },
+    {
+      "name": "dad sweep (accuracy vs delay)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "dad.cli",
+      "args": ["sweep"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}/src" }
+    },
+    {
+      "name": "dad gate (tier-0 calibration)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "dad.cli",
+      "args": ["gate"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}/src" }
+    }
+  ]
+}
