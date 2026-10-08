@@ -7,4 +7,3 @@ artifacts/*
 !artifacts/.gitkeep
 data/*
 !data/.gitkeep
-uv.lock
