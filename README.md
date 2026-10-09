@@ -87,6 +87,35 @@ stateful streaming GRU updating every 10 ms has constant per-frame cost and
 frame-level output, which makes it the genuine lowest-latency option if you
 need sub-100 ms reaction. Revisit it only if that is a hard requirement.
 
+## Without the microcontroller constraint
+
+If the detector runs on a laptop or a GPU workstation, INT8, kilobyte RAM
+budgets and the CNN-only rule stop applying. Compute stays a rounding error
+next to window fill, so bigger models buy accuracy, not speed. `dad compare`
+trains every candidate on the same windows, split the same way by recording
+session, and ranks them as a ladder where each rung must beat the one below:
+
+| Rung | Model | What it tests |
+|---|---|---|
+| 1 | `comb` | No ML. The harmonic detector from `gate.py`, used as a classifier. The floor. |
+| 2 | `lgbm` | MFCC summary statistics into LightGBM. Classical ML. |
+| 3 | `dscnn` | The MCU-class network, now actually trained. |
+| 4 | `resnet` | A wider residual CNN, about 0.7M parameters. More texture capacity. |
+| 5 | `crnn` | CNN plus a bidirectional GRU. Tests whether the time evolution (rotor wobble, Doppler) carries information pooling throws away. |
+| 6 | `transformer` | A small spectrogram transformer trained from scratch. Data-hungry; included to measure that. |
+| 7 | `ensemble` | Mean probability of every ML model in the run. |
+
+All neural models share one training recipe in `src/dad/train.py`: AdamW,
+one-cycle schedule, SpecAugment, best validation epoch kept. The metric is the
+false-alarm rate at 95% drone recall, per confuser kind, at each window
+length. A model that matches a longer window's false-alarm rate at a shorter
+window is the one way a model can reduce latency. Training uses CUDA when it
+is available and falls back to CPU.
+
+The README's earlier rejection of CRNNs and transformers was about streaming
+on a microcontroller. On a laptop both are back in contention, and the
+comparison decides.
+
 ## Window length is a detection-range knob
 
 This is the part that is easy to get wrong. Shortening the window does not
@@ -146,7 +175,9 @@ uv run dad info     # print the frozen frontend contract
 uv run dad bench    # per-stage latency, p50/p95/p99. The headline figure.
 uv run dad gate     # tier-0 gate calibration and the free RPM estimate
 uv run dad sweep    # accuracy vs end-to-end delay table
-uv run pytest       # 12 tests, including the streaming-equivalence invariant
+uv run dad compare  # every model on the same windows (needs the dl extra for neural models)
+uv run dad compare --models comb lgbm resnet --windows 0.5 1.0 --device cuda
+uv run pytest       # 29 tests, including the streaming-equivalence invariant
 ```
 
 In VS Code, open `drone-acoustic-detection.code-workspace`. Three debug

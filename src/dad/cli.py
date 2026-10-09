@@ -3,6 +3,7 @@
     uv run dad bench            per-stage latency, the headline figure
     uv run dad sweep            accuracy vs end-to-end delay Pareto table
     uv run dad gate             tier-0 gate behaviour on synthetic clips
+    uv run dad compare          every model on the same windows, laptop/GPU zoo
     uv run dad info             print the frozen frontend contract
 """
 
@@ -162,6 +163,37 @@ def _cmd_sweep(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_compare(args: argparse.Namespace) -> int:
+    from .compare import ML_TORCH, format_rows, run_comparison
+
+    models = args.models
+    if any(m in ML_TORCH for m in models):
+        try:
+            import torch
+        except ImportError:
+            print("Neural models need torch:  uv sync --extra dl", file=sys.stderr)
+            return 2
+        from .train import resolve_device
+
+        dev = resolve_device(args.device)
+        device_label = f"{dev} ({torch.cuda.get_device_name(dev)})" if dev.type == "cuda" else "cpu"
+    else:
+        device_label = "cpu"
+
+    rows = run_comparison(
+        windows=args.windows,
+        models=models,
+        epochs=args.epochs,
+        device=args.device,
+        n_sessions=args.sessions,
+        clips_per_session=args.clips,
+        seed=args.seed,
+    )
+    print()
+    print(format_rows(rows, device_label))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="dad", description="Acoustic drone detection, latency first")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -183,6 +215,18 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--windows", type=float, nargs="+", default=[0.25, 0.5, 1.0, 2.0])
     s.add_argument("--hop", type=float, default=0.125)
     s.set_defaults(fn=_cmd_sweep)
+
+    from .compare import ALL_MODELS
+
+    c = sub.add_parser("compare", help="train every model on the same windows and compare")
+    c.add_argument("--models", nargs="+", default=list(ALL_MODELS), choices=ALL_MODELS)
+    c.add_argument("--windows", type=float, nargs="+", default=[0.25, 0.5, 1.0])
+    c.add_argument("--epochs", type=int, default=15)
+    c.add_argument("--device", default="auto", help="auto, cpu, cuda or cuda:N")
+    c.add_argument("--sessions", type=int, default=10)
+    c.add_argument("--clips", type=int, default=40, help="clips per session")
+    c.add_argument("--seed", type=int, default=0)
+    c.set_defaults(fn=_cmd_compare)
 
     args = p.parse_args(argv)
     return int(args.fn(args))
