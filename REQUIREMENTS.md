@@ -46,6 +46,7 @@ held-out-source false-alarm rate is the one that predicts field behaviour.
 | Requirement | Value | Status |
 |---|---|---|
 | Deployment hardware | not decided (laptop, Raspberry Pi or microcontroller) | OPEN |
+| Training hardware | Mads's PC. The AMD GPU may be used through DirectML, in a separate environment. | Decided by Mads, 2026-10-10 |
 | Cold-onset latency | no target yet | OPEN |
 | Model size or parameter limit | no limit yet | OPEN |
 
@@ -55,7 +56,7 @@ held-out-source false-alarm rate is the one that predicts field behaviour.
 |---|---|---|
 | Training sources | DDL (real), FSD50K-dev (licence-filtered) | PROPOSED |
 | Held-out test sources | DroneNoise, Halmstad, FSD50K-eval | PROPOSED |
-| Only real recordings, no synthetic training data | yes | PROPOSED |
+| Only real recordings, no synthetic training data | yes. Summing two real recordings (a drone window plus a real background) is allowed as training augmentation. Generated or rendered audio is not. | LOCKED (decided by Mads, 2026-10-10) |
 | Licences allowed | CC0 and CC BY | PROPOSED |
 
 ## Stop condition

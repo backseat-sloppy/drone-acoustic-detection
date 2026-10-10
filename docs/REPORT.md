@@ -4,11 +4,36 @@ The running record of everything done in this project, in order. It is
 append-only: entries are never rewritten. If an entry turns out to be wrong, a
 later entry corrects it and refers back.
 
-## Entry template
+## How this log is organised
+
+The work is divided into **iterations**. An iteration is one attempt at the
+problem: a stated change from the attempt before, the reason for it, the
+experiments that test it, and a verdict. Each iteration has its own heading
+(`# Iteration N`) and opens with a box that says what changed from the
+previous iteration and why. Numbered entries sit inside iterations.
+
+## Iterations at a glance
+
+| | Entries | What was tried | Why it differed from the one before | Outcome |
+|---|---|---|---|---|
+| Phase 0 | 001 to 009 | Select, download, inspect and prepare the data | (start) | Data ready. DDL has no no-drone recordings, so label and recording chain are confounded. |
+| Iteration 1 | 010 to 013 | Train on DDL against FSD50K with level removal, background mixing and random EQ | First design: the standard remedy for a confounded label | **Failed.** The model learned the DDL recording chain. Its score rose with distance to the drone. |
+| Iteration 2 | 014 onward | Train only on drones that are loud in their own recording, always buried in a background; judge with a same-background probe | Iteration 1 showed the faint, distant drones teach the background, and that validation AUC cannot tell | In progress |
+
+## Templates
 
 ```
+# Iteration N - Short name
+
+> **Changed from iteration N-1:** what is different.
+> **Why:** the evidence from iteration N-1 that motivates it.
+> **Kept the same:** what is deliberately not changed, so the comparison holds.
+> **Hypothesis:** what should happen if the change is right.
+> **Judged by:** the measurement and the numbers that decide it, fixed in advance.
+
 ## NNN - Short title
 - Date: YYYY-MM-DD
+- Iteration: N
 - Type: Data | Preprocessing | Model | Algorithm | Tuning | Evaluation |
         Council | Requirements | Infrastructure | Correction
 - Commit: <hash, or "uncommitted">
@@ -22,7 +47,18 @@ window, hop. Baselines alongside. "Not run" or "not verified" where true.
 **Next.** The decision taken and the next step.
 ```
 
+The last entry of an iteration states its verdict and what the next iteration
+will change because of it.
+
 ---
+
+# Phase 0 - Setup and data
+
+> Everything before the first model: choosing and downloading the datasets,
+> finding out what is really in them, and converting them to one format.
+> Entries 001 to 009. (This heading and the two iteration headings below
+> were added on 2026-10-10 at Mads's request, to make the iterations visible.
+> The entries themselves are unchanged.)
 
 ## 001 - Dataset selection
 
@@ -470,6 +506,24 @@ epoch adds data loading and feature extraction.
 
 **Next.** Await the council on the training and evaluation design.
 
+---
+
+# Iteration 1 - Break the recording-chain shortcut by mixing
+
+> **Changed from Phase 0:** nothing was trained before; this is the first
+> design.
+> **Why this design:** Phase 0 found that every training drone comes from one
+> recording chain (DDL) and every non-drone from others (FSD50K), so a model
+> can score well without hearing a drone. The standard remedy is to remove
+> level as a cue and to mix each drone window with a real background.
+> **Hypothesis:** with level removed and backgrounds mixed in, the model
+> must rely on the drone, and will then also find drones recorded by another
+> chain (DroneNoise).
+> **Judged by:** the gate fixed in entry 010: transfer AUC to DroneNoise of at
+> least 0.90, clearly above the same model without mixing, within 0.05 of its
+> validation AUC, and a score that falls with distance to the drone.
+> Entries 010 to 013.
+
 ## 010 - Council: training and evaluation design
 
 - Date: 2026-10-10
@@ -587,3 +641,590 @@ exactly that.
 
 **Next.** Present the pipeline to Mads and get the two decisions needed to
 start (mixing; using the GPU through DirectML).
+
+## 011 - Requirements: mixing allowed, GPU through DirectML
+
+- Date: 2026-10-10
+- Type: Requirements
+- Commit: uncommitted
+
+**What changed.** Mads decided the two open points from entry 010:
+
+1. Summing two real recordings is allowed as training augmentation. The row
+   in `REQUIREMENTS.md` now reads: real recordings only; a drone window plus
+   a real background is allowed; generated or rendered audio is not. Status
+   LOCKED.
+2. The AMD GPU may be used through DirectML, in a separate environment.
+
+**Why.** Without mixing the gate experiment of entry 010 cannot run. Without
+the GPU an iteration takes hours on the CPU (entry 009).
+
+**How.** `REQUIREMENTS.md` edited as above. The GPU environment is created by
+`scripts/setup_dml_env.ps1` into `.venv-dml` (git-ignored): torch 2.4.1 with
+torch-directml 0.2.5. The main environment and `uv.lock` are unchanged.
+
+**Result.** The DirectML environment reports the device as "AMD Radeon
+RX 5700".
+
+**Assessment.** The other consequences listed in entry 010 are still open:
+the primary target cannot be demonstrated on Halmstad alone, and whether
+DroneNoise later joins training.
+
+**Next.** Implement training on the real data and run the gate.
+
+## 012 - Training and evaluation code for real data
+
+- Date: 2026-10-10
+- Type: Infrastructure
+- Commit: uncommitted
+
+**What changed.** Added `src/dad/realrun.py`, `scripts/run_real.py` and
+`tests/test_realrun.py`. The existing synthetic pipeline (`dad compare`) is
+untouched.
+
+**Why.** `src/dad/compare.py` is wired to synthetic clips, holds every
+window in memory, and takes the 95%-recall threshold from the set being
+scored. None of that fits the design of entry 010.
+
+**How.** What the new code fixes in place, so that later entries only need
+to name what they vary:
+
+- **Splits** (`make_splits`). DDL: 27 sessions train (79.2 min), 9 sessions
+  validation (19.9 min): `290321-T005`; `310321-T004`, `T009`, `T013`,
+  `T015` (Phantom 4 Pro); `310321-T018`, `T023`, `T026`, `T032` (Mini 2).
+  FSD50K: 27,140 training clips (58.0 h); 1,397 validation clips (3.9 h)
+  from uploaders with no clip in training. Clips shorter than the window are
+  dropped, not padded. Probe: DroneNoise microphone M5, 20 files. Sealed:
+  Halmstad and FSD50K-eval.
+- **Level** (`level_normalise`). Each window's log-mel has the log of its
+  own mean mel power subtracted, which equals scaling the waveform to a fixed
+  level inside the 50 Hz to 8 kHz band. Values are floored 50 dB below that
+  mean, so digital silence (present only in the 16-bit sources) is not a cue.
+- **Training windows** (`WindowSampler`). Drawn at random on the fly, half
+  drone and half not. Drones uniformly over DDL training time. Backgrounds
+  with each clip weighted by one over the square root of its uploader's clip
+  count. Silent windows are redrawn.
+- **Variants.** `level`: level normalisation only. `full`: in addition, 75%
+  of drone windows are summed with a background at an in-band
+  signal-to-noise ratio drawn from +5 to +20 dB; 50% of negatives are a sum
+  of two backgrounds at -10 to +10 dB; every window gets a random spectral
+  tilt of up to 6 dB across the band plus a smooth random shape of about
+  2 dB.
+- **Training loop** (`NetScorer`). AdamW, learning rate 2e-3 on a one-cycle
+  schedule, weight decay 1e-2, batch 64, SpecAugment, a fixed budget of
+  windows, final weights kept. No best-epoch selection, because the
+  validation contrast is the confounded one (entry 010).
+- **Evaluation** (`evaluate`). Validation and probe windows are fixed,
+  non-overlapping and unmixed. The threshold is the 95%-recall point on
+  validation drones with reliable range up to 100 m. Reported: validation
+  AUC (the confounded contrast), transfer AUC and recall on DroneNoise
+  against the same validation negatives, score by range, and false alarms
+  by sound class. DroneNoise windows more than 20 dB below their file's
+  loudest window are left out.
+- **Sealed test** (`evaluate_sealed`). Only run with `--sealed`. Clip-level,
+  with Wilson intervals; a clip counts as flagged when at least half its
+  windows exceed the frozen threshold.
+
+**Result.** A smoke run with a tiny budget (6,400 windows) completed end to
+end on the GPU at 621 windows per second including feature extraction. Its
+numbers are not results.
+
+**Assessment.** One correction to entry 010: the DDL validation set is 9
+sessions, not 8. The durations given there (about 79 and 20 minutes) were
+right.
+
+**Next.** Run the gate.
+
+## 013 - Gate experiment: failed
+
+- Date: 2026-10-10
+- Type: Evaluation
+- Commit: uncommitted
+
+**What changed.** First training on real data: the gate defined in entry
+010.
+
+**Why.** To find out whether mixing and equalisation stop a model from
+learning the DDL recording chain instead of the drone.
+
+**How.**
+
+```powershell
+.venv-dml\Scripts\python.exe scripts\run_real.py --name gate `
+    --models level comb lgbm dscnn --variants level full --device dml --windows 200000
+```
+
+Seed 0. Small CNN: 200,000 training windows, about 5 minutes each on the GPU
+at 700 windows per second. LightGBM: 40,000 windows. Development windows,
+all 1 s: 1,194 DDL validation (780 with reliable range up to 100 m), 3,679
+FSD50K validation, 335 DroneNoise. Results in `artifacts/runs/gate.json`.
+The sealed test sources were not scored.
+
+**Result.**
+
+| Scorer | Validation AUC (DDL vs FSD50K) | Transfer AUC (DroneNoise vs FSD50K) | DroneNoise recall at frozen threshold | Validation false alarms |
+|---|---|---|---|---|
+| Level rule (quieter = drone) | 0.900 | 0.692 | 0.44 | 0.248 |
+| Comb, no ML | 0.460 | 0.587 | threshold collapses to zero | 1.000 |
+| LightGBM, level only | 0.992 | 0.850 | 0.40 | 0.037 |
+| Small CNN, level only | 0.995 | 0.874 | 0.31 | 0.022 |
+| LightGBM, full suppression | 0.989 | 0.848 | 0.40 | 0.051 |
+| Small CNN, full suppression | 0.991 | 0.850 | 0.44 | 0.064 |
+
+Mean score of the small CNN on DDL validation windows, by range to the drone:
+
+| Range | Windows | Level only | Full suppression | Comb score |
+|---|---|---|---|---|
+| 0 to 50 m | 256 | 0.97 | 0.76 | 16.7 |
+| 50 to 100 m | 514 | 0.93 | 0.95 | 2.8 |
+| 100 to 150 m | 26 | 0.94 | 0.97 | 0.0 |
+| over 150 m | 196 | 0.96 | 0.97 | 0.5 |
+
+DroneNoise recall at the frozen threshold, by drone model, small CNN with
+full suppression: Matrice 300 RTK 0.01, Mini 3 Pro 0.48, Yuneec H520E 0.60,
+the unnamed 795 g model 0.59.
+
+During training the transfer AUC of the full-suppression CNN moved between
+0.74 and 0.87 from one check to the next, while validation AUC stayed at
+0.98 to 0.99.
+
+**Assessment.** The gate failed on every criterion set in advance.
+
+- Transfer AUC is 0.850, under the 0.90 required.
+- Full suppression is no better than level normalisation alone (0.850
+  against 0.874), and no better than LightGBM (0.848).
+- Transfer is 0.14 below validation, against an allowed 0.05.
+- **The score does not fall with range. With full suppression it rises:**
+  the model is least confident at 0 to 50 m, where the drone is loudest and
+  where the comb detector, which only responds to harmonic structure,
+  responds strongly; and most confident beyond 150 m, where the comb finds
+  nothing. That is the behaviour of a model recognising the DDL site and
+  recording chain, not the drone. A nearby drone makes the window look
+  *less* like the background it has learned.
+
+This confirms the Devil's Advocate's second decisive objection from entry
+010: mixing a faint drone recording with a background does not remove the
+recording's own background, and that background is the consistent thing in
+every positive.
+
+Two further observations.
+
+- The validation numbers (AUC 0.99, 2 to 6% false alarms) are exactly the
+  flattering result the council warned about. Reported alone they would have
+  met the secondary targets in `REQUIREMENTS.md`.
+- The transfer AUC is itself not a clean measure. DroneNoise windows and
+  FSD50K windows also come from different chains, so some of the 0.85 may be
+  "continuous outdoor recording against short event clip" and not drone
+  detection. A probe is needed in which positive and negative share the same
+  background.
+- The comb baseline is not a usable floor here. It needs a clearly audible
+  harmonic stack, which DDL has only at short range, and FSD50K is full of
+  harmonic sounds (speech, music).
+
+**Next.** Do not scale up to larger models; the problem is the training
+data, not capacity. Build a probe where the background is identical in both
+classes (a drone added to a real background at a known signal-to-noise
+ratio, against that same background alone), apply it to the gate models,
+then decide how the training positives should change.
+
+**Verdict on iteration 1: failed.** Mixing a faint drone recording into a
+background does not hide the recording's own background. Iteration 2 changes
+which drone audio is used for training, and how success is measured.
+
+---
+
+# Iteration 2 - Train on audible drones, judge on identical backgrounds
+
+> **Changed from iteration 1:**
+> 1. *Training drones.* Iteration 1 used every DDL window, out to 250 m.
+>    Iteration 2 uses only windows where the drone is loud in its own
+>    recording: DDL within 50 m, and DroneNoise near the pass-by.
+> 2. *Mixing.* Iteration 1 mixed 75% of drone windows at +5 to +20 dB.
+>    Iteration 2 buries every drone window in a background, down to 5 dB
+>    below it.
+> 3. *How a model is judged.* Iteration 1 relied on validation AUC and on
+>    transfer AUC to DroneNoise. Iteration 2 adds a paired probe: the same
+>    background window scored with and without a drone added.
+>
+> **Why:**
+> 1. In iteration 1 the score rose with distance. Beyond about 100 m the
+>    harmonic detector finds nothing in DDL, so those windows are site and
+>    recording chain with a drone label. They taught the model the
+>    background. A window at 20 m is mostly drone.
+> 2. A drone that is always under a different background cannot be found by
+>    its own background.
+> 3. Validation AUC was 0.99 for a model that had learned the wrong thing,
+>    and transfer AUC compares two different chains as well. A probe whose
+>    two sides share the background cannot be passed by recognising a chain.
+>
+> **Kept the same:** the frontend (16 kHz, 1 s window, 64 log-mel bands),
+> in-band level normalisation, the FSD50K negatives and their split, the
+> small CNN and LightGBM, the training budget (200,000 windows), the seed,
+> the validation sessions, and the sealed test sources (still unscored).
+>
+> **Hypothesis:** a model trained this way raises its score when a drone is
+> added to a background, does not raise it when DDL's own background or
+> another ordinary sound is added, and scores DDL windows lower the farther
+> the drone is.
+>
+> **Judged by:** the paired probe on drones from a chain the model was not
+> trained on, against two controls (see entry 014).
+
+## 014 - A probe the recording chain cannot pass
+
+- Date: 2026-10-10
+- Iteration: 2
+- Type: Evaluation
+- Commit: uncommitted
+
+**What changed.** Added `paired_probe` to `src/dad/realrun.py` and to every
+evaluation. No model was retrained for this entry; the iteration 1 models
+were scored again.
+
+**Why.** Entry 013 ended with two measures that cannot be trusted alone.
+Validation AUC is the confounded contrast. Transfer AUC to DroneNoise also
+compares two chains. Neither can say how much of a score is the drone.
+
+**How.** 1,500 FSD50K validation windows are each scored twice: alone, and
+with a real drone window added at an in-band signal-to-noise ratio of +10,
+0 and -10 dB. The two members of a pair share the background, its recording
+chain and its level. The figure reported is the AUC of "with drone" against
+"alone": 0.5 means the added sound made no difference, 1.0 means it always
+raised the score.
+
+Four things are added in turn:
+
+| Added sound | What a rise means |
+|---|---|
+| DroneNoise drone | The model responds to a drone from a chain it never trained on. The measure that counts. |
+| DDL at up to 50 m | Drone plus the DDL chain. Cannot separate the two. |
+| DDL at 150 m and beyond (control) | Mostly DDL site and chain. A rise here is the chain. |
+| Another FSD50K window (control) | An ordinary sound. Should be about 0.5. |
+
+```powershell
+.venv-dml\Scripts\python.exe scripts\run_real.py --name gate_paired --load-from gate `
+    --models level comb lgbm dscnn --variants level full --device dml
+```
+
+**Result.** Paired AUC at +10 / 0 / -10 dB, iteration 1 models:
+
+| Model | DroneNoise drone | DDL up to 50 m | DDL beyond 150 m (control) | Other background (control) |
+|---|---|---|---|---|
+| Level rule | 0.31 / 0.44 / 0.49 | 0.31 / 0.44 / 0.49 | not run | not run |
+| Comb, no ML | 0.57 / 0.56 / 0.55 | 0.59 / 0.58 / 0.53 | not run | not run |
+| LightGBM, level only | 0.85 / 0.81 / 0.73 | 0.98 / 0.93 / 0.80 | not run | not run |
+| Small CNN, level only | 0.87 / 0.84 / 0.74 | 0.99 / 0.97 / 0.85 | 0.99 / 0.95 / 0.82 | 0.60 / 0.61 / 0.61 |
+| Small CNN, full suppression | 0.86 / 0.84 / 0.75 | 0.98 / 0.95 / 0.82 | 0.99 / 0.96 / 0.80 | 0.60 / 0.61 / 0.61 |
+
+(The two controls were added after the first pass and only the CNNs were
+rescored with them.)
+
+**Assessment.**
+
+- **The chain cue is now measured directly.** Adding DDL audio recorded
+  beyond 150 m raises the score exactly as much as adding DDL audio recorded
+  within 50 m (0.96 against 0.95 at 0 dB). The iteration 1 models respond to
+  DDL, with or without an audible drone in it.
+- **They are not deaf to drones.** A DroneNoise drone, from a chain and of
+  models they never saw, raises the score in most pairs (0.84 at 0 dB). So
+  some real drone evidence was learned next to the shortcut.
+- **The second control is not at 0.5.** Adding any ordinary sound gives 0.61,
+  and it does not depend on how loud the added sound is. The likely reason
+  is that a second sound fills the silent gaps of a short event clip, and
+  the models learned "no gaps" as a sign of drone, because DDL is continuous
+  and FSD50K clips are not. Part of the 0.84 above is therefore not the
+  drone. The honest reading is the margin over this control.
+- The level rule falls below 0.5, as it must: adding a drone makes a window
+  louder, and it calls quiet windows drones.
+
+**Next.** Train on audible drones only, each one buried in a background, and
+see whether the far-DDL control falls while the DroneNoise response holds.
+
+## 015 - Training on audible drones only
+
+- Date: 2026-10-10
+- Iteration: 2
+- Type: Data
+- Commit: uncommitted
+
+**What changed.** The choice of training drones, and the mixing. The model,
+frontend, negatives, budget and seed are those of iteration 1.
+
+- *Drone pools* (`ddl_pool`, `dronenoise_pool` in `src/dad/realrun.py`).
+  "DDL near": windows of the DDL training sessions whose range label is
+  reliable and at most 50 m at both ends of the window, 14.9 minutes.
+  "DroneNoise": windows within 10 dB of the loudest window of the same file,
+  27.6 minutes over all nine microphones, which is roughly 3 minutes of
+  distinct audio.
+- *Variant `buried`.* Every drone window is summed with a background at an
+  in-band signal-to-noise ratio of -5 to +15 dB. Negatives and equalisation
+  as in the `full` variant of entry 012.
+
+**Why.** See the box at the top of this iteration. In short: a window in
+which the drone is faint is a labelled sample of the recording site.
+
+**How.** Four runs, small CNN and LightGBM, 200,000 and 40,000 training
+windows, seed 0:
+
+```powershell
+powershell -File artifacts\run_it2_diagnostics.ps1
+```
+
+1. Train on DDL near. DroneNoise is then an unseen chain with unseen drones.
+2. Train on DroneNoise. DDL is then an unseen chain with unseen drones.
+3. Train on DroneNoise without the Matrice 300; probe with the Matrice 300.
+4. Train on DDL near plus DroneNoise without the Matrice 300.
+
+**Result.** Small CNN. "Paired" is the AUC of entry 014 at 0 dB; the figure
+in brackets is the mean score of the background alone and with the sound
+added.
+
+| Trained on | Validation AUC | Transfer AUC | Paired: unseen-chain drone | Paired: DDL beyond 150 m | Paired: other background |
+|---|---|---|---|---|---|
+| Iteration 1: all DDL, `full` | 0.991 | 0.850 to DroneNoise | 0.84 | 0.96 | 0.61 |
+| 1. DDL near | 0.977 | 0.939 to DroneNoise | 0.91 (0.02 to 0.21) | 0.95 (0.02 to 0.30) | 0.65 (0.02 to 0.05) |
+| 2. DroneNoise | 0.911 on DDL | (DroneNoise is training data) | 0.95 on DDL near (0.06 to 0.60) | 0.77 (0.06 to 0.09) | 0.63 (0.06 to 0.09) |
+| 3. DroneNoise, no Matrice | 0.930 on DDL | 0.924 to Matrice 300 | 0.87 on Matrice (0.05 to 0.34) | 0.81 (0.05 to 0.11) | 0.63 (0.05 to 0.08) |
+| 4. DDL near + DroneNoise, no Matrice | 0.964 | 0.912 to Matrice 300 | 0.88 on Matrice (0.05 to 0.26) | 0.90 (0.05 to 0.26) | 0.64 (0.05 to 0.09) |
+
+Mean score on DDL validation windows by range to the drone:
+
+| Trained on | 0 to 50 m | 50 to 100 m | 100 to 150 m | over 150 m |
+|---|---|---|---|---|
+| Iteration 1: all DDL, `full` | 0.76 | 0.95 | 0.97 | 0.97 |
+| 1. DDL near | 0.91 | 0.70 | 0.14 | 0.47 |
+| 2. DroneNoise (never saw DDL) | 0.77 | 0.59 | 0.37 | 0.06 |
+| 3. DroneNoise, no Matrice | 0.84 | 0.69 | 0.34 | 0.10 |
+| 4. DDL near + DroneNoise, no Matrice | 0.95 | 0.84 | 0.40 | 0.29 |
+
+(256, 514, 26 and 196 windows per column; the third column is thin.)
+
+Run 2 in more detail, because it never saw the DDL chain: against FSD50K
+validation, AUC on DDL windows is 0.97 at 0 to 50 m, 0.95 at 50 to 100 m,
+0.92 at 100 to 150 m and 0.77 beyond 150 m. Recall at its threshold is 0.98,
+0.94, 0.88 and 0.27.
+
+Run 1 on DroneNoise by drone model, recall at the frozen threshold: Matrice
+300 0.76 (iteration 1: 0.01), Mini 3 Pro 0.87, Yuneec H520E 0.93, the
+unnamed 795 g model 0.76.
+
+False alarms on FSD50K validation at each run's threshold: 12.3%, 17.7%,
+14.4% and 8.2%, against 6.4% for the iteration 1 model.
+
+LightGBM, same four runs: transfer AUC 0.883, not independent, not run, and
+0.966. In run 4 it is ahead of the CNN (0.966 against 0.912 on the Matrice).
+
+**Assessment.**
+
+- **The hypothesis holds in its main part.** Trained on audible drones, the
+  model's score now falls with distance instead of rising, and it finds
+  drones on a chain it never trained on in both directions: DDL to
+  DroneNoise 0.94, DroneNoise to DDL 0.91. The Matrice 300, which iteration
+  1 missed entirely, is found three times in four.
+- **Run 2 is the cleanest evidence in the project so far.** A model that
+  has heard only four drone types at one Scottish airfield detects two other
+  drone types at two English sites, well at short range and progressively
+  worse with distance, and barely at all beyond 150 m. That is what hearing
+  a drone looks like. It also says what DDL beyond 150 m mostly is:
+  background.
+- **A chain cue remains whenever the chain is in the training drones.**
+  Adding DDL audio from beyond 150 m lifts the run 1 model's score from 0.02
+  to 0.30. The same audio lifts the run 2 model, which never saw DDL, only
+  from 0.06 to 0.09. So most of that lift is the DDL chain. It is much
+  smaller than in iteration 1, where far and near were indistinguishable,
+  but it is not gone.
+- **The cost is visible and honest.** Validation AUC dropped from 0.99 to
+  0.91 to 0.98, and false alarms at 95% recall rose to between 8% and 18%.
+  The iteration 1 figures were inflated by the shortcut. The primary target
+  (5%) is not met.
+- **The small CNN does not clearly beat LightGBM.** It is ahead in run 1 and
+  behind in run 4. `REQUIREMENTS.md` requires beating the baselines.
+- The "other background" control stays near 0.63 everywhere, with a very
+  small change in score (0.05 to 0.09). AUC counts any consistent rise,
+  however small; the change in mean score is the more useful figure here.
+- All of this is one seed. Two more seeds of runs 1 and 2 are being trained.
+
+**Next.** A council on how to conclude iteration 2 and what iteration 3
+should be: which chains to train on, what to do about the remaining chain
+cue, and whether to move on to the larger models.
+
+## 016 - Council: how to set up iteration 3
+
+- Date: 2026-10-10
+- Iteration: 2
+- Type: Council
+- Commit: uncommitted
+
+**Question.** How should iteration 3 be set up?
+
+The proposal put to the council: (1) train on both chains, DDL within 50 m
+and DroneNoise, each window buried; (2) for every candidate model, run the
+two leave-one-chain-out trainings with three seeds as the evidence of
+generalisation, then train the final model on both chains; (3) cancel the
+remaining DDL chain cue by using DDL windows from beyond 150 m as negatives;
+(4) then try the larger models and a larger training budget to bring false
+alarms toward 5%; (5) score the sealed test once at the end; (6) move
+DroneNoise from held-out to training in the requirements. Alternatives: B,
+train on DroneNoise only and keep all of DDL for evaluation; C, the proposal
+without step 3; D, no new model families yet, work on the data first.
+
+**Devil's Advocate** (saw the project and rescored the saved models).
+
+| Objection | Rank | Outcome |
+|---|---|---|
+| Step 3 has no data. The 27 training sessions hold 16 s of reliable audio at 150 m or more, all in one session. Taking it from validation would turn the far control into a training target. And the far windows are not drone-free: the model that never saw DDL flags 62% of the far windows in one session. | Decisive | **Accepted. Step 3 is dropped.** |
+| The false-alarm figure is one session's tail when DDL is in training. In run 1 of entry 015, 36 of the 39 windows that set the threshold come from `290321-T005`, the only day-1 validation session. Without it false alarms would read 2.4% instead of 12.3%, and in run 4 4.5% instead of 8.2%. On unseen drones at their own 95% point the figure is 22 to 25%. | Decisive | **Accepted.** The in-chain validation false-alarm rate is no longer a headline figure. The headline is false alarms at the 95%-recall point of a chain the model never trained on. |
+| Training on both chains brought no gain on unseen drones (run 3 to run 4: Matrice AUC 0.924 to 0.912), and a larger budget made it worse (unseen-drone paired AUC fell from 0.906 to 0.878 between 50,000 and 200,000 windows). | Serious | **Accepted as a caution.** No larger budget. Whether both chains help is measured, not assumed. |
+| The final both-chain model can only be tested on 30 Halmstad clips, which cannot show 5% at 95% nor rank a network against LightGBM. | Serious | **Stands.** It is a limit of the data, stated wherever the sealed test is reported. |
+| Three seeds do not add flight events; the Matrice probe is 7 events. | Serious | **Stands.** The Matrice probe is not used to rank models. |
+| The full plan costs 10 to 50 hours, most of it the CRNN on the CPU. | Serious | **Accepted.** The model screen is bounded (below) and the CRNN runs only if the ResNet wins. |
+| A requirement that looks unreachable calls for a check-in with Mads, not another iteration. | Weak | **Partly accepted.** A stop rule is set below. |
+
+**Scholar** (saw no project context; reported 31 sources located in this
+session).
+
+- Leave-one-domain-out is the accepted protocol, and training the final
+  model on all domains afterwards is standard (Gulrajani and Lopez-Paz,
+  2020). With two domains it supports "transfers between these two setups in
+  each direction", not a prediction for a third. Three seeds is the floor.
+  Anything tuned on the held-out domain makes the figure optimistic.
+- Relabelling weak positives as negatives runs against practice, which is to
+  mask, exclude or soft-label them. The noise would be concentrated at low
+  signal-to-noise ratio and would teach "faint means absent". Closer to
+  practice: leave them out of training and use them as a negative control in
+  evaluation.
+- Mixing a real target into a real background at a set ratio is
+  long-established in sound event detection (Scaper; DCASE 2017 rare events),
+  and the paired design is sound, as a diagnostic. It needs a sham-addition
+  control, and it does not replace real recordings.
+- With minutes of positives, capacity is rarely the constraint. The usual
+  order is more diverse sources, then pretrained embeddings and
+  augmentation, then capacity. A transformer trained from scratch is against
+  the grain. The accepted way to decide is a pre-specified comparison under
+  the same protocol and seeds, judged on the worse direction.
+- For a false-alarm target across setups: fix the threshold by a rule
+  declared in advance on development data, report recall and false alarms
+  per held-out setup, worst case rather than pooled.
+
+Departures from the Scholar's practice: none in what is decided below. One
+recommendation is not taken up yet: a frozen pretrained audio embedding with
+a linear classifier as a baseline. It needs a model download and a new
+dependency, and is noted as a candidate for a later iteration.
+
+**Problem Solver** (saw the project and rescored the saved models). Verdict:
+try a modified version, the proposal's data without step 3, in the order of
+alternative D.
+
+- The far-DDL negatives cannot be built (same finding as the Devil's
+  Advocate, reached independently).
+- Read a different figure from the leave-one-chain-out runs: false alarms at
+  the unseen chain's own 95% recall. Today: DDL-near to DroneNoise 22% and
+  26% (two seeds); DroneNoise to DDL within 50 m 15%.
+- The false alarms are not concentrated in a few sound classes. The
+  threshold is low because of the weakest 5% of positives, so coverage of
+  the positives is the lever.
+- Averaging the score over three windows helps in-chain and does nothing
+  across chains, so the cross-chain misses are systematic.
+- Proposed levers: widen the DDL range limit to 75 or 100 m (33 or 51
+  minutes instead of 15, and it brings in the first recording day); weight
+  steady-noise negatives; lower the mixing ratio; pitch perturbation.
+
+**Agreement and dissent.** All three reject relabelling far DDL as negative.
+All three put data before capacity. They differ on the final model: the
+Scholar calls training it on both chains standard, the Devil's Advocate
+points out it can then barely be tested. Both are right, and it is not
+resolved by more analysis: it is a limit of having two chains.
+
+**Decision.**
+
+1. **Step 3 is dropped.** Far DDL stays a control in evaluation only.
+2. **Headline figure from now on:** in each leave-one-chain-out arm, false
+   alarms on FSD50K validation at the unseen chain's own 95% recall, with
+   recall at 5% false alarms next to it. Both arms are reported and a model
+   is judged on the worse one. These are development figures: recipe choices
+   are made on them, so they are optimistic as estimates.
+3. **Data before models.** One-seed screens of four changes on the small CNN
+   and LightGBM, both arms: DDL range limit 75 m and 100 m; steady-noise
+   negatives weighted three times; mixing down to -10 dB. A change is kept
+   only if it improves the headline figure by more than the seed spread
+   without hurting the other arm.
+4. **Not done:** pitch or speed perturbation. It alters a recording, which
+   goes beyond the mixing Mads allowed in entry 011. It is listed for him.
+5. **Then** the kept recipe with three seeds on both arms, and a bounded
+   model screen: ResNet and transformer, one seed, both arms; three seeds
+   only if they fall outside the small CNN's seed range on both arms; CRNN
+   only if the ResNet wins.
+6. **Final model** on both chains, three seeds, threshold rule written down
+   beforehand, sealed test scored once.
+7. **Stop rule.** If the kept recipe leaves both arms above about 10% false
+   alarms, stop and tell Mads that 5% looks out of reach with two recording
+   chains, before spending on capacity.
+
+**Next.** Rescore the existing models with the headline figure, including
+the DroneNoise-trained models on all 36 DDL sessions, and measure the seed
+spread.
+
+## 017 - Baseline for the headline figure, three seeds
+
+- Date: 2026-10-10
+- Iteration: 2
+- Type: Evaluation
+- Commit: uncommitted
+
+**What changed.** The evaluation now reports the headline figure decided in
+entry 016 (`unseen_chain` in `src/dad/realrun.py`), and a model that was not
+trained on DDL is scored on all 36 DDL sessions instead of the 9 validation
+ones. The two leave-one-chain-out runs of entry 015 were repeated with seeds
+1 and 2, and all six models rescored. No change to training.
+
+**Why.** To have a baseline and a seed spread before judging any change.
+
+**How.**
+
+```powershell
+powershell -File artifacts\run_it2_seeds.ps1
+powershell -File artifacts\run_it2_rescore.ps1
+```
+
+Small CNN, `buried` variant, 200,000 windows. Negatives in every figure are
+the 3,679 FSD50K validation windows.
+
+**Result.** False alarms at the unseen chain's own 95% recall, and recall at
+5% false alarms:
+
+| Arm | Unseen drones | Seed 0 | Seed 1 | Seed 2 | Mean |
+|---|---|---|---|---|---|
+| X: trained on DDL within 50 m | DroneNoise, 335 windows, 20 events | 22.1% / 0.61 | 25.6% / 0.56 | 21.7% / 0.60 | **23.1% / 0.59** |
+| Y: trained on DroneNoise | DDL 0 to 100 m, all sessions | 24.7% / 0.63 | 21.3% / 0.68 | 24.5% / 0.60 | **23.5% / 0.64** |
+
+Arm Y by range (mean of three seeds; false alarms / recall at 5%):
+
+| Range | False alarms at 95% recall | Recall at 5% false alarms |
+|---|---|---|
+| 0 to 50 m | 12.0% | 0.85 |
+| 50 to 100 m | 25.8% | 0.55 |
+| 100 to 150 m | 15.0% | 0.76 |
+| beyond 150 m | 37.7% | 0.02 |
+
+Other figures were stable across seeds: arm X transfer AUC 0.939, 0.929,
+0.939; arm Y AUC on DDL validation 0.911, 0.916, 0.908; the paired figures
+moved by 0.01 at most.
+
+**Assessment.**
+
+- **The honest distance to the target is about 23% false alarms at 95%
+  recall, in both directions.** The target is 5%. Put the other way: at 5%
+  false alarms, about 60% of the drone windows from an unseen chain are
+  found.
+- The seed spread of the headline figure is about 4 points (range) in both
+  arms. A change has to move it by more than that to count.
+- Arm Y at short range is much closer: 12% false alarms, or 85% of windows
+  found at 5%. The requirement does not say at what distance it should hold.
+  That is a question for Mads.
+- The 100 to 150 m bin does better than 50 to 100 m. The likely reason is
+  which sessions fall in which bin (the 50 to 100 m bin holds most of the
+  windy first day) and not distance as such. This was not checked per
+  session.
+- Beyond 150 m the drone is effectively not found (2% at 5% false alarms).
+
+**Next.** The screens of entry 016, step 3.

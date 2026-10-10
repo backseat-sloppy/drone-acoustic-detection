@@ -16,6 +16,13 @@ that moves a number, a dead end.
 
 - Append only. Never rewrite or delete an old entry; if it turned out wrong,
   add a new entry that says so and points back to it.
+- **Make iterations visible.** The work is divided into iterations, each
+  under its own `# Iteration N` heading. An iteration opens with a box that
+  states what changed from the previous iteration, why (the evidence that
+  motivated it), what was kept the same, the hypothesis, and how it will be
+  judged. Its last entry gives the verdict and what the next iteration will
+  change because of it. Keep the "Iterations at a glance" table at the top of
+  the report up to date.
 - Follow the entry template at the top of `docs/REPORT.md`.
 - Record negative results with the same care as positive ones.
 - Every number in an entry must come from a run that actually happened, with
