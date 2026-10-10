@@ -129,3 +129,41 @@ available here.
 
 **Next.** Mads reviews `REQUIREMENTS.md`. Install the Python toolchain
 (`uv`), then step 1 of data preparation: inspect the archives.
+
+## 004 - Council roles redefined
+
+- Date: 2026-10-10
+- Type: Infrastructure
+- Commit: uncommitted
+
+**What changed.** The three council members in
+`.claude/skills/council/SKILL.md` were replaced. Entry 003 set them up as
+three reviewers with different subject lenses (methodology, signal and model,
+requirements). They are now three roles specified by Mads:
+
+- **Devil's Advocate**: sees the project context and argues against the
+  proposal.
+- **Scholar**: sees no project context and states best practice for the
+  class of problem.
+- **Problem Solver**: sees the project context and looks for the most
+  practical way to reach the goal.
+
+**Why.** Mads's reasoning: critical thinking is what produces the best
+outcome, so one member must be dedicated to arguing against; one must hold to
+best practice without being coloured by the project; and one must work from
+the actual situation with a problem-solving view.
+
+**How.** The skill now writes two briefs, a full one and a context-free one
+for the Scholar. The weighing rules changed accordingly: the Devil's
+Advocate's opposition is treated as arguments to be answered rather than a
+vote, and any departure from what the Scholar calls best practice must be
+justified in the report.
+
+**Result.** Not applicable. The council has not yet been convened.
+
+**Assessment.** "Without context" was implemented as: the Scholar is given
+only a generic statement of the question, and none of our results, current
+approach or preferred option. This is an interpretation of the instruction
+and can be relaxed if the Scholar's answers turn out too general to use.
+
+**Next.** Unchanged from entry 003.
