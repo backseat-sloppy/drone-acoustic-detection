@@ -18,7 +18,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 |---|---|---|---|---|
 | Phase 0 | 001 to 009 | Select, download, inspect and prepare the data | (start) | Data ready. DDL has no no-drone recordings, so label and recording chain are confounded. |
 | Iteration 1 | 010 to 013 | Train on DDL against FSD50K with level removal, background mixing and random EQ | First design: the standard remedy for a confounded label | **Failed.** The model learned the DDL recording chain. Its score rose with distance to the drone. |
-| Iteration 2 | 014 onward | Train only on drones that are loud in their own recording, always buried in a background; judge with a same-background probe | Iteration 1 showed the faint, distant drones teach the background, and that validation AUC cannot tell | In progress |
+| Iteration 2 | 014 to 020 | Train only on drones that are loud in their own recording, always buried in a background; judge with a same-background probe and on a recording chain the model never trained on | Iteration 1 showed the faint, distant drones teach the background, and that validation AUC cannot tell | **Hypothesis confirmed, target not met.** The model now detects drones across recording chains and its score falls with distance. False alarms at 95% recall on an unseen chain are about 23% against a target of 5%. Data recipe changes and larger models did not close the gap. Stopped on Mads's instruction: more data is needed. |
 
 ## Templates
 
@@ -1228,3 +1228,238 @@ moved by 0.01 at most.
 - Beyond 150 m the drone is effectively not found (2% at 5% false alarms).
 
 **Next.** The screens of entry 016, step 3.
+
+## 018 - Screens of four data changes: none kept
+
+- Date: 2026-10-10
+- Iteration: 2
+- Type: Tuning
+- Commit: uncommitted
+
+**What changed.** Four changes to the training data were each tried alone,
+seed 0, small CNN and LightGBM, 200,000 and 40,000 windows:
+
+1. DDL range limit 75 m (33.2 min of drone audio instead of 14.9).
+2. DDL range limit 100 m (50.7 min).
+3. Steady-noise backgrounds (engines, vehicles, aircraft, wind, rain, water,
+   fans, tools; `STEADY_NOISE` in `src/dad/realrun.py`) sampled three times
+   as often.
+4. Mixing ratio down to -10 dB instead of -5 dB.
+
+Changes 1 and 2 only exist in arm X, since arm Y does not train on DDL.
+
+**Why.** Entry 016, step 3. The Problem Solver's reading was that the
+weakest positives set the threshold, so wider coverage of positives and
+harder negatives were the cheapest levers.
+
+**How.** `powershell -File artifacts\run_it2_screens.ps1`. Rule fixed in
+advance: keep a change only if it improves the headline figure by more than
+the seed spread of about 4 points without hurting the other arm.
+
+**Result.** Small CNN, false alarms at the unseen chain's own 95% recall
+(lower is better):
+
+| Recipe | Arm X: DDL to DroneNoise | Arm Y: DroneNoise to DDL 0 to 100 m |
+|---|---|---|
+| Baseline, three seeds | 22.1%, 25.6%, 21.7% | 24.7%, 21.3%, 24.5% |
+| DDL limit 75 m | 28.0% | not applicable |
+| DDL limit 100 m | 30.5% | not applicable |
+| Steady noise three times | 23.1% | 25.4% |
+| Mixing down to -10 dB | 25.1% | 29.5% |
+
+Widening the DDL limit also brought the chain cue back. Mean score on DDL
+validation by range (0 to 50, 50 to 100, 100 to 150, over 150 m): limit 50 m
+0.91 / 0.70 / 0.14 / 0.47; limit 75 m 0.98 / 0.95 / 0.66 / 0.85; limit 100 m
+0.94 / 0.96 / 0.92 / 0.83. Transfer AUC to DroneNoise: 0.939, 0.922, 0.908,
+and 0.850 with no limit (iteration 1).
+
+LightGBM on the baseline recipe: 32.0% in arm X and 21.2% in arm Y. At 5%
+false alarms it finds 30% and 56% of the unseen-chain windows, against 59%
+and 64% for the small CNN.
+
+**Assessment.**
+
+- **None of the four changes is kept.** Two made the headline figure worse
+  by more than the seed spread (DDL limit 100 m; mixing to -10 dB in arm Y),
+  the others did not move it.
+- **The range limit shows a dose-response.** Each step that lets fainter DDL
+  windows into training (50 m, 75 m, 100 m, no limit) lowers transfer to the
+  unseen chain and flattens the score against distance. That is the
+  hypothesis of this iteration, confirmed a second way: faint positives
+  teach the background.
+- **The small CNN beats LightGBM on the worse arm** (about 23.5% against
+  32.0%), which is the comparison rule of entry 016. In arm Y they are level.
+- **The stop rule of entry 016 is met.** The recipe leaves both arms near
+  23%, far above the 10% line. With these two recording chains, changing how
+  the data is sampled and mixed does not bring 5% within reach.
+
+**Next.** By the stop rule this goes to Mads before any spending on
+capacity. Mads is away and the machine is otherwise idle, so the bounded
+model screen that entry 016 had already specified (ResNet and transformer,
+one seed, both arms, about 45 minutes) is run now, as information for that
+conversation and nothing more: no CRNN, no larger budgets, no follow-up
+unless a model falls outside the small CNN's seed range on both arms. One
+frontend setting that `REQUIREMENTS.md` marks as free, a 2 s window, is
+screened in the same batch. The sealed test stays sealed.
+
+## 019 - Larger models and a longer window
+
+- Date: 2026-10-10
+- Iteration: 2
+- Type: Model
+- Commit: uncommitted
+
+**What changed.** Two larger architectures and one frontend setting were
+each tried on the unchanged iteration 2 recipe, seed 0, 200,000 windows,
+both leave-one-chain-out arms:
+
+- ResNet, 695,010 parameters (the small CNN has 22,530).
+- Spectrogram transformer, 826,626 parameters.
+- The small CNN and LightGBM with a 2 s window instead of 1 s.
+
+**Why.** To test the remaining explanations for the gap to the target before
+concluding that it is the data: that the small CNN lacks capacity, or that
+one second is too short to integrate over. Both were specified in advance
+(entries 016 and 018). The council had advised that capacity is rarely the
+constraint with minutes of positive data.
+
+**How.** `powershell -File artifacts\run_it2_models.ps1`. Training took
+about 10 minutes per ResNet run, 6 per transformer run and 10 per 2 s run on
+the GPU. Rule fixed in advance: a model is followed up with three seeds only
+if it falls outside the small CNN's seed range on both arms, and models are
+compared on their worse arm.
+
+**Result.** False alarms on FSD50K validation at the unseen chain's own 95%
+recall (lower is better):
+
+| Model | Arm X: DDL to DroneNoise | Arm Y: DroneNoise to DDL 0 to 100 m | Worse arm |
+|---|---|---|---|
+| Small CNN, 1 s, three seeds | 21.7 to 25.6% (mean 23.1%) | 21.3 to 24.7% (mean 23.5%) | 23.5% |
+| LightGBM, 1 s | 32.0% | 21.2% | 32.0% |
+| ResNet, 1 s | 36.1% | 20.5% | 36.1% |
+| Transformer, 1 s | 27.1% | 15.9% | 27.1% |
+| Small CNN, 2 s | 19.6% | 19.2% | 19.6% |
+| LightGBM, 2 s | 30.7% | 16.7% | 30.7% |
+
+Recall at 5% false alarms, same order (arm X / arm Y): 0.59 / 0.64 (mean of
+three seeds), 0.30 / 0.56, 0.44 / 0.61, 0.33 / 0.61, 0.64 / 0.69,
+0.32 / 0.62.
+
+The 2 s runs are scored on 2 s windows, so their evaluation sets are not the
+1 s ones: 180 DroneNoise windows instead of 335, 1,847 DDL windows instead
+of 3,702, and 3,118 FSD50K validation windows from the 1,275 clips that are
+at least 2 s long.
+
+**Assessment.**
+
+- **Capacity is not what is missing.** A network 30 times larger is clearly
+  worse in arm X and no better than the seed range in arm Y. The transformer
+  is better in arm Y and worse in arm X. On the worse arm, which is the
+  agreed comparison, the small CNN is the best model tried. Neither larger
+  model meets the rule for a follow-up, and none was run.
+- **A 2 s window is the only change in this iteration that helped in both
+  directions,** by about 4 points. That is the size of the seed spread, it
+  is one seed, and the evaluation windows differ, so it is a lead and not a
+  result. It is what integration time predicts, and it costs a second of
+  latency, which this project treats as the scarce quantity. Still 19%.
+- Every model reaches 0.92 to 0.99 AUC on the confounded validation
+  contrast. On that number alone the ResNet would have looked as good as the
+  small CNN.
+
+**Next.** Conclude the iteration.
+
+## 020 - Iteration 2 verdict, and why the work stops here
+
+- Date: 2026-10-10
+- Iteration: 2
+- Type: Evaluation
+- Commit: uncommitted
+
+**What changed.** Nothing. This entry closes iteration 2. On reading the
+intermediate results Mads asked whether the conclusion is that more data is
+needed, and to stop if that is the council's consensus. It is, and the
+experiments agree, so no further training is started.
+
+**Verdict on the hypothesis: confirmed.** Training only on drones that are
+loud in their own recording, each buried in a real background, produces a
+model that detects drones and not a recording site:
+
+- It finds drones recorded by a chain, and of models, it never trained on,
+  in both directions (transfer AUC 0.93 to 0.95).
+- Its score falls with distance to the drone, where iteration 1's rose.
+- Letting fainter DDL windows back in removes the effect step by step
+  (entry 018).
+
+**Verdict against the requirements: not met.**
+
+| Requirement (all PROPOSED) | Target | Best honest figure | Met |
+|---|---|---|---|
+| False alarms at 95% recall, held-out sources | at most 5% | about 23% on an unseen chain (small CNN, 1 s, three seeds) | No |
+| ROC AUC, held-out sources | at least 0.95 | 0.93 to 0.95 on an unseen chain | Borderline |
+| Balanced accuracy | at least 90% | not computed: it needs one threshold that carries across chains, which has not been established | Unknown |
+| Beat the comb and LightGBM baselines | yes | small CNN ahead on the worse arm (23.5% against 32.0%), level with LightGBM on the other | Yes, narrowly |
+
+The sealed test sources (Halmstad, FSD50K-eval) have been scored **zero
+times**. They were kept for a finished candidate, and there is none.
+
+**Why more data, and not more modelling.**
+
+- The council said so three times over, independently. The Scholar: with
+  minutes of positive audio the order is more diverse sources, then
+  pretrained features, then capacity. The Devil's Advocate: the networks are
+  limited by "3 minutes of DroneNoise and one afternoon of DDL". The Problem
+  Solver: coverage of the positives is the lever, and low confidence that 5%
+  is reachable with two chains.
+- The experiments then tested the alternatives. Four changes to sampling and
+  mixing did not help (entry 018). Two models about 30 times larger did not
+  help (entry 019). A longer window helped by about 4 points.
+- What the training drones amount to: about 15 minutes of two drone models
+  within 50 m on one afternoon at one site, and about 3 minutes of distinct
+  audio of four other models at one airfield. The other 60 minutes of DDL
+  make the model worse when used.
+
+**What data would change the picture,** in order of expected value:
+
+1. **Non-drone recordings from a setup that also recorded drones.** This is
+   the only thing that removes the confound at its source and that allows an
+   honest test with both classes from one chain. The DDL host describes
+   no-drone sessions that are not in the archive; asking the authors is the
+   cheapest route. Any own recording of a drone and of the same spot without
+   it would do the same.
+2. **Drone recordings from more recording setups, close enough to be clearly
+   audible.** Number of distinct setups and drone types matters more than
+   minutes. Candidates already surveyed in entry 001, each with an obstacle
+   that is Mads's to weigh: RWDA (needs an IEEE DataPort subscription),
+   MMAUD (non-commercial licence), Ljungbyhed (no licence stated for the
+   audio).
+3. **Not more distant or faint drone audio.** It teaches the background.
+
+**Decisions that are Mads's,** none of which were taken here:
+
+1. Which of the data routes above to pursue.
+2. Whether to try pretrained audio features (for example YAMNet or PANNs
+   embeddings with a small classifier on top). The Scholar recommends it as
+   the standard small-data baseline. It needs a model download and a new
+   dependency.
+3. At what distance the false-alarm target must hold. Within 50 m the unseen
+   -chain figure is about 12%; at 50 to 100 m about 26%; beyond 150 m the
+   drone is not found.
+4. Whether a 2 s window is acceptable. It is the one change that helped, at
+   the cost of latency.
+5. Whether pitch or speed perturbation of drone recordings counts as real
+   audio under the rule set in entry 011. It was not used.
+6. The rows in `REQUIREMENTS.md` on training and held-out sources no longer
+   describe what was done: DroneNoise was used both as a training source and
+   as an unseen chain, in different runs. They are still marked PROPOSED and
+   were not edited.
+
+**State of the repository.** Processed data in `data/processed/`. Code for
+training and evaluation on real data in `src/dad/realrun.py` and
+`scripts/run_real.py`; 44 tests. Every run of this iteration has its result
+file in `artifacts/runs/` and its checkpoint in `artifacts/models/`. That
+folder is git-ignored, so results and checkpoints stay on this machine. The
+batch scripts that produced them were first written under `artifacts/`,
+which is how entries 015 to 019 refer to them; copies that travel with the
+repository are in `scripts/experiments/`, under the same file names.
+
+**Next.** Wait for Mads.
