@@ -35,7 +35,7 @@ a clear licence.
 |---|---|---|---|
 | `DDL_Surrey/` | Core drone positives, plus two noise-only sessions | 12.63 GB | CC BY 4.0 |
 | `DroneNoise_Salford/` | Calibrated drone positives, other drones and mics | 0.74 GB | CC BY 4.0 |
-| `Halmstad/` | Drone, helicopter and background clips | 0.31 GB | see below |
+| `Halmstad/` | Drone, helicopter and background clips | 0.31 GB | CC0 1.0 |
 | `FSD50K/` | Negatives, to be filtered by per-clip licence | 24.68 GB | per clip |
 
 ### DDL_Surrey
@@ -47,26 +47,38 @@ a clear licence.
 - **Licence:** CC BY 4.0
 - **File:** `MLSP_2022_Real_Data.zip`, 12,628,837,686 bytes
 - **Deliberately not downloaded:** `MLSP_2022_Synth_Data.zip` (4.6 GB), which is rendered rather than recorded.
-- **Content:** DJI Phantom 4 Pro and DJI Mini 2, 8-channel array, rural and suburban UK sites.
-- **Metadata** is encoded in each filename, by character index:
+- **Content, as verified in the files** (report entry 006): 62,103 WAV files,
+  96 kHz, 8 channels, 32-bit PCM, in 36 session folders. DJI Mini 2 on
+  2021-03-29 (5 sessions) and 2021-03-31 (19 sessions), DJI Phantom 4 Pro on
+  2021-03-31 (12 sessions).
+- **There are no no-drone recordings.** The host describes a class `XXXX`
+  for them; no such file is in the archive. Every file is a drone.
+- **Metadata** is encoded in each filename. The layout below is what the
+  files actually use; it differs from the host's description (which gives a
+  13-character timestamp and two separate session IDs):
 
   | Index | Field |
   |---|---|
-  | 0-12 | UTC timestamp |
-  | 13-16 | Class: `MINI` (DJI Mini 2), `PRO4` (DJI Phantom 4 Pro), `XXXX` (no drone) |
-  | 17-19 | Bearing to target, degrees |
-  | 20-22 | Range to target, metres |
-  | 23-25 | Target altitude above ground, metres |
-  | 26-29 | Ambient temperature, 0.1 K steps |
-  | 30 | `R` real, `S` synthesized |
-  | 31-36 | Flight session ID |
-  | 37-42 | Recording session ID |
-  | 43-48 | Sample sequence ID, for merging consecutive samples |
+  | 0-13 | Timestamp, `YYYYMMDDHHMMSS` |
+  | 14-17 | Class: `MINI` (DJI Mini 2) or `PRO4` (DJI Phantom 4 Pro) |
+  | 18-20 | Bearing to target, degrees |
+  | 21-23 | Range to target, metres |
+  | 24-26 | Target altitude above ground, metres (negative written as `0-1`) |
+  | 27-30 | Ambient temperature, 0.1 K steps |
+  | 31 | `R` real |
+  | 32-42 | Session ID, `DDMMYY-Tnnn` |
+  | 44-49 | Sequence number within the recording |
 
-- **Check before use:** the Zenodo page implies 200 ms after merging while the
-  paper says 100 ms clips. Read the clip length and sample rate from the WAV
-  headers. Split by session ID, never randomly, or adjacent clips leak between
-  train and test.
+- **Known defects** (handled in `scripts/prepare_data.py`):
+  - 3,945 files are header-only and hold no audio.
+  - 2,629 files repeat the audio of an earlier file in the same session under
+    different labels (sessions `290321-T004` and `290321-T005`).
+  - In 10 sessions one or two files hold many seconds of audio under one
+    label; from there on the range, bearing and time in the file names do not
+    line up with the audio.
+- **Use:** files are 100 ms and consecutive ones are continuous audio, so
+  they are joined per session. Split by session, never randomly. Use the
+  range labels only where `ddl_clips.csv` marks them reliable.
 
 ### DroneNoise_Salford
 
@@ -81,12 +93,21 @@ a clear licence.
 - **Host quirk:** figshare lists 175 entries because
   `Ed_3p_10_H00_N_C_nw_ev1_M5.wav` was uploaded twice with an identical MD5.
   One copy is kept.
-- **Content:** sUAS overflights recorded at Edzell, Scotland, on 17 August 2022
-  with a 9-microphone array. Filename codes `3p`, `M3` and `Yn` correspond to
-  DJI Mini 3 Pro, DJI Matrice 300 RTK and Yuneec H520E. The code `Fp` is not
-  explained by the host.
-- **Check before use:** every file contains a drone, so this supplies positives
-  only. The sample rate is not stated on the record; read it from the headers.
+- **Content, as verified in the files** (report entry 006): 50 kHz, mono,
+  32-bit float. 9 calibration files and 164 event files covering 20 distinct
+  flight events (14 flyovers at 15 m/s, 6 hovers), all at 10 m above ground,
+  recorded at Edzell, Scotland, on 17 August 2022. Mostly 20 s or 30 s long.
+- **File names** are `site_drone_height_operation_payload_start_wind_event_mic`,
+  for example `Ed_M3_10_F15_N_E_dw_ev1_M5`: Edzell, Matrice 300, 10 m,
+  flyover at 15 m/s, no payload, starting east, downwind, event 1,
+  microphone 5. `H00` is a hover.
+- **Drone codes:** `3p` DJI Mini 3 Pro, `M3` DJI Matrice 300 RTK, `Yn` Yuneec
+  H520E. `Fp` is not named by the host; the spreadsheet gives it a gross
+  weight of 795 g.
+- **Use:** every file contains a drone, so this supplies positives only. The
+  nine microphones record the same event, so they are not independent: keep
+  all microphones of one event on the same side of any split. In flyovers
+  the drone is loud only around the pass-by.
 
 ### Halmstad
 
@@ -95,13 +116,14 @@ a clear licence.
 - **Source:** https://zenodo.org/records/5500576, a snapshot of https://github.com/DroneDetectionThesis/Drone-detection-dataset/tree/v1.0.0
 - **DOI:** 10.5281/zenodo.5500576 (published 2020-05-16)
 - **Paper:** Svanström, Englund, Alonso-Fernandez, "Real-Time Drone Detection and Tracking With Visible, Thermal and Acoustic Sensors", ICPR 2020
-- **Licence:** Zenodo tags the record `other-open`. The earlier survey for this
-  project recorded the audio as CC0. **Confirm against the licence file inside
-  the zip before redistributing.**
+- **Licence:** CC0 1.0, confirmed from the `LICENSE` file inside the zip
+  (report entry 006). Zenodo tags the record only as `other-open`.
 - **File:** `Drone-detection-dataset-v1.0.0.zip`, 311,348,350 bytes, MD5 `5d9b891a87857b3d9ee8872e8a1f0f0f`
-- **Content:** 90 ten-second audio clips labelled Drone, Helicopter or
-  Background, recorded at three Swedish airports. The zip is the whole
-  repository, so it also contains the video part of the dataset.
+- **Content:** 90 ten-second audio clips, 44.1 kHz stereo 16-bit: 30 Drone,
+  30 Helicopter, 30 Background, recorded at three Swedish airports. The zip
+  is the whole repository, so it also contains the video part of the dataset.
+  It is the only source here where drone and non-drone share one recording
+  setup.
 - **Check before use:** part of the overall dataset comes from YouTube, so
   check whether any audio clip is affected. The background class includes the
   camera rig's own servo noise, which a model could key on.
@@ -134,13 +156,30 @@ a clear licence.
 - **Content:** 51,197 human-labelled Freesound clips in 200 AudioSet-ontology
   classes. The dev and eval sets share no Freesound uploader.
 - **The audio is a split zip.** `.z01` to `.z05` plus `.zip` are one archive;
-  all parts must be present to extract.
-- **Check before use:**
-  - Keep only CC0 and CC BY clips. Drop CC BY-NC and Sampling+.
-  - Search clip titles and tags for `drone`, `quadcopter`, `UAV` and
-    `multicopter` and remove the hits, or real drones end up as negatives.
-  - Pick outdoor-relevant classes: vehicles, aircraft, engines, wind, rain,
-    birds, tools.
+  all parts must be present to extract. The Python standard library cannot
+  read it; extract with 7-Zip (see `scripts/prepare_data.py`).
+- **As processed** (report entry 007): 43,200 clips, 89.3 hours. 7,818 clips
+  were left out for their licence (CC BY-NC or Sampling+) and 179 because
+  title, description or tags mention a drone or a related word.
+- **Use:**
+  - The dev set's own train/val division shares 774 uploaders, so it is not
+    leak-free. Split dev by uploader instead. Dev and eval share none.
+  - About 12% of clips are shorter than one second.
+
+## Processed form
+
+`scripts/prepare_data.py` writes everything to `data/processed/` as 16 kHz
+mono, with `manifest.csv` (one row per recording: source, label, kind, split
+group, licence, level) and `ddl_clips.csv` (one row per original DDL file).
+Only the format is changed there: no gain, normalisation, filtering or
+mixing.
+
+| Source | Recordings | Audio | Label |
+|---|---|---|---|
+| DDL | 36 sessions | 99.1 min | drone |
+| DroneNoise | 164 files, 20 events | 59.2 min (about 6.6 min per microphone) | drone |
+| Halmstad | 90 clips | 15.0 min | 30 drone, 30 helicopter, 30 background |
+| FSD50K | 43,200 clips | 89.3 h | not drone |
 
 ## Considered and left out
 
@@ -158,7 +197,11 @@ a clear licence.
 
 ## Known gap
 
-Negatives are thin. DDL has only two noise-only sessions, and nothing here was
-recorded with the deployment microphone at a deployment-like site. Evaluate by
-holding out whole sources, for example train on DDL plus FSD50K-dev and test on
-DroneNoise, Halmstad and FSD50K-eval.
+No source except Halmstad has drone and non-drone audio from the same
+recording setup, and Halmstad is 15 minutes. DDL, the main source of
+positives, has no negatives at all, so in training the label is confounded
+with the recording chain: a model can tell the classes apart by microphone,
+level or background without detecting a drone. Nothing here was recorded
+with the deployment microphone at a deployment-like site. The single most
+valuable addition would be non-drone recordings from a setup that also
+recorded drones.
