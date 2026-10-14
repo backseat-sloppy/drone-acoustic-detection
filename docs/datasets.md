@@ -205,3 +205,43 @@ level or background without detecting a drone. Nothing here was recorded
 with the deployment microphone at a deployment-like site. The single most
 valuable addition would be non-drone recordings from a setup that also
 recorded drones.
+
+## Added on 2026-10-12 and 2026-10-14
+
+Twelve more datasets were found after iteration 2. Their full provenance
+(authors, DOIs, licences, per-file checksums, what was deliberately not
+downloaded) is in `README_new_datasets.md` in the Google Drive data folder,
+copied to `data/README_new_datasets.md`; the download script and log are in
+`data/_download_tools/`. Fetched so far (all checked against the host's
+checksums, report entries 024 and 027):
+
+| Folder | Role | Licence |
+|---|---|---|
+| `Nightjar_HF/` | Training and test rig: DJI Mini 2, UMA-16 array, drone and no-drone audio, GPS range | CC BY 4.0 |
+| `D3set_IntRoLab/` | Training and test rig: Holybro X500, 16-mic array, drone and no-drone audio, GPS range | GPL-3.0 (internal use, decided by Mads 2026-10-14) |
+| `Ljungbyhed_Lund/` | Further rig, recall only: three drone types, 12-mic array, x/y/z ground truth | none stated (internal use only; ask the authors before publishing) |
+| `Glasgow_Drone_Authentication/` | Further rig: 24 drones at 1 m and 5 m, one hour of noise | CC BY 4.0 |
+| `ITU_ARIS_Lab/` | Sealed test: drone presence out to about 2 km, background from the same session; no range per segment | CC BY 4.0 |
+| `RODENT_ICAERUS/` | Sealed test: four recordings with DJI and Litchi logs; alignment not yet established | CC BY 4.0 |
+
+Held back at Mads's request (only `_source_record.json` present):
+`Acoustic_UAV_Field_Recordings`, `UaVirBASE`, `Fraunhofer_IDMT_2022`,
+`DJI_Mini2_Wojcik`, `CiO_Drone_Acoustic`, `Drone_Hums_Beirut`.
+
+Facts established on the files, not in the hosts' descriptions:
+
+- Lund's WAVs are 32-bit integer PCM, 12 channels, 96 kHz; the 13
+  recordings hold 90.5 min. In `10_flower3` the ground truth runs 29 s past
+  the end of the audio. The ground truth's `drone_live` flag is True on every
+  row; before the ground truth the drone stands at its take-off point and
+  whether its motors run is not recorded.
+- d3set's `actuator.csv` uses milliseconds from the start of the audio,
+  unlike its other telemetry (Unix milliseconds). `Training/25 oct` was
+  recorded at 8 kHz and is not used.
+- Nightjar's rig position is in its own analysis files (41.534765,
+  -75.595254); `OSD.height` in the DJI CSVs is in feet.
+- No dataset records wind speed.
+
+Processing: `scripts/prepare_new_data.py` (entry 023) writes each recording
+once and one manifest row per stretch of drone, background or uncertain
+state, plus `range_track.csv` with the slant range at 10 Hz.

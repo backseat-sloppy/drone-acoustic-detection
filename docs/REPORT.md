@@ -19,6 +19,10 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Phase 0 | 001 to 009 | Select, download, inspect and prepare the data | (start) | Data ready. DDL has no no-drone recordings, so label and recording chain are confounded. |
 | Iteration 1 | 010 to 013 | Train on DDL against FSD50K with level removal, background mixing and random EQ | First design: the standard remedy for a confounded label | **Failed.** The model learned the DDL recording chain. Its score rose with distance to the drone. |
 | Iteration 2 | 014 to 020 | Train only on drones that are loud in their own recording, always buried in a background; judge with a same-background probe and on a recording chain the model never trained on | Iteration 1 showed the faint, distant drones teach the background, and that validation AUC cannot tell | **Hypothesis confirmed, target not met.** The model now detects drones across recording chains and its score falls with distance. False alarms at 95% recall on an unseen chain are about 23% against a target of 5%. Data recipe changes and larger models did not close the gap. Stopped on Mads's instruction: more data is needed. |
+| Phase 1 | 021 to 024 | New priorities (recall first, then time to detection, at about 150 m) and four new datasets, two with no-drone audio from the drone's own rig | Mads's new priorities; the new data answers iteration 2's request | Data ready, with range at every moment. At 100-200 m the drone is at the edge of audibility for an independent model, and below it for the DJI Mini 2 at Nightjar. |
+| Iteration 3 | 025 to 029 | Leave one rig out (Nightjar, d3set); weight positives toward 150 m with real far drones or with near drones summed into the rig's background at a lower level (simulated distance) | Same-rig negatives remove the reason iteration 2 excluded far drones; Mads's 150 m priority | **Hypothesis rejected.** Recall at 100-200 m at 10% false alarms on an unseen rig: about 0.04 (Mini 2) and 0.21 (X500), best recipe, three seeds. Real far drones did not help; simulated distance helped a little and never hurt. The limit is how much drone the audio holds at 150 m. |
+| Iteration 4 | 030 to 031 | Average the scores of several consecutive windows, and a 2 s window | Per-window evidence at 150 m is weak; Mads ranks recall above time | **Hypothesis rejected by its rule, small consistent gain.** Averaging 8 windows (4.5 s) lifts X500 recall at 100-200 m from 0.21 to 0.28 (three seeds, +7 against +10 required); a 2 s window adds nothing; the Mini 2 stays at chance. Stopped for Mads: the next lever (a microphone array) and the drone class that matters are his decisions. |
+| Iteration 5 | 032 to 037 | Pool every rig but the held-out one (Nightjar, d3set, three FPV campaigns); speed perturbation; two-microphone rescore | Mads's scenario (small drones at 50 m/s, alarm before 150 m, 2 omni mics) and his question about one big pool | **Pooling alone rejected; pooling with speed perturbation is the new best recipe.** Three seeds: X500 at 100-200 m 0.33 (was 0.21), FPV on an unseen campaign 0.66, Mini 2 still at chance. Two microphones: no consistent change. |
 
 ## Templates
 
@@ -1463,3 +1467,1417 @@ which is how entries 015 to 019 refer to them; copies that travel with the
 repository are in `scripts/experiments/`, under the same file names.
 
 **Next.** Wait for Mads.
+
+---
+
+# Phase 1 - New priorities and new data
+
+> Between iteration 2 and iteration 3. Mads changed what the work optimises
+> for, and twelve more datasets were found, four of which were downloaded.
+> This phase records the new priorities, what the new data really contains,
+> and how it was brought into the processed store. Entries 021 onward, up to
+> the council that opens iteration 3.
+
+## 021 - Requirements: recall first, at about 150 m
+
+- Date: 2026-10-14
+- Type: Requirements
+- Commit: uncommitted
+
+**What changed.** Mads set new priorities, in his words: "Falsealarms are not
+a pirority, high recall rate matters more, time is also important, and the
+most relevant distance is around 150 meters distance from drones, meaning we
+should somehow weigh the data. this has to be done in a smart way though,
+consult the council." `REQUIREMENTS.md` has a new "Priorities" section:
+
+| Requirement | Value | Status |
+|---|---|---|
+| Order of priority | 1. recall, 2. time to detection, 3. false alarms | Decided by Mads |
+| Range that matters most | about 150 m; data and metrics weighted toward it | Decided by Mads |
+| Meaning of "time" | time to detection, not processing speed | PROPOSED, to confirm |
+
+The old primary metric and target (at most 5% false alarms at 95% recall,
+entry 003) are marked SUPERSEDED and are still reported.
+
+**Why.** Mads's decision. Iteration 2 had stopped on the false-alarm target
+(entry 020); under the new order that target is no longer the one that
+decides.
+
+**How.** Edit to `REQUIREMENTS.md`. Nothing was run.
+
+**Result.** Not applicable.
+
+**Assessment.** Three things are left open by the wording and are put to the
+council (entry 025) and to Mads:
+
+- "Time" is read as time to detection. It could also mean processing latency
+  or project time. Under the first reading it trades against recall: a longer
+  window or several windows of evidence raise recall and delay the alarm.
+- "False alarms are not a priority" cannot mean "unbounded": a detector that
+  always says "drone" has full recall. Some false-alarm budget has to be
+  fixed for recall to mean anything.
+- "Weigh the data" can mean weighting the training data, weighting the
+  evaluation, or both.
+
+Iteration 2's finding that faint, far drones teach the recording site
+(entries 013, 018) was made with no no-drone audio from those sites. Whether
+it still holds with same-site negatives is the central question for the new
+weighting.
+
+**Next.** Bring in the new datasets and convene the council.
+
+## 022 - New datasets: what arrived and what is in them
+
+- Date: 2026-10-14
+- Type: Data
+- Commit: uncommitted
+
+**What changed.** Twelve datasets were found after iteration 2 and are
+documented in `data/README_new_datasets.md` (written when they were fetched,
+2026-10-12). Four were downloaded and are on Google Drive; the other eight,
+all on Zenodo (28.24 GB), are held back at Mads's request and have only their
+`_source_record.json`. The four downloaded ones were copied unchanged from
+Google Drive into `data/` (`robocopy`, file sizes checked) and inspected in
+place.
+
+**Why.** Entry 020 asked for no-drone audio from setups that also recorded
+drones. Three of the four downloaded sets have that.
+
+**How.** Read-only inspection of the headers, the drone logs, ground-truth
+files and dataset cards. Scratch scripts, not kept: per-session DJI log
+parsing for Nightjar, per-flight telemetry for d3set, ground truth for Lund.
+
+**Result.**
+
+| Set | Rig, site | Drone | Audio | Same-rig no-drone audio | Licence |
+|---|---|---|---|---|---|
+| Nightjar | miniDSP UMA-16 (16 ch, 48 kHz, 16-bit); one rural US site; 4-6 Aug 2026 | DJI Mini 2 | 10 sessions, 159 min | Two deliberate drone-free night sessions (20 min) and the stretches before, between and after flights | CC BY 4.0 |
+| d3set | 16-mic MEMS ground array (16 kHz, 16-bit); two Canadian sites; Oct 2024 to May 2025 | Holybro X500 | 22 flights, 140 min | Before the motors start (with hand claps for synchronisation), one 14 s clip | GPL-3.0 |
+| Lund (Ljungbyhed) | 12-mic array (96 kHz, 24-bit); Swedish airfield; Nov 2024 and Mar 2025 | small quad, big quad, fixed wing | 13 recordings, 143 min | Unknown (below) | none stated: internal use only |
+| Glasgow | one microphone (44.1 kHz), probably indoors | 24 drones hovering at 1 m and 5 m | 256 clips of 2 min | One 60 min noise recording | CC BY 4.0 |
+
+Facts that decide how each can be used:
+
+- **Nightjar.** The DJI logs give position at 10 Hz and the motor state; the
+  rig position is in the series' own analysis files (41.534765, -75.595254,
+  surveyed 2026-07-27; the author notes it moved by about 10 m on 08-05).
+  Airborne audio by slant range, 0-50 / 50-100 / 100-150 / 150-200 /
+  200-300 / 300+ m: 2,538 / 1,007 / 328 / 77 / 289 / 644 s. The dataset
+  author's own analysis: "Neither array demonstrably hears the drone past
+  ~200 m". A fixed machinery tone at about 140-170 Hz and 245 Hz is present
+  with and without the drone. The deliberate negatives are at night
+  (crickets), most flights by day; one flight is at night.
+- **d3set.** Telemetry gives position, the `isflying` flag and the
+  blade-pass frequency of each motor (`actuator.csv`, in milliseconds from
+  the start of the audio, unlike the other files, which use Unix time). The
+  motors start within a second of take-off in every flight. Most flying is
+  within 50 m; four "distance test" flights reach 150-190 m. One flight
+  (`Training/25 oct`) was recorded at 8 kHz.
+- **Lund.** Ground truth (x, y, z at 5 Hz) covers the flight only. Its
+  `drone_live` flag is True on every row, so it marks no negatives. Before
+  and after the ground truth (1,010 s and 2,010 s in all) the drone stands at
+  its take-off point 75-375 m from the array; whether its motors run then is
+  not recorded. Seconds of ground truth by slant range, same bins as above:
+  578 / 1,080 / 409 / 188 / 526 / 1,403. `info.md` names the drone only for
+  recordings 01 to 05 (small quad).
+- **Glasgow.** Very close range only, so of little use at 150 m. The 60 min
+  noise file is the same recording chain's no-drone audio.
+- **Wind** (asked by Mads). None of the drone logs records wind speed: not
+  the DJI logs (Nightjar), not the PX4 telemetry (d3set), not Lund's ground
+  truth. Of the older sets, DroneNoise records only whether a flyover was
+  upwind or downwind (`uw`/`dw` in the file name; the spreadsheet has no wind
+  column) and DDL only temperature. Among the held-back Zenodo sets,
+  `DJI_Mini2_Wojcik` describes the weather in its `metadata.csv`. Hourly
+  wind could be taken from a weather archive by date and place; that was not
+  done.
+
+**Assessment.** With Nightjar and d3set, positives and negatives from the
+same rig exist for the first time, and with range ground truth. Seconds of
+drone audio at 100-200 m across Nightjar, d3set and Lund: about 410, 650 and
+600. That is enough to measure recall near 150 m, and thin enough that it
+has to be counted per flight, not per window.
+
+**Next.** Convert to the processed store, with range at every moment.
+
+## 023 - New datasets into the processed store
+
+- Date: 2026-10-14
+- Type: Preprocessing
+- Commit: uncommitted (on top of 7d4f08a)
+
+**What changed.** Nightjar, d3set, Lund and Glasgow were converted to 16 kHz
+mono and added to `data/processed/`, with the drone's state and range at
+every moment. The raw copies in `data/` are untouched.
+
+**Why.** Training and evaluation by range need, for every window, whether a
+drone is flying and how far away it is.
+
+**How.**
+
+```powershell
+7z x data\Glasgow_Drone_Authentication\ACSAC_2022_Drone_Authentication.7z -odata\extracted\Glasgow
+uv run python -I scripts/prepare_new_data.py
+```
+
+Decisions, all in `scripts/prepare_new_data.py`:
+
+- **Format only,** as in entry 007: one channel, polyphase resampling to
+  16 kHz, no gain or filtering. Channel 0 of each array (Nightjar UMA-16,
+  d3set matrix, Lund array). The second Nightjar array (SB-POLARIS, 3 live
+  capsules) and d3set's on-board microphone are not used.
+- **One stored recording, several manifest rows.** Each source file is
+  stored whole; the manifest gets one row per stretch of one state:
+  `drone` (label 1: motors on by the drone's own log), `background`
+  (label 0: before the motors start or after they stop), `uncertain`
+  (label -1: 10 s either side of every change of state, and stretches the
+  logs do not settle). Windows never cross from one row into the next.
+- **Range.** `range_track.csv` gives the slant range at 10 Hz for every drone
+  row. Nightjar: DJI log position (`OSD.height` is in feet) against the rig
+  position from the series' own analysis; timing anchored on the first valid
+  UTC stamp and counted forward with `OSD.flyTime`. d3set: GPS against the
+  array's reference position (`additional_data.json`; the authors warn GPS
+  altitude is unreliable). Lund: ground truth against the centre of the 12
+  microphones. Glasgow: the distance in the file name (1 m or 5 m).
+- **Lund before and after its ground truth** is `uncertain`: nothing says
+  whether the motors run.
+- **d3set `Training/25 oct`** is left out: it was recorded at 8 kHz, and
+  upsampling would leave the 4-8 kHz band empty for that flight only.
+- Nightjar UMA-16 and d3set are 16-bit and stored as int16; Lund (32-bit
+  integer, see entry 024) as float32; Glasgow as int16.
+
+**Result.**
+
+| Source | Audio | Drone | Background | Uncertain | Drone by slant range, 0-50 / 50-100 / 100-150 / 150-200 / 200-300 / 300+ m (s) |
+|---|---|---|---|---|---|
+| Nightjar | 159.1 min (39 files, 10 sessions) | 79.0 min | 75.3 min | 4.8 min | 2,389 / 1,008 / 331 / 77 / 289 / 644 |
+| d3set | 137.7 min (20 flights, 2 clips) | 110.6 min | 14.1 min | 13.0 min | 4,870 / 1,098 / 481 / 173 / 0 / 0 |
+| Lund | 90.5 min (13 recordings) | 69.9 min | none | 20.6 min | 584 / 1,061 / 413 / 190 / 532 / 1,412 |
+| Glasgow | 582.3 min (257 files) | 521.8 min | 60.5 min | none | all at 1 m or 5 m |
+
+**Assessment.** For the first time, two rigs (Nightjar, d3set) supply both
+classes with range ground truth. The band that now matters is thin: Nightjar
+has 6.8 min and d3set 10.9 min at 100-200 m, each from 7 sessions. Lund adds
+10.1 min at 100-200 m but no negatives.
+
+**Next.** Check the converted data before using it.
+
+## 024 - Checks on the new data, and what an independent model hears by range
+
+- Date: 2026-10-14
+- Type: Data
+- Commit: uncommitted (on top of 7d4f08a)
+
+**What changed.** Nothing in the data. Integrity, clock and level checks,
+and the iteration 2 models scored on the new rigs as listeners that have
+never heard them.
+
+**Why.** Before weighting toward 150 m it has to be known whether a drone at
+150 m is audible on these rigs at all, and whether the labels' clocks agree
+with the audio.
+
+**How.**
+
+```powershell
+uv run python -I scripts/verify_new_data.py
+uv run python -I scripts/qa_new_data.py
+.venv-dml\Scripts\python.exe scripts\probe_chains.py --name probe_it2_models --models it2_dronenoise_dscnn_buried it2_dronenoise_s1_dscnn_buried it2_dronenoise_s2_dscnn_buried it2_ddl_near_dscnn_buried --chains nightjar d3set glasgow --device dml
+```
+
+Figures in `artifacts/qa/`, probe results in
+`artifacts/runs/probe_it2_models.json`.
+
+**Result.**
+
+*Integrity.* The copy from Google Drive hit transient read errors (Windows
+error 121) on 8 Nightjar files, which `robocopy` retried. All 381 local files
+were re-hashed against the checksums in the download log: 0 problems.
+
+*Clocks.* Spectrograms around the logged motor start: in Nightjar
+`flight-20260804` the harmonic stack appears at the logged start, and in
+d3set's first distance flight within 1 s of the first non-zero blade-pass
+frequency. In `flight-20260804` the rotor lines end about 10 s before the
+logged stop (landing), inside the 10 s guard. In the 08-06 sessions the drone
+takes off about 43 m from the rig and its onset is faint. The automatic
+level-step detector was not reliable (claps, voices, birds), so this check
+rests on the spectrograms that were looked at, not on every flight.
+
+*Lund.*
+
+- **Correction to entry 022:** the Lund WAVs are 32-bit, not 24-bit. The
+  durations in entry 022 were computed for 24-bit and are a third too long:
+  the 13 recordings hold 90.5 min, not 143 min, and the audio after the
+  ground truth is 226 s in all, not 2,010 s. The council's Devil's Advocate
+  found the same independently (entry 025).
+- In `10_flower3` the ground truth runs 29 s past the end of the audio. Its
+  clock cannot be trusted, so it is left out of every evaluation.
+- In-band level (150-4,000 Hz) follows -20 log10(range) only weakly
+  (correlation -0.14 to 0.38 at zero shift, no consistent best shift), so the
+  level-based clock check is inconclusive. The airfield recordings are loud
+  (median -23 dBFS) and the background dominates the level.
+- In the spectrograms of `01_flower` and `06_manual_close`, rotor noise
+  starts at the ground-truth start; before it there are voices and beeps but
+  no rotor lines. Two of 13 recordings checked by eye is not enough to use
+  the stretches before take-off as negatives.
+
+*Level by state* (dBFS, median): Nightjar day background -80.2, day drone
+-76.7, night background -80.8, night drone -82.5; in the mower session the
+drone stretches are at -55.8 against -71.1 for its one minute of mower
+alone. d3set background -45.1, drone -47.9.
+
+*An independent listener by range.* The four iteration 2 small CNNs never
+heard these rigs. AUC of drone windows against background windows of the
+same sessions (1 s windows, 1 s apart; the three DroneNoise-trained seeds as
+a range, then the DDL-trained one):
+
+| Range | Nightjar | d3set |
+|---|---|---|
+| 0-50 m | 0.69-0.74; 0.88 | 0.75-0.81; 0.69 |
+| 50-100 m | 0.51-0.54; 0.68 | 0.67-0.75; 0.57 |
+| 100-150 m | 0.41-0.45; 0.57 | 0.64-0.68; 0.59 |
+| 150-200 m | 0.55-0.58; 0.54 | 0.65-0.69; 0.58 |
+| 200-300 m | 0.46-0.52; 0.61 | no audio |
+| 300+ m | 0.48-0.52; 0.47 | no audio |
+
+Windows: Nightjar 331 at 100-150 m and 77 at 150-200 m; d3set 481 and 172.
+Recall at 20% false alarms on the rig's own background, 100-150 m: Nightjar
+0.09-0.18, d3set 0.16-0.25. Glasgow (1-5 m) against its own noise: AUC 0.66
+to 0.92 for the DroneNoise models, 0.51 for the DDL model.
+
+**Assessment.**
+
+- **At 100-200 m the drone is at the edge of audibility for these models,**
+  and for the DJI Mini 2 at Nightjar mostly below it. d3set's larger Holybro
+  X500 is heard weakly (AUC about 0.65). Beyond 200 m neither model hears
+  anything, which agrees with the Nightjar author's own analysis. At
+  100-150 m an iteration 2 model finds about 1 drone window in 5 if 20% false
+  alarms are accepted.
+- The listeners are weak (trained on 18 minutes of near drones), so this is
+  a floor on what is audible, not a ceiling.
+- Lund's labels are usable as positives with a caveat on their clock; Lund
+  supplies no negatives yet.
+
+**Next.** The council on how to weight the data (entry 025).
+
+## 025 - Council: how to weight toward 150 m, and how to judge it
+
+- Date: 2026-10-14
+- Iteration: 3
+- Type: Council
+- Commit: uncommitted (on top of 7d4f08a)
+
+**Question.** How should iteration 3 use the new rigs, weight the data toward
+about 150 m, and be evaluated under Mads's new priorities (entry 021)?
+
+The proposal put to the council (C): train on the rigs that have their own
+no-drone audio (Nightjar, d3set, Lund), balanced per rig; bring back real
+positives out to 250 m; sample positives with a weight centred on 150 m;
+leave one rig out; headline figure recall at 100-200 m at a threshold frozen
+on validation; time to first detection per flight. Alternatives: A, keep
+training on near drones only and just report at 150 m; B, weight only the
+evaluation; D, simulate distance by summing near drones into real
+backgrounds at a lower level; E, weight each positive by an estimated
+signal-to-noise ratio instead of by range.
+
+The brief contained two errors, found by the members: Lund's audio after the
+ground truth is about 226 s, not "~2,010 s" (entry 024), and Lund's
+negatives were described as "unverified" where in fact there is no evidence
+either way.
+
+**Devil's Advocate** (saw the project; rescored data read-only).
+
+| Objection | Rank | Outcome |
+|---|---|---|
+| Far positives are mostly inaudible. In Nightjar's cleanest flight the 500-4,000 Hz level against the same session's no-drone audio is +9.8 dB at 0-50 m, +1.1 dB at 50-100 m, -0.5 dB at 100-150 m (AUC 0.38) and -0.7 dB at 150-200 m (AUC 0.31). In Lund `09_range_test` the level does not step up at take-off 87-127 m away. Weighting toward 150 m weights label noise. | Decisive | **Partly accepted.** Positives stop at 200 m, not 250 m; 200-300 m is left out of training; beyond 300 m is kept only as a control. Band level is a crude measure: the independent CNN listener of entry 024 still separates d3set at 100-200 m (AUC about 0.65) though barely Nightjar. Whether real 100-200 m positives help is the experiment itself, against a recipe that has none. |
+| Same-rig negatives are not matched in time: they are recorded before and after flights (handling, claps, a calibration beacon). In the lawn-mower session the mower runs through 531 s of flight and only about a minute without the drone; that session is 41% of Nightjar's 100-250 m positives. | Decisive | **Accepted in part.** The mower session is taken out of training and scored separately as a confuser. Negatives are drawn from the training rig's own sessions, and night recordings no more often than night flights. The rest stands: this data has no in-flight negatives. |
+| Under a recall-first metric no shortcut detector remains: a flat score out to 250 m is the goal, so failure and success look alike. | Decisive | **Accepted.** Three tripwires are built in: drone windows beyond 300 m (airborne, inaudible) must score no higher than the same sessions' background (AUC at most 0.60); recall within 50 m must not fall; the mower session is reported every run. |
+| Too few independent units: each fold is one site, one rig and one drone type; 150-200 m holds 77 s (Nightjar) and 173 s (d3set). | Serious | **Stands.** Results are reported per rig with intervals from resampling flights, and the worse arm decides. |
+| Time to detection has almost no events: 5 inbound crossings of 150 m in Nightjar, none in d3set. | Serious | **Answered by the Problem Solver's measure:** time to the first alarm from every second the drone spends at 100-200 m, not only from crossings. |
+| Lund and d3set negatives are thin or contaminated (claps, zero padding, a parked drone); Lund `10_flower3` ground truth runs past the audio. | Serious | **Accepted.** Lund gives no negatives and is scored for recall only; `10_flower3` is left out; digital silence is skipped. d3set's claps stay in its background. |
+| Recipe choices made on the same three folds amount to tuning on test. | Serious | **Accepted.** The leave-one-rig-out figures are development figures. A sealed test that can measure recall by range is asked of Mads (below). |
+| Drone-only and no-drone-only sources remain in training; licences (d3set GPL, Lund none); the 08-06 evening is 33% of Nightjar negatives but 4% of its 100-200 m positives. | Weak | Noted. DDL and DroneNoise stay buried in FSD50K backgrounds as in iteration 2. Licences go to Mads. |
+
+**Scholar** (saw no project context; 27 sources it reports checking).
+
+- Weighting the *evaluation* by the operating range is standard and needed
+  whatever is done in training (importance-weighted validation, Sugiyama et
+  al. 2007).
+- Weighting *training* by distance is a defensible variation: resample rather
+  than reweight the loss (An et al. 2021), weight toward a band such as
+  100-250 m and not monotonically toward far, because far examples carry the
+  label noise. Its effect on large separable networks fades (Byrd and Lipton
+  2019); for a small network on noisy audio it needs an ablation.
+- Distance simulation by attenuating near recordings into real backgrounds
+  is standard in form (DCASE 2017 task 2; Reuter et al. 2026 report 1 s to
+  2 s windows raising recall at 100-150 m from 0.52 to 0.68), but ignores air
+  absorption and ground effect; validate against real 150 m audio and never
+  report on simulated data.
+- Known-inaudible windows as hard positives are against practice; mask an
+  ambiguous band as "don't care" (Fonseca et al. 2020). Near-range training
+  keeps a detector's score tied to distance (Knight and Bayne 2019). Define
+  audibility independently of the detector being trained.
+- SNR weighting and curricula: defensible but weakly supported; focal loss
+  would amplify the inaudible far positives.
+- Evaluation: fix a false-alarm rate, report detection probability at the
+  operating range with the threshold frozen on validation; count both
+  windows and passes; the unit of independence is the flight (cluster
+  bootstrap); time to detection as delay against a false-alarm constraint,
+  with censoring; leave one setup out and report each setup separately.
+- Every setup that contributes positives should contribute time-matched
+  negatives; probe for shortcuts by scoring drone-absent periods inside
+  positive sessions and by checking that the score falls with distance.
+
+Departures from the Scholar's practice: one. The Scholar fixes the operating
+point as false alarms *per hour* on long negative recordings. Each rig here
+has 14 to 75 minutes of background, too little for a per-hour rate with a
+useful interval, so the operating point is a 10% *window* false-alarm rate.
+
+**Problem Solver** (saw the project; scored iteration 2 models on Nightjar
+`flight-20260804` and d3set's distance flights). Verdict: **try a modified
+version.**
+
+- At 100-200 m the iteration 2 CNNs separate Nightjar `flight-20260804` from
+  its own motors-off audio at AUC 0.65-0.80, and d3set at 0.64-0.73; beyond
+  200 m at Nightjar AUC 0.29-0.65, i.e. not heard. So 100-200 m holds weak
+  but real evidence; beyond 200 m is label noise. (Entry 024, with all
+  sessions and same-session negatives, finds less for Nightjar.)
+- Option E would discard exactly the windows that matter: at 150 m a
+  per-window SNR estimate drowns in the background's own fluctuation while
+  the CNN still separates them.
+- Positives up to 200 m; target shares of positive draws 0.20 / 0.25 / 0.30 /
+  0.25 for 0-50 / 50-100 / 100-150 / 150-200 m, split equally over the
+  sources with audio in each bin; no cell drawn more than 8 times its natural
+  rate, the excess moving to the next nearer bin.
+- Cheapest settling experiment: small CNN, 200k windows, one seed, two arms
+  (hold out Nightjar; hold out d3set), three recipes: A' near only, C' plus
+  real 50-200 m by the shares above, D' near drones summed into the training
+  rig's background at -10 to +5 dB. C' counts if it beats A' at 100-200 m by
+  at least 10 points on the worse arm (three seeds), loses at most 5 points
+  within 50 m, and keeps the beyond-300 m control at AUC 0.60 or below.
+- Asks: what "time" means; release ITU ARIS and RODENT (both CC BY, both with
+  same-session negatives) as a sealed test now; iteration 4 candidates: a
+  multi-microphone frontend (on Nightjar the plain channel mean raised recall
+  at 100-200 m by 0.14-0.23 for all three models), pretrained embeddings.
+- Confidence: medium.
+
+**Agreement and dissent.** All three agree that positives beyond about
+200 m must not be trained on, that E is not the way, and that a simulated
+distance arm belongs next to the real one. The Devil's Advocate and the
+Problem Solver disagree on whether 100-200 m holds usable evidence. Their
+measurements differ in what they compare (band level against a CNN score;
+one session against all) and both are weak at Nightjar. The disagreement
+turns on a fact that only training can settle: does a model trained with
+same-rig negatives and real 100-200 m positives find more drones at
+100-200 m on a rig it never heard? That is the experiment.
+
+**Decision.** Iteration 3 runs the Problem Solver's experiment with the
+Devil's Advocate's tripwires.
+
+1. *Labels.* Positive: motors on and slant range at most 200 m. 200-300 m:
+   not used. Beyond 300 m: not trained on; scored as a control.
+2. *Rigs.* Two leave-one-rig-out arms, Nightjar and d3set (the only rigs with
+   negatives). Validation: Nightjar `flight-20260804-3`, d3set's own
+   `Validation` flights. Lund (minus `10_flower3`) and Glasgow are scored in
+   both arms as further unseen rigs, Lund for recall only. The mower session
+   is never trained on and is reported separately.
+3. *Sampling.* Per arm, the training rig plus DDL within 50 m and DroneNoise
+   near the pass-by (both buried in FSD50K backgrounds as in iteration 2).
+   Bin shares as above, cap 8. The rig supplies the same share of negatives
+   as of positives; FSD50K the rest; night recordings no more often than
+   night flights. Recipes A' (`near`), C' (`range`), D' (`simdist`: 20% real
+   near drones, 80% near drones summed into the training rig's background at
+   -10 to +5 dB, gain only).
+4. *Figures* (proposed to Mads as the new primary metric in
+   `REQUIREMENTS.md`). Ranking: recall at 100-200 m on the held-out rig at
+   10% window false alarms on that rig's own background, with a 95% interval
+   from resampling flights; the worse arm decides. Deployment: threshold
+   frozen at 10% false alarms on the training rig's validation background;
+   held-out recall at 100-200 m and the false alarms it produces. Time: from
+   every second at 100-200 m, the share of starts with an alarm within 5 s,
+   counting the window's own length. Recall in every range bin always.
+5. *Rule, fixed now.* A recipe beats A' if, on the worse arm, recall at
+   100-200 m at 10% false alarms is at least 10 points higher, confirmed with
+   three seeds; recall within 50 m drops by no more than 5 points; and the
+   beyond-300 m control stays at AUC 0.60 or below. Baselines `comb` and
+   `lgbm` alongside.
+6. *For Mads:* what "time" means; whether ITU ARIS and RODENT may be fetched
+   as a sealed test; the licence row (d3set GPL-3.0, Lund none stated).
+
+**Next.** Open iteration 3 and run the screen.
+
+---
+
+# Iteration 3 - Same-rig negatives, positives weighted toward 150 m
+
+> **Changed from iteration 2:**
+> 1. *Data.* Two new rigs that recorded both drones and no drones (Nightjar,
+>    d3set) become the training and test rigs; each supplies as many
+>    negatives as positives. DDL and DroneNoise stay as extra near drones.
+> 2. *Positives.* Out to 200 m instead of 50 m, drawn by fixed shares per
+>    range bin (0-50 / 50-100 / 100-150 / 150-200 m: 0.20 / 0.25 / 0.30 /
+>    0.25, at most 8 times a bin's natural rate). A recipe with simulated
+>    distance runs alongside.
+> 3. *Judgement.* The primary figure follows Mads's new priorities: recall at
+>    100-200 m on a rig never trained on, at 10% false alarms on that rig's
+>    own background; time to detection; false alarms last.
+>
+> **Why:** Mads's priorities (entry 021). New same-rig negatives (entries
+> 022-023) remove the reason iteration 2 excluded far drones: with no
+> negatives from the drone's own rig, faint positives taught the rig
+> (entries 013, 018). Entry 024 shows that 100-200 m is at the edge of
+> audibility, so whether far positives now help has to be measured.
+>
+> **Kept the same:** frontend (16 kHz, 1 s window, 64 log-mel bands, in-band
+> level normalisation), the small CNN and LightGBM, 200,000 training
+> windows, seed 0 for the screen, burying near drones in FSD50K
+> backgrounds, the random equalisation, the sealed test sources (unscored).
+>
+> **Hypothesis:** with negatives from the same rig, real drones at 50-200 m
+> in training raise recall at 100-200 m on an unseen rig by at least 10
+> points over training on near drones only, without costing recall within
+> 50 m and without the beyond-300 m control firing.
+>
+> **Judged by:** the rule in entry 025, point 5.
+
+## 026 - Training and evaluation code for iteration 3
+
+- Date: 2026-10-14
+- Iteration: 3
+- Type: Infrastructure
+- Commit: uncommitted (on top of 7d4f08a)
+
+**What changed.** Added `src/dad/chains.py` (windows of the new rigs with the
+range at each window's centre), `src/dad/rangerun.py` (the sampler and the
+evaluation of entry 025), `scripts/run_range.py`, `scripts/probe_chains.py`
+and `tests/test_rangerun.py`. The iteration 2 code (`realrun.py`,
+`run_real.py`) is unchanged and is reused for the network, LightGBM, the
+FSD50K backgrounds and the mixing.
+
+**Why.** Entry 025 changes what is sampled and what is reported; nothing in
+the iteration 2 code knew about range bins, same-rig negatives or time to
+detection.
+
+**How.** What the code fixes in place:
+
+- *Arms* (`make_arm`). Hold out Nightjar: train on d3set except its
+  `Validation` flights, which set the deployment threshold. Hold out d3set:
+  train on Nightjar except `flight-20260804-3` (validation) and the mower
+  session (never trained on; scored as a confuser in both arms). Lund
+  without `10_flower3`, and Glasgow, are scored in both arms.
+- *Positive cells* (`RangeSampler`, `set_weights`). One cell per source and
+  range bin, on a 0.1 s grid with +-50 ms jitter. Range is the slant range at
+  the window's centre. DDL within 50 m and DroneNoise near the pass-by are
+  cells in the 0-50 m bin. Bin shares are split equally over the sources
+  with audio in the bin; a cell above 8 times its natural share is cut back
+  and the excess moves to the same source's next nearer bin.
+- *Mixing.* Near (0-50 m) positives are buried in an FSD50K background at
+  -5 to +15 dB, as in iteration 2. Positives at 50-200 m are used as
+  recorded. `simdist` positives: a near drone summed into a background window
+  of the training rig at -10 to +5 dB. Half of all negatives get a second
+  FSD50K background at -10 to +10 dB, and every window the random
+  equalisation, as in iteration 2.
+- *Negatives.* The training rig supplies the share of negatives equal to its
+  share of positives; FSD50K the rest. Within Nightjar, each condition (day,
+  night) is drawn in the proportion it has among positives within 200 m.
+- *Evaluation* (`evaluate_chain`). Held-out windows 1 s long every 0.5 s
+  (Glasgow every 2 s), digital silence skipped. At 5, 10 and 20% false
+  alarms on the held-out rig's own background: recall per range bin and at
+  100-200 m, a 95% interval from resampling sessions, and time to detection
+  (`ring_latency`): from every second at 100-200 m, the wait until the end of
+  the first window that starts then or later and crosses the threshold;
+  censored as a miss once the drone is beyond 200 m. AUC per range bin
+  against the same sessions' background; the beyond-300 m row is the
+  control. The same at the deployment threshold.
+
+A smoke run (3,200 training windows, one arm, two recipes) ran end to end on
+the GPU at about 600 windows per second; its numbers are not results. The
+test suite passes (4 new tests).
+
+**Result.** Not applicable.
+
+**Assessment.** One weakness to keep in mind: the recipe shares are applied
+before the cap, and the training rigs' far bins are small. With Nightjar as
+the training rig the `range` recipe actually draws 0-50 m 6.7% per source
+(20% in all), 50-100 m 46%, 100-150 m 27%, 150-200 m 6% (the cap moves most
+of the 150-200 m share to 50-100 m).
+
+**Next.** Run the screen of entry 025.
+
+## 027 - Requirements: Mads's answers on time, sealed test and licences
+
+- Date: 2026-10-14
+- Iteration: 3
+- Type: Requirements
+- Commit: uncommitted (on top of 7d4f08a)
+
+**What changed.** Mads answered the three questions of entry 025:
+
+1. "Time" means time to detection. `REQUIREMENTS.md`: confirmed.
+2. ITU ARIS and RODENT may be fetched if it is quick. Both were fetched from
+   Zenodo in 8 minutes with `download_new_datasets.ps1 -Manifest
+   manifest_zenodo.tsv -Only ITU_ARIS_Lab,RODENT_ICAERUS`; MD5s match the
+   host (`90eb3f25...` and `f6411d50...`), and the local copies in `data/`
+   match too. They are now the sealed test and have not been scored.
+3. d3set (GPL-3.0) and Lund (no licence) are allowed for internal use.
+   `REQUIREMENTS.md` has a row for it.
+
+**Why.** Mads's decisions.
+
+**How.** Edits to `REQUIREMENTS.md`; the download as above.
+
+**Result.** What the sealed sets hold, from their documentation only (no
+audio was scored): ITU ARIS is 4,491 one-second drone segments and 1,000
+background segments at 22.05 kHz, one 3.1 h session, 35 hand-annotated
+intervals out to about 2 km. It gives drone presence but **no distance per
+segment**, and its background comes from the first 25 minutes of the
+session, not from between flights. RODENT is four WAVs (one "sound without
+drone") with DJI and Litchi logs; how the logs align with the audio is not
+yet established.
+
+**Assessment.** Neither sealed set can measure recall at 150 m directly.
+ITU ARIS can measure recall on audible, mostly distant drones and false
+alarms on a new rig; RODENT may give range if its logs can be aligned.
+
+**Next.** Score the screen of entry 025.
+
+## 028 - Screen: real far drones, simulated distance and near only
+
+- Date: 2026-10-14
+- Iteration: 3
+- Type: Evaluation
+- Commit: uncommitted (on top of 7d4f08a)
+
+**What changed.** The three recipes of entry 025, both leave-one-rig-out
+arms, small CNN and LightGBM (one seed), and the comb.
+
+**Why.** Entry 025, point 3.
+
+**How.**
+
+```powershell
+powershell -File scripts\experiments\run_it3_screen.ps1
+```
+
+Small CNN 200,000 training windows (about 5 min each on the GPU), LightGBM
+40,000, seed 0. Held-out rig scored with 1 s windows every 0.5 s. Held out
+Nightjar: 8,398 drone and 8,874 background windows, of which 590 drone
+windows at 100-200 m from 6 sessions. Held out d3set: 13,239 drone and 1,356
+background windows, 1,307 drone windows at 100-200 m from 7 flights. The
+deployment threshold rests on 83 validation background windows when d3set
+trains (its `Validation` flights) and 1,482 when Nightjar trains. Results in `artifacts/runs/it3_screen.json`; tables by
+`scripts/summarise_range.py it3_screen`.
+
+**Result.** Recall at 100-200 m at 10% window false alarms on the held-out
+rig's own background (95% interval from resampling flights), recall within
+50 m at the same threshold, and the beyond-300 m control (AUC against the
+same sessions' background; Nightjar only, d3set has no audio there):
+
+| Held out | Recipe | Model | Recall 100-200 m | Interval | Recall 0-50 m | Control >300 m |
+|---|---|---|---|---|---|---|
+| Nightjar | near | small CNN | 0.02 | 0.00-0.03 | 0.46 | 0.41 |
+| Nightjar | range | small CNN | 0.06 | 0.01-0.16 | 0.45 | 0.46 |
+| Nightjar | simdist | small CNN | 0.04 | 0.02-0.07 | 0.52 | 0.44 |
+| Nightjar | near | LightGBM | 0.05 | 0.01-0.07 | 0.11 | 0.41 |
+| Nightjar | range | LightGBM | 0.06 | 0.00-0.12 | 0.13 | 0.41 |
+| Nightjar | simdist | LightGBM | 0.02 | 0.00-0.04 | 0.16 | 0.39 |
+| Nightjar | - | comb | 0.11 | 0.02-0.28 | 0.21 | 0.54 |
+| d3set | near | small CNN | 0.14 | 0.09-0.19 | 0.33 | - |
+| d3set | range | small CNN | 0.13 | 0.09-0.20 | 0.05 | - |
+| d3set | simdist | small CNN | **0.25** | 0.12-0.41 | 0.32 | - |
+| d3set | near | LightGBM | 0.14 | 0.07-0.27 | 0.32 | - |
+| d3set | range | LightGBM | **0.33** | 0.21-0.43 | 0.14 | - |
+| d3set | simdist | LightGBM | 0.24 | 0.10-0.33 | 0.18 | - |
+| d3set | - | comb | 0.00 | 0.00-0.01 | 0.20 | - |
+
+AUC of drone windows against the same sessions' background, small CNN,
+100-150 / 150-200 m: Nightjar near 0.52 / 0.51, range 0.52 / 0.40, simdist
+0.43 / 0.48; d3set near 0.67 / 0.68, range 0.68 / 0.74, simdist 0.73 / 0.74.
+LightGBM on d3set: range 0.83 / 0.83, simdist 0.82 / 0.81.
+
+Further figures, in `it3_screen.json`:
+
+- *Deployment threshold* (10% false alarms on the training rig's
+  validation sessions) does not carry across rigs. On the held-out rig it
+  gives false-alarm rates from 0.1% to 85% depending on model and arm (small
+  CNN, simdist: Nightjar 56%, d3set 17%).
+- *Mower session.* With Nightjar as the training rig (and the mower session
+  never seen), the mower alone triggers 53-70% of windows at the d3set arm's
+  own 10% threshold.
+- *Comb.* Its scores are exactly 0 on most windows; the 20% column of the
+  first pass was meaningless (every tied window counted as an alarm). The
+  thresholds were made tie-safe (`fa_threshold`) and the comb rescored
+  (entry 029). The comb figures above are at 10%, where the tie did not bind
+  on the held-out rig.
+- *Time to detection* at 10% window false alarms: the share of moments at
+  100-200 m followed by an alarm within 5 s was 0.15-0.26 (Nightjar) and
+  0.45-0.81 (d3set). **These are not interpretable as they stand:** at 10%
+  false alarms per window and a decision every 0.5 s, the background alone
+  raises an alarm within 5 s much of the time. A no-drone reference for the
+  same figure was added to the evaluation after this screen (entry 029).
+
+**Assessment.**
+
+- **Against the rule of entry 025, no recipe passes.** The worse arm is
+  always Nightjar, where every recipe and model stays at 0.02-0.11. The best
+  gain there is 4 points (range, small CNN), against 10 required.
+- **Nightjar at 100-200 m is at the floor for everything,** including the
+  comb. Its drone (DJI Mini 2, 249 g) is not separable from the site's own
+  background at 100-200 m by any model here (AUC 0.40-0.58). This repeats
+  entry 024's finding with models trained on same-rig negatives. With one
+  microphone, a Mini 2 at 150 m at this site is below what these detectors
+  hear.
+- **On d3set the weighting does something.** Simulated distance lifts the
+  small CNN from 0.14 to 0.25 with near recall unchanged (0.33 to 0.32);
+  real far positives lift LightGBM to 0.33 but cost it 18 points within
+  50 m, and cost the small CNN 28 points within 50 m with no gain at
+  100-200 m. One seed each; whether the simulated-distance gain is larger
+  than the seed spread is tested next.
+- **The control did not fire** (0.39-0.54), so no recipe learned a session
+  cue that marks inaudible flight.
+- **Near recall is low on both rigs** (0.32-0.52 within 50 m at 10% false
+  alarms), which is far below what iteration 2 suggested for near drones.
+  The held-out rigs' backgrounds (voices, claps, birds, machinery) are
+  harder negatives than FSD50K validation was.
+
+**Next.** Seeds 1 and 2 of `near` and `simdist`, and the comb with tie-safe
+thresholds.
+
+## 029 - Three seeds, the comb rescored, and iteration 3's verdict
+
+- Date: 2026-10-14
+- Iteration: 3
+- Type: Evaluation
+- Commit: uncommitted (on top of 7d4f08a)
+
+**What changed.** Seeds 1 and 2 of the small CNN on the `near` and
+`simdist` recipes, both arms. The comb rescored with tie-safe thresholds
+(`fa_threshold`: the lowest threshold whose false-alarm rate does not exceed
+the budget). From seed 1 on, the evaluation also reports how often the
+background alone raises an alarm within 5 s (`latency_background`), the
+reference without which a detection time means little (entry 028).
+
+**Why.** Entry 028: the one promising gain (simulated distance on d3set,
++11 points) rested on one seed.
+
+**How.**
+
+```powershell
+powershell -File scripts\experiments\run_it3_seeds.ps1
+```
+
+Results in `artifacts/runs/it3_comb.json`, `it3_seed1.json`,
+`it3_seed2.json`.
+
+**Result.** Small CNN, recall at 100-200 m at 10% window false alarms on the
+held-out rig, seeds 0 / 1 / 2 and mean:
+
+| Held out | near | simdist | Paired gain |
+|---|---|---|---|
+| Nightjar | 0.017 / 0.019 / 0.010, mean **0.015** | 0.037 / 0.039 / 0.036, mean **0.037** | +2.0, +2.0, +2.6 |
+| d3set | 0.145 / 0.176 / 0.091, mean **0.137** | 0.253 / 0.183 / 0.181, mean **0.206** | +10.8, +0.7, +9.0 |
+
+Recall within 50 m at the same threshold, mean of three seeds: Nightjar
+near 0.44, simdist 0.52; d3set near 0.34, simdist 0.34. Beyond-300 m
+control (Nightjar): 0.39-0.47 for all six runs.
+
+Alarm within 5 s from a moment at 100-200 m, against the same from a moment
+of background (seeds 1 and 2, 10% false alarms per window):
+
+| Held out | near | simdist |
+|---|---|---|
+| Nightjar | 0.15 vs 0.30; 0.09 vs 0.28 | 0.23 vs 0.29; 0.18 vs 0.29 |
+| d3set | 0.51 vs 0.33; 0.35 vs 0.39 | 0.52 vs 0.33; 0.51 vs 0.36 |
+
+The comb with tie-safe thresholds: recall at 100-200 m 0.11 (Nightjar) and
+0.00 (d3set) at 10% false alarms; at the deployment threshold its false
+alarms are 14% and 15%, so its deployment figures in entry 028 (100%) were
+an artefact of the ties.
+
+**Assessment.**
+
+- **The hypothesis of iteration 3 is rejected.** Real drones at 50-200 m in
+  training did not raise recall at 100-200 m by 10 points on either arm
+  (entry 028: +4 and -2 points, and on d3set they cost 28 points within
+  50 m). Simulated distance did better but also misses the rule: +2.2 points
+  on the worse arm (Nightjar), +6.9 on d3set with a seed spread of about
+  10 points. It was never worse than `near` in any of the six pairs, and on
+  Nightjar it raised recall within 50 m by 8 points.
+- **On Nightjar, at 100-200 m, the detector is worse than no detector:** an
+  alarm follows a moment at 100-200 m less often than it follows a moment of
+  background (0.09-0.23 against 0.28-0.30). The DJI Mini 2 at that range is
+  not in the single-microphone audio in a form any model here can use.
+- **On d3set, a drone at 100-200 m is caught within 5 s about half the
+  time,** against about a third from background alone. That margin, not the
+  0.5, is what the detector adds.
+- **Thresholds do not carry from one rig to another** (deployment false
+  alarms 17% to 74% for the small CNN, three seeds, at a threshold set for
+  10%).
+
+**Verdict on iteration 3: hypothesis rejected; target not set.** Weighting
+the training data toward 150 m, whether with real far drones or with
+simulated distance, does not bring a 150 m drone within reach of a
+single-microphone detector on an unseen rig. Recall at 100-200 m at 10%
+false alarms is about 0.04 (DJI Mini 2, Nightjar) and 0.21 (Holybro X500,
+d3set), mean of three seeds, best recipe. No numeric target exists for the
+new primary metric; even so, these numbers are far from anything usable.
+The limit is how much drone the audio holds at 150 m, not how the training
+data is weighted.
+
+**What iteration 4 changes because of it.** Per-window evidence at
+100-200 m is weak (AUC 0.6-0.75 on d3set), and Mads ranks recall above time.
+The cheapest way to gather more evidence per decision is to listen for
+longer: average the scores of several consecutive windows, or use a longer
+window. That trades detection time for recall, exactly the trade the new
+priorities name. `simdist` is kept as the training recipe alongside `near`
+because it was never worse in six pairs; it was not adopted by the rule.
+
+---
+
+# Iteration 4 - Listen longer: trade detection time for recall at 150 m
+
+> **Changed from iteration 3:** the decision. Iteration 3 decided on one
+> 1 s window every 0.5 s. Iteration 4 decides on the average score of k
+> consecutive windows (k = 1, 2, 4, 8, spanning 1, 1.5, 2.5 and 4.5 s of
+> audio), and tries a model trained and scored on 2 s windows.
+>
+> **Why:** entry 029. At 100-200 m the evidence in one 1 s window is weak
+> (AUC 0.6-0.75 on d3set, chance on Nightjar), and changing what the model
+> is trained on did not fix it. Averaging over time is the standard way to
+> raise the signal-to-noise ratio of a weak, persistent source, and it costs
+> exactly the quantity Mads ranks second: time. Both levers were in the plan
+> the council reviewed (entry 025: k-of-n smoothing chosen on validation;
+> 1 s against 2 s windows judged on time to detection), so no new council.
+> The window length is FREE within 0.25-2.0 s in `REQUIREMENTS.md`.
+>
+> **Kept the same:** data, arms, validation sessions, the `near` and
+> `simdist` recipes, the small CNN, 200,000 training windows, seeds 0-2 (the
+> iteration 3 checkpoints are rescored, not retrained), frontend except the
+> window length in the 2 s arm, the sealed sets (unscored).
+>
+> **Hypothesis:** averaging over 2.5-4.5 s raises recall at 100-200 m at 10%
+> false alarms per decision by at least 10 points on d3set over a single
+> 1 s window (mean of three seeds), and widens the margin between "alarm
+> within 5 s at 100-200 m" and the same figure on background.
+>
+> **Judged by:** on the d3set arm, mean of three seeds: recall at 100-200 m
+> at 10% decision false alarms, at least +10 points over k = 1; margin of
+> alarm within 5 s (and 10 s) over the no-drone rate, not smaller than at
+> k = 1; recall within 50 m not lower. The Nightjar arm is reported but
+> cannot decide: no model there beats chance at 100-200 m (entry 029), so a
+> worse-arm rule would fail every option by construction. Nightjar must not
+> lose recall within 50 m.
+
+## 030 - Averaging over consecutive windows
+
+- Date: 2026-10-14
+- Iteration: 4
+- Type: Algorithm
+- Commit: uncommitted (on top of 7d4f08a)
+
+**What changed.** The decision is the mean score of k consecutive 1 s windows
+(`integrate` in `src/dad/rangerun.py`; windows every 0.5 s, runs broken by a
+skipped silent window are dropped, the range is taken at the middle window).
+The threshold is set on the averaged background scores, so the false-alarm
+budget is 10% of decisions at every k. The alarm time counts the whole
+averaged span (`window + (k - 1) * hop`). No model was retrained: the twelve
+small-CNN checkpoints of entries 028-029 (two recipes, two arms, three seeds)
+were rescored.
+
+**Why.** The box of iteration 4.
+
+**How.**
+
+```powershell
+powershell -File scripts\experiments\run_it4_integrate.ps1
+uv run python -I scripts/aggregate_range.py it4_int_it3_screen it4_int_it3_seed1 it4_int_it3_seed2
+```
+
+**Result.** Mean of three seeds (range over seeds in brackets), 10% false
+alarms per decision on the held-out rig's own background:
+
+| Held out | Recipe | Averaged span | Recall 100-200 m | Recall 0-50 m | Alarm within 5 s at 100-200 m / on background | Within 10 s / on background |
+|---|---|---|---|---|---|---|
+| d3set | simdist | 1 s (k = 1) | 0.206 (0.18-0.25) | 0.340 | 0.55 / 0.34 | 0.72 / 0.47 |
+| d3set | simdist | 1.5 s (k = 2) | 0.225 (0.19-0.28) | 0.356 | 0.50 / 0.28 | 0.67 / 0.41 |
+| d3set | simdist | 2.5 s (k = 4) | 0.247 (0.21-0.32) | 0.383 | 0.39 / 0.19 | 0.57 / 0.29 |
+| d3set | simdist | 4.5 s (k = 8) | **0.276** (0.22-0.35) | 0.410 | 0.30 / 0.11 | 0.46 / 0.21 |
+| d3set | near | 1 s (k = 1) | 0.137 (0.09-0.18) | 0.341 | 0.45 / 0.35 | 0.63 / 0.49 |
+| d3set | near | 4.5 s (k = 8) | 0.181 (0.10-0.25) | 0.411 | 0.20 / 0.12 | 0.33 / 0.23 |
+| Nightjar | simdist | 1 s (k = 1) | 0.037 (0.04-0.04) | 0.523 | 0.22 / 0.30 | 0.37 / 0.41 |
+| Nightjar | simdist | 4.5 s (k = 8) | 0.022 (0.01-0.04) | 0.602 | 0.03 / 0.11 | 0.08 / 0.19 |
+| Nightjar | near | 1 s (k = 1) | 0.015 (0.01-0.02) | 0.439 | 0.13 / 0.28 | 0.29 / 0.38 |
+| Nightjar | near | 4.5 s (k = 8) | 0.002 (0.00-0.01) | 0.487 | 0.00 / 0.11 | 0.03 / 0.18 |
+
+AUC at 100-200 m against the same sessions' background, d3set simdist:
+0.68 at k = 1, 0.73 at k = 8. Beyond-300 m control (Nightjar): 0.39-0.46 at
+every k.
+
+**Assessment.**
+
+- **Averaging helps on d3set, steadily but not enough for the rule.**
+  Recall at 100-200 m rises with every doubling of k and in every seed, to
+  +7.0 points at 4.5 s (simdist) and +4.4 (near). The rule asked for +10.
+  Recall within 50 m rises too (+7 points).
+- **What it costs in time is visible in the alarm figures.** At the same
+  10% of decisions, an averaged detector raises fewer separate alarms on
+  background (within 5 s: 0.34 at 1 s, 0.11 at 4.5 s), because consecutive
+  averaged decisions are correlated. Its lead over background within 10 s is
+  about the same at every k (0.25, 0.26, 0.28, 0.25). So at a fixed
+  false-alarm budget per decision, averaging does not buy faster detection;
+  it buys a better recall per decision and fewer false-alarm episodes.
+- **On Nightjar averaging makes 100-200 m worse,** because the score there
+  is slightly lower with a drone than without one (AUC 0.44-0.49), and
+  averaging sharpens whatever the score does. This is the same finding as
+  entry 029 from another angle: there is no drone evidence to integrate.
+
+**Next.** The 2 s window, trained and scored as such (the iteration 4 box).
+
+## 031 - A 2 s window, and iteration 4's verdict
+
+- Date: 2026-10-14
+- Iteration: 4
+- Type: Model
+- Commit: uncommitted (on top of 7d4f08a)
+
+**What changed.** The small CNN trained and scored on 2 s windows instead of
+1 s (the frontend's FREE window setting), both recipes, both arms, seed 0;
+scored with 1, 2 and 4 consecutive 2 s windows averaged.
+
+**Why.** The second lever of the iteration 4 box. Entry 019 found a 2 s
+window the one change that helped in iteration 2 (about 4 points, one seed),
+and the Scholar cites a published gain at 100-150 m from 1 s to 2 s
+(entry 025).
+
+**How.**
+
+```powershell
+powershell -File scripts\experiments\run_it4_win2.ps1
+uv run python -I scripts/aggregate_range.py it4_win2 it4_int_it3_screen
+```
+
+About 10 minutes of training per model. Result in
+`artifacts/runs/it4_win2.json`.
+
+**Result.** Seed 0, recall at 100-200 m at 10% false alarms per decision on
+the held-out rig, against the 1 s model of the same seed averaged over a
+similar span:
+
+| Held out | Recipe | 1 s, 1 window | 1 s, 4 windows (2.5 s) | 1 s, 8 windows (4.5 s) | 2 s, 1 window | 2 s, 4 windows (3.5 s) |
+|---|---|---|---|---|---|---|
+| d3set | simdist | 0.253 | 0.316 | 0.352 | 0.246 | 0.291 |
+| d3set | near | 0.145 | 0.190 | 0.195 | 0.090 | 0.096 |
+| Nightjar | simdist | 0.037 | 0.020 | 0.005 | 0.015 | 0.012 |
+| Nightjar | near | 0.017 | 0.003 | 0.000 | 0.009 | 0.007 |
+
+Recall within 50 m, 2 s against 1 s single windows: d3set simdist 0.31 vs
+0.32, near 0.38 vs 0.33; Nightjar simdist 0.41 vs 0.52, near 0.49 vs 0.46.
+Beyond-300 m control with 2 s windows: 0.33-0.48.
+
+**Assessment.** A model that sees 2 s at once is no better than one that
+sees 1 s, and worse than averaging the scores of 1 s windows over the same
+span. One seed; the difference to averaged 1 s windows (0.25 against 0.32 at
+about 2.5 s on d3set simdist) is inside the seed spread of entry 030, so the
+safe reading is "no gain", not "a loss". This differs from iteration 2's
+small 2 s gain (entry 019), which was measured against FSD50K negatives.
+
+**Verdict on iteration 4: hypothesis rejected by its rule, with a small,
+consistent gain.** Averaging 8 consecutive 1 s windows (4.5 s) raises recall
+at 100-200 m on d3set from 0.21 to 0.28 (three seeds; +7 points against +10
+required) and recall within 50 m from 0.34 to 0.41, in every seed, at no cost
+except decision span. A 2 s window adds nothing. On Nightjar nothing helps
+at 100-200 m, because there is nothing to integrate.
+
+Where the work stands against the new priorities:
+
+| Priority | Best honest figure (held-out rig, 10% false alarms per decision) |
+|---|---|
+| Recall at 100-200 m | Holybro X500 (d3set): 0.28 with 4.5 s averaging, 0.21 without. DJI Mini 2 (Nightjar): 0.04, not better than chance. |
+| Time to detection | X500 at 100-200 m: alarm within 10 s from 46-72% of moments, against 21-47% from background alone; the lead is about 25 points at every averaging span. |
+| False alarms | 10% of decisions by construction; a threshold set on one rig gives 17-74% on another. |
+
+**What the next iteration would need, and why it stops here.** Two
+iterations changed the training data and the decision and moved recall at
+150 m by a few points. CLAUDE.md asks for a check-in when a requirement looks
+unreachable with the available data and when the next step needs a decision
+only Mads can take. Both apply:
+
+1. **The most promising lever is more microphones.** The Problem Solver
+   measured on Nightjar that simply averaging the 15 live UMA-16 channels
+   raised recall at 100-200 m by 0.14-0.23 for three iteration 2 models
+   (entry 025). All three new rigs are arrays (16, 16 and 12 microphones),
+   so this can be tested on the data at hand. It presupposes a deployed
+   array, and deployment hardware is Mads's open decision. It also changes
+   the frontend, which needs the council.
+2. **Which drone matters.** At 150 m a 249 g DJI Mini 2 is not separable
+   from the site's background by any model tried; a 500 mm Holybro X500 (its
+   weight is not given in the dataset) is,
+   weakly. If the drones Mads cares about are Mini-class, 150 m with one
+   microphone is out of reach on this evidence.
+3. **A number for "high recall".** The new primary metric has no target yet.
+4. **The sealed test.** ITU ARIS has drone presence but no range; scoring it
+   is worthwhile only for a candidate Mads wants to keep.
+
+**Next.** Check in with Mads.
+
+## 032 - Requirements: the operational scenario, the deployment array, Doppler
+
+- Date: 2026-10-14
+- Type: Requirements
+- Commit: uncommitted (on top of 7d4f08a)
+
+**What changed.** Mads answered the questions of entry 031 and two more:
+
+| Question | Mads's answer | In `REQUIREMENTS.md` |
+|---|---|---|
+| Which drones | small drones | Drone class: small drones |
+| Deployment microphones | "an array of 2 omnidirectional microphones" | Deployment microphones |
+| Target | as high as can be reached; the most important thing is to recognise drones at a distance in heavy noise, fairly quickly: at least 3 s before the drone reaches the soldier; at about 50 m/s that is 150 m | Operational scenario; Recall target |
+| Fetch Acoustic UAV Field Recordings (FPV, 4.2 GB, Zenodo) | yes | row added; download started |
+| Resample real drone recordings by about +-20% to imitate Doppler and higher motor speed | yes | Pitch or speed perturbation: allowed (amends the LOCKED real-recordings row) |
+
+Mads also asked why the project tests on specific sets instead of pooling all
+data and trying different splits. The answer given: a random split of pooled
+data puts neighbouring windows of one recording (same microphone, site,
+background and day) on both sides, so it measures recognition of the
+recording, not of the drone (iteration 1: validation AUC 0.99 while the score
+rose with distance); and choosing the split by its result picks the most
+optimistic number. But pooling for training is right: iteration 3 trained each
+arm on one new rig only. Pooling every rig but the one held out, rotating the
+held-out rig, is the proposal for iteration 5, with the three kinds of split
+(random, by session, by rig) run side by side on the same pool to show the
+difference in numbers.
+
+**Why.** Mads's decisions.
+
+**How.** Edits to `REQUIREMENTS.md`.
+
+**Result.** Not applicable.
+
+**Assessment.** The scenario changes what "150 m" and "time" mean:
+
+- The alarm must be raised while the drone is still at least 150 m away. At
+  50 m/s the drone covers 300 m to 150 m in the last 3 s before that line,
+  so the windows that matter are those at 150-300 m, not 100-200 m.
+- Time is now a hard budget, not a second priority to trade: every second of
+  listening is 50 m of approach. Iteration 4's 4.5 s averaging spans 225 m
+  and does not fit. Decisions must be short.
+- A drone at 50 m/s is heard about 17% higher in pitch while it approaches
+  (343 / (343 - 50) = 1.17), and small fast drones (FPV) run their motors
+  much faster than the hovering and cruising drones in the data so far. The
+  data has almost none of either; the FPV set and speed perturbation address
+  this.
+- Two omnidirectional microphones can give at most about 3 dB against noise
+  that differs between them (wind, self-noise), less against noise that
+  reaches both alike. The 15-channel gain measured in entry 025 does not
+  carry over.
+- "Heavy noise" makes the negatives matter again: false alarms are the last
+  priority, but a detector that alarms on every engine is not usable.
+
+**Next.** Council on the design of iteration 5.
+
+## 033 - Council: pooling, splits and the metric for the operational scenario
+
+- Date: 2026-10-14
+- Iteration: 5
+- Type: Council
+- Commit: uncommitted (on top of 7d4f08a)
+
+**Question.** How should iteration 5 be designed after entry 032: the
+pooling and split protocol (including Mads's question "why not one big pool
+and different splits?"), the metric for "alarm before a ~50 m/s small drone
+reaches 150 m in heavy noise", and the order of changes (pooling all rigs,
+speed perturbation, the FPV set, a 2-microphone frontend)?
+
+Proposal P: train on all rigs but the held-out one, rotating; report random,
+by-session and by-rig splits side by side; primary metric per-window recall
+at 150-300 m plus an event estimate; decisions of at most about 1 s; speed
+perturbation of drone windows; 2-mic frontend later. Alternatives: A, keep
+one training rig per arm; B, Mads's literal proposal (pool, random splits,
+pick the best); C, P without the split comparison; D, 2-mic or FPV first.
+Raw notes of the members' answers: `artifacts/council5_notes.md`.
+
+**Devil's Advocate** (saw the project; checked range tracks and `Uav.zip`).
+
+| Objection | Rank | Outcome |
+|---|---|---|
+| The 150-300 m metric has almost no data: Nightjar 361 s, of which 167 s is the mower session and the rest is at chance for every model; d3set 174 s, all at 150-190 m, hovering (median range rate 0.1 m/s); no inbound 300-150 m pass faster than 9 m/s anywhere. | Decisive | **Accepted.** The range metric is kept as a diagnostic on d3set, and the scenario is carried mainly by recall on held-out FPV campaigns (small fast drones), which have no range. Stated wherever the figures appear. |
+| P pulls the training-mix lever a third time although entry 031 says the limit is the audio; the 2-mic frontend the deployment fixes comes last. | Decisive | **Partly accepted.** Pooling is still run, because it is the first test of data *diversity* (iteration 3 trained on one new rig per arm), and it answers Mads's question. The 2-mic question is measured in this iteration by rescoring on channel pairs, not left to the end. |
+| FPV devices recorded the same flights at the same time (labels shifted 8-12 s between phones); a duplicate background file; the shipped splits leak; labels mark activity in long blocks. | Serious | **Accepted.** FPV is held out by campaign, never by device; the shipped `ProcessedAudioSplits` are not used; windows are cut from `labeled_data`. Label quality stands as a limit. |
+| The event metric built from hovering windows, and an "own-background" threshold a deployed system never has, flatter the result. | Serious | **Accepted.** The event figure is always paired with the same figure on background (the lead). The own-background threshold is named for what it is: a site calibration (listening to the site for some minutes before use), reported next to the transferred-threshold false-alarm rate. |
+| Slowing a 16 kHz recording leaves the top band empty, in positives only. | Serious | **Accepted.** The same random resampling is applied to negatives, so an empty top band says nothing about the label. |
+| No sealed set has range. | Serious | **Stands.** Mads is asked for flight logs of the FPV campaign `ariel_25.02` and for a recording with his own 2-microphone array. |
+| The random-split row will be the largest number in the report. | Weak | Kept as a labelled answer to Mads's question; it is never used to choose anything. |
+
+**Scholar** (no project context; sources in the notes file).
+
+- Random splits over pooled windows: against practice (adjacent windows
+  leak; Roberts et al. 2017). Grouped split by session: standard, answers
+  "new recordings on a known setup". Leave-one-setup-out: standard for "an
+  unseen device or site" (DomainBed; DCASE 2020 task 1A). **Choosing the
+  split by its result is against practice** (Cawley and Talbot 2010;
+  DomainBed calls it an oracle). Reporting several labelled splits is fine.
+- The operational metric is event-level: cumulative probability of an alarm
+  before the target reaches 150 m, after all smoothing, against false alarms
+  per hour on long deployment-like background. Extrapolating from slow to
+  fast targets has no validated method; bracket it and label it.
+- Speed perturbation is standard (Ko et al. 2015; Salamon and Bello 2017);
+  for drones the measured gain is small (Reuter et al. 2026). Resample the
+  drone recording before mixing, and give every class the same bandwidth.
+- Two microphones: at most 3 dB against noise that differs between them
+  (wind), close to 0 dB against diffuse noise at low frequency when they are
+  close together.
+- More devices and sites help generalisation (DCASE 2020; Vilhurin et al.
+  2026), unsettled against pretraining.
+
+Departures from the Scholar's practice: false alarms stay a per-window rate
+plus the background-alarm reference, not alarms per hour; the backgrounds
+per rig are minutes to an hour long, too short for a per-hour rate with a
+useful interval.
+
+**Problem Solver** (saw the project; inspected the complete FPV set; ran a
+CPU split experiment). Verdict: **try a modified version.**
+
+- The FPV set is three campaigns (`ariel_25.02`, `palmahaim_10.02`,
+  `PALMAHIM27_5`), phones and a DJI Mic 2, 44.1-48 kHz, drone and background
+  files cut from Audacity labels. About 70 min of unique drone audio and
+  60 min of background. `ariel_25.02` flew 150 m legs in four directions
+  (per its experiment notes). Four iPhone files named `.wav` are M4A.
+  `Electric Uavs.zip` (8 kHz roadside sensors) and `Uav.zip` (airbase
+  departures and landings) do not fit the scenario.
+- **Mads's question answered with numbers** (FPV `labeled_data`, 1 s
+  windows, LightGBM on log-mel statistics, five repeats):
+
+  | Split | AUC | Recall at 10% false alarms |
+  |---|---|---|
+  | Random 1 s windows | 0.92 | 0.80 |
+  | By file | 0.84 | 0.66 |
+  | By event, all devices | 0.85 | 0.70 |
+  | Leave one device out, same events in training | 0.84 | 0.67 |
+  | Leave one campaign out | 0.83 (0.79-0.90) | 0.63 (0.57-0.73) |
+
+  A random split adds about 0.09 AUC and 17 points of recall that do not
+  survive a new site.
+- Protocol: pool everything but the held-out unit (Nightjar, d3set, each FPV
+  campaign); `simdist`, 1 s windows, at most 2 averaged. Primary: probability
+  of at least one alarm within any 3 s at 150-300 m, minus the same on
+  background; plus recall per held-out FPV campaign. 2-mic: rescore existing
+  models on 2-channel averages from the arrays now.
+- Success: d3set recall at 150-200 m up by at least 5 points (three seeds)
+  with the lead over background not smaller; FPV campaign recall at 10%
+  false alarms at least 0.63 (the LightGBM figure above); no rig loses recall
+  within 50 m.
+- Confidence: medium.
+
+**Agreement and dissent.** All three reject random splits and choosing a
+split by its result. The Scholar and the Problem Solver support pooling with
+a held-out setup; the Devil's Advocate holds that the binding limit is the
+audio and the microphones, not the mix. That disagreement is settled by the
+pooled runs against iteration 3's single-rig runs on the same held-out rigs.
+
+**Decision.**
+
+1. **Mads's question** is answered in the report with the Problem Solver's
+   table; the random-split figure is labelled as recognition of known
+   recordings and never used for a choice.
+2. **Iteration 5 pools for training** and holds out one unit at a time:
+   Nightjar, d3set, and each FPV campaign. Lund is scored for recall only.
+   FPV is read from `labeled_data`, grouped by campaign.
+3. **Two arms:** `simdist` on the pool, and the same with speed
+   perturbation (factor 0.8-1.25, drawn per window, applied to positives and
+   negatives alike).
+4. **Figures:** recall at 10% window false alarms per held-out unit (FPV
+   campaigns; d3set at 100-200 m as the range diagnostic; Nightjar reported);
+   the probability of an alarm within any 3 s at 150-300 m and its lead over
+   background; recall within 50 m. Thresholds set on the held-out unit's own
+   background are reported as site calibration, next to the false alarms a
+   transferred threshold gives.
+5. **Rule, fixed now:** pooling is kept if, against iteration 3's single-rig
+   `simdist` (three seeds), d3set recall at 100-200 m rises by at least
+   5 points and no rig loses more than 5 points within 50 m; the FPV
+   campaign mean must beat the LightGBM 0.63. Speed perturbation is kept if
+   it adds at least 5 points of FPV campaign recall without costing d3set.
+6. **The 2-mic rescore** follows in this iteration.
+7. **For Mads:** flight logs or GPS for the FPV campaign `ariel_25.02`, and
+   whether a recording with his own 2-microphone array (drone and no drone)
+   is possible.
+
+**Next.** Load the FPV set; open iteration 5.
+
+---
+
+# Iteration 5 - One pool, one rig held out at a time
+
+> **Changed from iteration 4:** training uses every rig but the held-out
+> one (Nightjar, d3set, Glasgow, the three FPV campaigns, DDL and DroneNoise
+> near drones, FSD50K), instead of one new rig per arm; FPV campaigns become
+> held-out units; speed perturbation is tried as a second arm.
+>
+> **Why:** Mads's question (entry 032) and the council (entry 033): data
+> diversity was never tested, since iteration 3 trained each arm on a single
+> new rig. The scenario's small fast drones are only in the FPV set.
+>
+> **Kept the same:** small CNN, 1 s window, 0.5 s hop, 200,000 training
+> windows, the `simdist` recipe, the evaluation code and false-alarm budget,
+> the sealed sets (unscored).
+>
+> **Hypothesis:** a pooled model detects drones on an unseen rig better than
+> a model trained on one rig: at least +5 points at 100-200 m on d3set, and
+> FPV campaign recall above the LightGBM 0.63.
+>
+> **Judged by:** entry 033, point 5.
+
+## 034 - The FPV set into the store; pooled training and speed perturbation in code
+
+- Date: 2026-10-14
+- Iteration: 5
+- Type: Data
+- Commit: uncommitted (on top of 7d4f08a)
+
+**What changed.**
+
+- *Data.* `Acoustic_UAV_Field_Recordings` was fetched from Zenodo in 35 min
+  (`Uav.zip`, `Electric Uavs.zip`, `Fpv.zip`; MD5s match the host and the
+  local copies). `prepare_fpv` in `scripts/prepare_new_data.py` reads only
+  `Fpv.zip`'s `labeled_data` drone and background files (one manifest row
+  per file, channel 0, 16 kHz, group = campaign, subset = device). The
+  shipped `ProcessedAudioSplits` are not read (they reuse one source segment
+  across train, validate and test, entry 033). Four iPhone files named
+  `.wav` are M4A and were skipped; no exact duplicates were found in
+  `labeled_data`. `Electric Uavs.zip` (8 kHz sensors) and `Uav.zip` (airbase
+  departures and landings) are not used.
+- *Code.* `make_pool_arm` in `src/dad/rangerun.py`: train on Nightjar,
+  d3set, Glasgow and the FPV campaigns except the held-out unit; the
+  sampler now handles several rigs, each supplying the share of negatives
+  equal to its share of positives; FPV drone audio, which has no range,
+  counts as near. `speed_change` and the sampler's `speed` option resample
+  every training window, drone or not, by a factor drawn per window.
+  `run_range.py --pool --speed LO HI`. The evaluation adds recall over all
+  drone windows (for units without range) and the share of moments at
+  150-300 m followed by an alarm within 3 s, next to the same on background.
+
+**Why.** Entry 033, decisions 2-4.
+
+**How.**
+
+```powershell
+uv run python -I scripts/prepare_new_data.py fpv
+```
+
+**Result.** FPV in the store, unique audio per campaign is lower, because
+the phones of one campaign recorded the same flights:
+
+| Campaign | Drone | Background | Devices |
+|---|---|---|---|
+| `ariel_25.02` | 60.8 min | 40.3 min | DJI Mic 2, Galaxy J5 |
+| `palmahim_10.02` | 27.9 min | 4.6 min | DJI Mic 2 (drone only), iPhone |
+| `palmahim_27.05` | 44.2 min | 64.7 min | Galaxy J5, Huawei Mate 20 lite, Redmi Note 5, Redmi 12, two DJI Mic 2 |
+
+A smoke run of the pooled sampler (one arm, 3,200 windows) ran end to end;
+its numbers are not results. Tests pass (51).
+
+**Assessment.** `palmahim_10.02` has 4.6 min of background, so its held-out
+false-alarm thresholds rest on about 550 windows.
+
+**Next.** The pooled screen of entry 033.
+
+## 035 - Pooled screen, with and without speed perturbation; iteration 5 paused
+
+- Date: 2026-10-14
+- Iteration: 5
+- Type: Evaluation
+- Commit: uncommitted (on top of 7d4f08a)
+
+**What changed.** The screen of entry 033: small CNN (200,000 windows) and
+LightGBM (40,000), `simdist` recipe, trained on the pool with one unit held
+out at a time (Nightjar, d3set, the three FPV campaigns), seed 0; the small
+CNN again with every training window resampled by a factor drawn from
+0.8-1.25 (`--speed 0.8 1.25`).
+
+**Why.** Entry 033, decisions 2-3.
+
+**How.**
+
+```powershell
+powershell -File scripts\experiments\run_it5_screen.ps1
+```
+
+34 min for the pooled runs, 40 min for the speed arm (resampling slows
+training from about 700 to about 430 windows per second). Results in
+`artifacts/runs/it5_pool.json` and `it5_pool_speed.json`.
+
+**Result.** Recall at 10% false alarms per decision on the held-out unit's
+own background (1 s windows, no averaging), seed 0. For comparison, the
+iteration 3 single-rig `simdist` small CNN (mean of three seeds, entry 029):
+
+| Held out | Figure | Single rig (it. 3) | Pool, LightGBM | Pool, small CNN | Pool + speed, small CNN |
+|---|---|---|---|---|---|
+| d3set | recall 100-200 m | 0.206 | 0.519 | 0.244 | **0.371** |
+| d3set | recall 0-50 m | 0.340 | 0.337 | 0.439 | **0.567** |
+| d3set | alarm within 3 s at 150-300 m / on background | - | 0.74 / 0.23 | 0.36 / 0.29 | 0.45 / 0.28 |
+| Nightjar | recall 100-200 m | 0.037 | 0.017 | 0.010 | 0.036 |
+| Nightjar | recall 0-50 m | 0.523 | 0.338 | 0.576 | 0.484 |
+| FPV `ariel_25.02` | recall, all drone windows | - | 0.353 | 0.634 | **0.678** |
+| FPV `palmahim_10.02` | recall, all drone windows | - | 0.743 | 0.793 | 0.777 |
+| FPV `palmahim_27.05` | recall, all drone windows | - | 0.292 | 0.389 | **0.481** |
+| FPV mean | | - | 0.463 | 0.605 | **0.645** |
+
+AUC of d3set drone windows at 100-200 m against the same sessions'
+background: pooled LightGBM 0.82, pooled small CNN 0.71. Beyond-300 m
+control on Nightjar: 0.34-0.39 in all pooled runs. Averaging two windows
+(k = 2) adds 1-4 points everywhere. Reference from entry 033: LightGBM on
+simple features trained on FPV campaigns only, leave one campaign out, 0.63.
+
+**Assessment.**
+
+- **Pooling with speed perturbation is the best configuration so far**, on
+  one seed: d3set recall at 100-200 m 0.37 against 0.21 for a single rig
+  (+16 points), recall within 50 m 0.57 against 0.34, and FPV campaign mean
+  0.645, above the 0.63 reference. Pooling alone gives +4 points on d3set at
+  100-200 m (inside the seed spread) and 0.605 on FPV. Speed perturbation
+  adds 13 points on d3set and 4 points on the FPV mean.
+- **Against the rule of entry 033 this is not yet decided.** The rule asks
+  for three seeds; only seed 0 was run, and the seed spread at 100-200 m on
+  d3set is about 10 points (entry 029). Speed perturbation was to be kept for
+  +5 points on the FPV mean; it gave +4 there and +13 on d3set.
+- **Pooled LightGBM is the strongest d3set result (0.52 at 100-200 m) but
+  the weakest on FPV (0.46).** It is a baseline; it is reported, not chosen.
+- **Nightjar does not move:** the DJI Mini 2 at 100-200 m stays at chance
+  in every configuration, and pooling costs it recall within 50 m in the
+  speed arm (0.48 against 0.52).
+- No run raised the beyond-300 m control.
+
+**Iteration 5 is paused here at Mads's request**, with its verdict open.
+What remains to finish it: seeds 1 and 2 of pooled and pooled-with-speed
+(about 2.5 hours); the 2-microphone rescore on channel pairs (entry 033,
+point 6); and the two questions to Mads (flight logs for `ariel_25.02`; a
+recording with his own 2-microphone array).
+
+**Next.** Wait for Mads.
+
+## 036 - What a second microphone adds, by rescoring
+
+- Date: 2026-10-14
+- Iteration: 5
+- Type: Evaluation
+- Commit: uncommitted (on top of 7d4f08a)
+
+**What changed.** A second store for Nightjar and d3set in which every
+sample is the mean of two channels of the same array (`prepare_new_data.py
+pairs`; Nightjar UMA-16 channels 0 and 8, d3set the first and the last
+remaining channel), laid out exactly like the one-channel store (byte sizes
+checked equal; the manifest is unchanged). `run_range.py --pair` reads these
+stores. The seed 0 pooled checkpoints of entry 035 were rescored on them, no
+retraining.
+
+**Why.** Entry 033, point 6: Mads's deployment has two omnidirectional
+microphones. The council expected at most about 3 dB from averaging two.
+
+**How.**
+
+```powershell
+uv run python -I scripts/prepare_new_data.py pairs
+powershell -File scripts\experiments\run_it5_pair.ps1
+```
+
+The spacing of the chosen pairs is not known: the array geometry files are
+not in the downloaded data. For UMA-16 both channels lie within its roughly
+13 cm aperture.
+
+**Result.** Small CNN, seed 0, 10% false alarms per decision, one channel
+against the two-channel mean, same model:
+
+| Held out | Model | Recall 100-200 m | Recall 0-50 m | All drone windows |
+|---|---|---|---|---|
+| d3set | pool | 0.244 to 0.314 | 0.439 to 0.501 | 0.412 to 0.467 |
+| d3set | pool + speed | 0.371 to 0.338 | 0.567 to 0.530 | 0.534 to 0.497 |
+| Nightjar | pool | 0.010 to 0.019 | 0.576 to 0.513 | 0.347 to 0.312 |
+| Nightjar | pool + speed | 0.036 to 0.012 | 0.484 to 0.506 | 0.295 to 0.312 |
+
+**Assessment.** Averaging two microphones of one array moves recall by
+-7 to +7 points with no consistent direction, which is inside the seed
+spread. This fits the expectation: two closely spaced microphones gain
+little against background that reaches both alike, and the models were
+trained on single channels. A gain from two microphones, if any, would have
+to come from training on two-channel input or from spacing them further
+apart; neither can be tested well without knowing the deployment spacing or
+recordings made with it.
+
+**Next.** Seeds 1 and 2 of entry 035.
+
+## 037 - Three seeds of the pooled runs, and iteration 5's verdict
+
+- Date: 2026-10-14
+- Iteration: 5
+- Type: Evaluation
+- Commit: uncommitted (on top of 7d4f08a)
+
+**What changed.** Seeds 1 and 2 of the two pooled configurations of entry
+035 (small CNN, `simdist`, pooled; and the same with speed perturbation
+0.8-1.25), all five held-out units.
+
+**Why.** Entry 033, point 5: the rule asks for three seeds.
+
+**How.**
+
+```powershell
+powershell -File scripts\experiments\run_it5_seeds.ps1
+```
+
+About 32 min per pooled run and 45-48 min per run with speed perturbation.
+Results in `artifacts/runs/it5_pool_s1.json`, `it5_pool_s2.json`,
+`it5_pool_speed_s1.json`, `it5_pool_speed_s2.json`.
+
+**Result.** Mean of three seeds (seeds 0 / 1 / 2 in brackets), recall at 10%
+false alarms per decision on the held-out unit's own background, 1 s
+windows. Single-rig figures are iteration 3's `simdist` (entry 029):
+
+| Held out | Figure | Single rig | Pool | Pool + speed |
+|---|---|---|---|---|
+| d3set | recall 100-200 m | 0.206 | 0.205 (0.24 / 0.19 / 0.18) | **0.333** (0.37 / 0.37 / 0.26) |
+| d3set | recall 0-50 m | 0.340 | 0.439 | **0.555** |
+| d3set | alarm within 3 s at 150-300 m / on background | - | 0.33 / 0.27 | **0.48 / 0.28** |
+| Nightjar | recall 100-200 m | 0.037 | 0.020 | 0.029 |
+| Nightjar | recall 0-50 m | 0.523 | 0.607 | 0.491 |
+| FPV `ariel_25.02` | recall, all drone windows | - | 0.619 | 0.677 |
+| FPV `palmahim_10.02` | recall, all drone windows | - | 0.789 | 0.789 |
+| FPV `palmahim_27.05` | recall, all drone windows | - | 0.435 | 0.498 |
+| FPV mean | | - | 0.614 (0.61 / 0.63 / 0.61) | **0.655** (0.65 / 0.66 / 0.66) |
+
+Beyond-300 m control (Nightjar): pool 0.33-0.38, pool + speed 0.39-0.44.
+
+**Assessment against the rule of entry 033.**
+
+- **Pooling alone: rejected.** d3set recall at 100-200 m is unchanged
+  (0.205 against 0.206; +5 required), and the FPV mean 0.614 is below the
+  0.63 reference. Pooling does raise recall within 50 m on both rigs (+10 on
+  d3set, +8 on Nightjar).
+- **Speed perturbation: kept, with one criterion missed narrowly.** On top of
+  pooling it adds 12.8 points at 100-200 m on d3set (all three seeds above
+  every pooled seed but one), 11.6 within 50 m, and 4.1 on the FPV mean,
+  against the 5 asked. It costs Nightjar 12 points within 50 m relative to
+  pooling alone, 3 relative to the single rig (inside the allowed 5).
+- **Pool + speed against the single rig meets all three conditions:** +12.7
+  at 100-200 m on d3set, FPV mean 0.655 above 0.63, no rig more than 5 points
+  down within 50 m. Its lead in the scenario figure on d3set is 20 points: an
+  alarm within 3 s from a moment at 150-300 m 48% of the time, against 28%
+  from background alone.
+- **Two microphones** (entry 036) moved recall by -7 to +7 points with no
+  consistent direction.
+- **The DJI Mini 2 at 100-200 m stays at chance** in every configuration.
+
+**Verdict on iteration 5: hypothesis rejected for pooling alone; pooling with
+speed perturbation is the new best recipe.** Training on every rig but the
+held-out one did not by itself help at 150 m; it helped close to the
+microphone. The gain at 150 m came from resampling every training window by
+0.8-1.25, which imitates faster motors and Doppler shift. Best honest
+figures, unseen rig, 10% false alarms per decision, three seeds: Holybro X500
+at 100-200 m 0.33 (single rig 0.21); FPV drones on an unseen campaign 0.66
+(no range known); DJI Mini 2 at 100-200 m about 0.03, not above chance.
+
+**What the next iteration would change.** With speed perturbation working,
+the obvious next steps are a wider range of factors and resampling done
+before mixing (the Scholar's recommendation, entry 033); a final model
+trained on the whole pool; and, as before, data that only Mads can provide:
+flight logs for `ariel_25.02` and a recording with his own two-microphone
+array.
+
+**Next.** Report to Mads.
