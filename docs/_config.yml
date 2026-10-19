@@ -5,3 +5,7 @@ plugins:
   - jekyll-remote-theme
 url: https://backseat-sloppy.github.io
 baseurl: /drone-acoustic-detection
+
+exclude:
+  - REPORT.md
+  - datasets.md
