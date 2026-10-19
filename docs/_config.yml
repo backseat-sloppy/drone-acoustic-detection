@@ -1,0 +1,7 @@
+title: Acoustic Drone Detection
+description: Latency-first acoustic drone detection pipeline (Med7)
+remote_theme: just-the-docs/just-the-docs
+plugins:
+  - jekyll-remote-theme
+url: https://backseat-sloppy.github.io
+baseurl: /drone-acoustic-detection
