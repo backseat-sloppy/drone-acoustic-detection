@@ -99,6 +99,7 @@ uv sync --group dev --extra dl   # environment, with torch
 uv run dad info                  # the frozen frontend contract
 uv run dad bench                 # per-stage latency
 uv run dad compare               # every model on the same windows
+uv run dad wav FILES --threshold T  # a detector over WAV files, scored against sidecars
 uv run pytest                    # tests
 ```
 

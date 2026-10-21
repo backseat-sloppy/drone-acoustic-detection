@@ -445,6 +445,21 @@ class LgbmScorer:
         L = featurise(audio, self.variant, self.fe)
         return self.model.predict_proba(np.stack([summary_stats(m) for m in L]))
 
+    def save(self, path) -> None:
+        import pickle
+        with open(path, "wb") as f:
+            pickle.dump(dict(variant=self.variant.name, model=self.model), f)
+
+    @classmethod
+    def load(cls, path, cfg: FrontendConfig = DEFAULT) -> "LgbmScorer":
+        """Unpickling runs code from the file: load only models you trained."""
+        import pickle
+        with open(path, "rb") as f:
+            ck = pickle.load(f)
+        m = cls(VARIANTS[ck["variant"]], cfg)
+        m.model = ck["model"]
+        return m
+
 
 class NetScorer:
     """A zoo architecture trained on streamed batches."""

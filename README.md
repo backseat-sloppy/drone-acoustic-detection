@@ -177,8 +177,36 @@ uv run dad gate     # tier-0 gate calibration and the free RPM estimate
 uv run dad sweep    # accuracy vs end-to-end delay table
 uv run dad compare  # every model on the same windows (needs the dl extra for neural models)
 uv run dad compare --models comb lgbm resnet --windows 0.5 1.0 --device cuda
-uv run pytest       # 29 tests, including the streaming-equivalence invariant
+uv run pytest       # 62 tests, including the streaming-equivalence invariant
 ```
+
+## Running a detector over WAV files
+
+`dad wav` reads WAV files of any sample rate and bit depth (mono expected;
+of a multi-channel file only channel 0 is used), resamples them to 16 kHz and
+runs a detector over them hop by hop, exactly as it would run live: one
+decision every hop, stamped with the time its window ends. With a threshold,
+every decision is `True` (drone) or `False`.
+
+```powershell
+uv run dad wav test_files\ --detector comb --threshold 0.5
+uv run dad wav test_files\ --detector artifacts\models\<checkpoint>.pt `   # or a .pkl LightGBM model
+    --threshold-from artifacts
+uns\<run>.json --out hops.csv --summary summary.json
+```
+
+`--threshold-from` takes the threshold the training run froze on its
+validation sessions. If `clip.wav` has a sidecar `clip.json`, the decisions
+are scored against it and the requirements R2 to R5 are reported:
+
+```json
+{"drones": [{"start_s": 7.0, "end_s": 12.0, "impact_s": 12.0}]}
+```
+
+`impact_s` is optional and only needed for R5 (alarm at least 3 s before
+impact). Other keys (wind level, explosion level, speed) are kept and copied
+into the summary. Windows straddling a drone's start or end are left out of
+recall, false positives and precision.
 
 In VS Code, open `drone-acoustic-detection.code-workspace`. Three debug
 configurations are preset in `.vscode/launch.json`.

@@ -8,7 +8,7 @@ on the other rig plus DDL and DroneNoise near drones and FSD50K, freeze the
 deployment threshold at 10% false alarms on the training rig's validation
 sessions, then score the held-out rig, the lawn-mower session, Lund and
 Glasgow. Writes artifacts/runs/<name>.json and checkpoints under
-artifacts/models/. The sealed sources (Halmstad, FSD50K-eval) are not touched.
+artifacts/models/ (`.pt` for networks, `.pkl` for LightGBM). The sealed sources (Halmstad, FSD50K-eval) are not touched.
 """
 from __future__ import annotations
 
@@ -132,9 +132,14 @@ def main() -> None:
             print(f"  recipe {rname}: {sampler.describe()}", flush=True)
             variant = rr.VARIANTS["buried"]
             if "lgbm" in args.models:
-                t = time.time()
-                m = rr.LgbmScorer(variant, cfg).fit(sampler, args.lgbm_windows)
-                evaluate(m, "lgbm", rname, dict(train_seconds=round(time.time() - t, 1)))
+                ckpt = REPO / "artifacts" / "models" / f"{args.load_from or args.name}_{held.replace(':', '_')}_{rname}_lgbm.pkl"
+                if args.load_from:
+                    evaluate(rr.LgbmScorer.load(ckpt, cfg), "lgbm", rname, dict(loaded=ckpt.name))
+                else:
+                    t = time.time()
+                    m = rr.LgbmScorer(variant, cfg).fit(sampler, args.lgbm_windows)
+                    m.save(ckpt)
+                    evaluate(m, "lgbm", rname, dict(train_seconds=round(time.time() - t, 1)))
             for arch in (a for a in args.models if a in NETS):
                 ckpt = REPO / "artifacts" / "models" / f"{args.load_from or args.name}_{held.replace(':', '_')}_{rname}_{arch}.pt"
                 if args.load_from:

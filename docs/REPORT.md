@@ -2929,3 +2929,247 @@ at 100-200 m in all, from Nightjar, d3set and Lund.
 
 **Next.** Ask Mads whether the 3 s budget stays, and convene the council on
 the replacement metric before the next iteration.
+
+## 039 - Requirements: MoSCoW requirements for the real test
+
+- Date: 2026-10-21
+- Type: Requirements
+- Commit: uncommitted (on top of 8e0b42b)
+
+**What changed.** Mads gave a new requirements table for the coming real
+test and said that distance is not as valuable anymore. It is now the
+governing section of `REQUIREMENTS.md`, word for word:
+
+| ID | Functional | Non-functional | MoSCoW |
+|---|---|---|---|
+| R1 | The solution should detect drone | The program should return true value when it detects a drone | Must have |
+| R2 | The solution should minimize false negatives | The program should have a recall rate of 95% | Should have |
+| R3 | The solution should minimize false positives | The program should introduce a maximum of 5% false positives | Should have |
+| R4 | The solution should be precise | The program should have a precision rate of 95% | Could have |
+| R5 | The solution should give soldiers time to react to an alert | The program should detect drones 3 seconds before impact | Must have |
+
+He also decided that the test audio will be WAV files, mono, "decent
+quality".
+
+Rows they replace were marked, not deleted: the priority order of entry 021
+(false alarms were last, now they are a Should like recall), the open recall
+target (now 95%), the range-free primary metric of entry 038, the deployment
+figure and the time-to-detection row (now R5). The stop condition now names
+the Must and Should requirements.
+
+**Why.** Mads's decision.
+
+**How.** Edits to `REQUIREMENTS.md`. A second table there says how Claude
+reads each requirement as a measurement; it is marked PROPOSED:
+
+- R1: a boolean per hop, `True` at or above the threshold.
+- R2, R3, R4: recall, false-positive rate and precision per window, on
+  sources or rigs never trained on, all at one threshold frozen on
+  validation; windows within 1 s of a drone's start or end left out.
+- R5: on test audio where the approach is known, time from the first `True`
+  to impact, at least 3 s. The share of approaches that must meet it was not
+  given and is open.
+
+**Result.** Not applicable.
+
+**Assessment.**
+
+- **R2 and R3 together are far from the best figures so far.** Iteration 5's
+  best recipe, at 10% false alarms on an unseen rig, reached recall 0.66 on
+  FPV drones and 0.33 on the Holybro X500 at 100-200 m; the DJI Mini 2 at
+  100-200 m was at chance. The requirement asks for 0.95 at 5%. With the data
+  available this looks out of reach for distant drones; how close it comes
+  over all drone windows is not known, because the iteration 5 runs were not
+  scored that way (the run files are on the training PC).
+- **R4 depends on the drone share.** In a test file with a drone in 5 s of
+  20 s (25%), recall 0.95 and 5% false positives give precision
+  0.2375 / (0.2375 + 0.0375) = 0.86. Precision 0.95 at that share needs at
+  most 1.7% false positives.
+- **R5 brings distance back through speed.** 3 s before impact is 150 m at
+  50 m/s and 30 m at 10 m/s. Distance is no longer a target, but R5 cannot be
+  checked without knowing when the drone arrives, which real recordings
+  mostly do not give.
+- The measurement readings are Claude's. A change of primary metric is a
+  council matter (CLAUDE.md section 4); the council has not seen this one.
+
+**Next.** Mads's next task from the scrum board: "Make ML Algorithm
+understand WAV", with mono WAV files of decent quality.
+
+## 040 - The detector reads WAV files ("Make ML Algorithm understand WAV")
+
+- Date: 2026-10-21
+- Type: Infrastructure
+- Commit: uncommitted (on top of 8e0b42b)
+
+**What changed.** A task from Mads's scrum board: make the detector run on
+WAV files, since the real test will hand it WAV files, mono, decent quality.
+
+- `src/dad/wavio.py`: reads any file soundfile can read, at any sample rate
+  and bit depth; keeps channel 0 of a multi-channel file (as the processed
+  store does, entries 007 and 023) and says so; resamples to 16 kHz with the
+  same polyphase filter as `prepare_data.py`. It then cuts one window per
+  hop and scores it with the same scorer objects the training runs use, so
+  a WAV is seen exactly as the evaluation windows were. Each decision is
+  stamped with the time its window ends, the earliest moment it could exist
+  live, and is `True` at or above the threshold (R1).
+- An optional sidecar `<name>.json` with `{"drones": [{"start_s", "end_s",
+  "impact_s"}]}` turns the decisions into R2 to R5: recall, false-positive
+  rate and precision per window (windows straddling a drone's start or end
+  left out, the reading of entry 039), the drone share of the audio, and for
+  each drone with an impact time the first alarm and whether it came at
+  least 3 s before impact. Any other key in the sidecar is carried into the
+  summary, so the generated test files can record wind, explosion level and
+  speed there.
+- `uv run dad wav`: files or folders; `--detector comb` or a `.pt`
+  checkpoint; `--threshold`, or `--threshold-from` a run's JSON, which looks
+  up the single-window threshold that run froze on validation for that
+  checkpoint; `--out` a CSV with every hop, `--summary` a JSON with totals
+  and per-file results.
+- README and the command list in CLAUDE.md describe it.
+
+**Why.** Mads's task. Until now the detector only read the processed store.
+
+**How.**
+
+```powershell
+uv run pytest
+uv run dad wav <folder> --detector comb --threshold 0.5
+```
+
+**Result.** 62 tests pass, 11 of them new (`tests/test_wavio.py`): a 48 kHz
+16-bit stereo file comes out 16 kHz mono from channel 0; one decision per
+hop, the first at 1.0 s; straddling windows left out; recall, false
+positives, precision and the lead before impact on a known file; a late or
+missing alarm fails R5, and an alarm before the drone appears does not
+count for it; a malformed sidecar is refused; the threshold lookup from a
+run file; the command end to end; an (untrained) network checkpoint saved
+and run over a WAV.
+
+A synthetic demo file (a harmonic tone in noise, 44.1 kHz) was run through
+the command with the comb at an arbitrary threshold to check the output. It
+is a plumbing check and says nothing about detection.
+
+**Assessment.**
+
+- The tool is ready for the generated test files once they exist, and for
+  any trained checkpoint. No trained checkpoint is on this machine; the
+  iteration 5 models and their run files are on the training PC.
+- The LightGBM baseline cannot yet be run this way: it is trained inside a
+  run and not saved. The comb can, without training.
+- Two-microphone input is reduced to channel 0. Mads chose mono for the
+  test.
+
+**Next.** Copy the iteration 5 checkpoints and run files from the training
+PC, agree the sidecar format with whoever generates the test files, and
+decide which checkpoint goes to the real test.
+
+## 041 - Review of the WAV tool, its fixes, and its speed
+
+- Date: 2026-10-21
+- Type: Correction
+- Commit: uncommitted (on top of 8e0b42b)
+
+**What changed.** Mads ran a code review (`/ponytail-review`) on entry 040's
+WAV tool and asked how it could be optimised. Six findings, all fixed:
+
+1. **R5 could be passed by an alarm the drone did not cause.** A decision
+   counted for R5 as soon as its window ended after the drone appeared, even
+   if almost all of the window was earlier audio. An explosion 0.5 s before
+   the drone would then count as detecting it. Now a decision counts only
+   once at least half its window is drone (`lead_times`). This moves the
+   earliest creditable alarm half a window later, so R5 is judged more
+   strictly than in entry 040.
+2. **A checkpoint could be run with the wrong window length without an
+   error.** Checkpoints do not record their window. With `--threshold-from`,
+   the run file's window is now compared with `--window` and a mismatch
+   stops the command.
+3. **Every hop of every file was kept in memory,** even without `--out`;
+   about 1.7 million rows for 11,250 test files. The CSV is now written file
+   by file, only when asked for.
+4. A sidecar with `impact_s` before `start_s` is refused instead of counting
+   as a missed drone.
+5. `--threshold-from` with the comb now says how to get the comb's
+   threshold (it depends on the held-out arm) instead of a misleading error.
+6. A WAV is opened once instead of twice; an import moved out of a loop.
+
+The R5 measurement row in `REQUIREMENTS.md` (PROPOSED, Claude's reading)
+now states the half-window rule.
+
+**Why.** Findings 1 and 2 would have produced wrong test results without any
+sign of it; finding 1 bears on a Must requirement.
+
+**How.** `uv run pytest`; timing with a scratch script on the synthetic
+44.1 kHz demo file of entry 040 (not part of the repository).
+
+**Result.** 63 tests pass (12 in `tests/test_wavio.py`: the R5 test now has
+an explosion-like alarm just before the drone, the sidecar test a reversed
+impact, the threshold test a wrong window and the comb).
+
+Speed on this machine (12 cores, CPU only), one 20 s file, 153 decisions:
+
+| Step | Time |
+|---|---|
+| Read and resample 44.1 to 16 kHz | 16 ms |
+| Comb | 54 ms (0.35 ms per decision) |
+| Small CNN (`dscnn`, untrained weights; same cost as trained) | 565 ms (3.7 ms per decision), of which about 114 ms log-mel |
+
+**Assessment.**
+
+- Live, 3.7 ms per decision against a new decision every 125 ms leaves a
+  wide margin, so speed is not a constraint for the detector itself.
+- For the generated test set the cost is about 0.6 s per file with the CNN:
+  roughly 2 hours for 11,250 files on one process. Running files in
+  parallel would cut this several times; it was not built, since nobody has
+  asked for it and the file count is not settled.
+- Computing log-mel once per file instead of once per window would save at
+  most about a fifth of the time, and the 0.125 s hop does not fall on the
+  10 ms frame grid, so the features would differ slightly from those the
+  model was trained on. Not done.
+- Not checked: how the models score digital silence. The training
+  evaluation dropped silent windows; `dad wav` scores them.
+
+**Next.** As entry 040: the trained checkpoints and run files from the
+training PC, and the sidecar format with whoever generates the test files.
+
+## 042 - The LightGBM baseline can be saved and run over WAV files
+
+- Date: 2026-10-21
+- Type: Infrastructure
+- Commit: uncommitted (on top of 8e0b42b)
+
+**What changed.** Mads decided that the LightGBM baseline (`lgbm`) goes into
+the real test next to the comb and the CNN. Until now it was trained inside
+each run and thrown away.
+
+- `LgbmScorer.save` and `LgbmScorer.load` in `src/dad/realrun.py` (pickle,
+  with the variant name, as `NetScorer` stores its own).
+- `scripts/run_range.py` saves every LightGBM model it trains as
+  `artifacts/models/<run>_<held-out unit>_<recipe>_lgbm.pkl`, and with
+  `--load-from` rescores saved ones, as it already did for networks.
+- `dad wav --detector <file>.pkl` runs it; `--threshold-from` finds its
+  frozen threshold in the run file by the same naming rule.
+
+**Why.** The working agreement requires the baselines next to any model, and
+Mads wants all three in the real test.
+
+**How.** `uv run pytest`. To produce LightGBM models with iteration 5's
+recipe, on the training PC:
+
+```powershell
+.venv-dml\Scripts\python.exe -u scripts\run_range.py --name it5_pool_speed_baselines_s0 --pool --arms nightjar d3set fpv:ariel_25.02 fpv:palmahim_10.02 fpv:palmahim_27.05 --recipes simdist --models comb lgbm --speed 0.8 1.25 --seed 0
+```
+
+This also records the comb's frozen threshold for each held-out unit.
+
+**Result.** 64 tests pass; the new one saves a small LightGBM model, loads it
+through `dad wav`'s loader, checks the scores are identical, and finds its
+threshold in a run file. No real model was trained: the data is on the
+training PC.
+
+**Assessment.** Iteration 5 trained only the CNN (`--models dscnn`), so no
+LightGBM model with that recipe exists yet; the command above has to run
+first. Loading a pickle runs code from the file, so only models trained here
+should be loaded; the same already holds for the `.pt` checkpoints.
+
+**Next.** Run the command above on the training PC, then choose the
+checkpoints for the real test.

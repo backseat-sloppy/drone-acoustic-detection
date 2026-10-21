@@ -5,6 +5,7 @@
     uv run dad gate             tier-0 gate behaviour on synthetic clips
     uv run dad compare          every model on the same windows, laptop/GPU zoo
     uv run dad info             print the frozen frontend contract
+    uv run dad wav FILES...     run a detector over WAV files, hop by hop
 """
 
 from __future__ import annotations
@@ -194,6 +195,80 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_wav(args: argparse.Namespace) -> int:
+    import csv
+    import json
+    from pathlib import Path
+
+    from .wavio import evaluate_file, load_scorer, rates, summarise, threshold_from_run
+
+    files: list[Path] = []
+    for p in map(Path, args.paths):
+        files.extend(sorted(p.rglob("*.wav")) if p.is_dir() else [p])
+    if not files:
+        print("no WAV files found")
+        return 1
+    threshold = args.threshold
+    if args.threshold_from:
+        threshold = threshold_from_run(args.threshold_from, args.detector, args.window)
+    cfg = FrontendConfig(window_seconds=args.window, hop_seconds=args.hop)
+    scorer = load_scorer(args.detector, cfg, args.device)
+    print(f"detector  : {args.detector}")
+    print(f"frontend  : {cfg.describe()}")
+    print(f"threshold : {threshold if threshold is not None else 'none (scores only, no True/False)'}")
+
+    def pct(v):
+        return "   -  " if v is None else f"{100 * v:5.1f}%"
+
+    out = open(args.out, "w", newline="", encoding="utf-8") if args.out else None
+    if out:
+        hops = csv.DictWriter(out, fieldnames=["file", "t_end_s", "score", "drone", "truth"])
+        hops.writeheader()
+    results = []
+    for f in files:
+        r = evaluate_file(f, scorer, cfg, threshold)
+        results.append(r)
+        d = r["decisions"]
+        note = f"  (channel 0 of {r['channels_orig']})" if r["channels_orig"] > 1 else ""
+        line = f"  {f.name}: {r['seconds']:.1f} s, {r['sr_orig']} Hz {r['subtype']}{note}, {len(d.score)} decisions"
+        if "counts" in r:
+            q = rates(r["counts"], r["leads"])
+            line += (f" | recall {pct(q['recall'])}  false pos {pct(q['false_positive_rate'])}"
+                     f"  precision {pct(q['precision'])}")
+            for x in r["leads"]:
+                line += (" | no alarm before impact" if x["lead_s"] is None
+                         else f" | alarm {x['lead_s']:.2f} s before impact")
+        elif "truth" not in r:
+            line += " | no sidecar .json, not scored"
+        print(line)
+        lab = r.get("labels")
+        if out:
+            hops.writerows(dict(file=str(f), t_end_s=round(float(d.t_end[i]), 4), score=float(d.score[i]),
+                                drone="" if d.drone is None else bool(d.drone[i]),
+                                truth="" if lab is None else int(lab[i])) for i in range(len(d.score)))
+
+    summary = summarise(results)
+    print(f"\nall files ({summary['files_with_truth']} of {summary['files']} with a sidecar):")
+    print(f"  R2 recall              {pct(summary['recall'])}   (target 95%)")
+    print(f"  R3 false-positive rate {pct(summary['false_positive_rate'])}   (target at most 5%)")
+    print(f"  R4 precision           {pct(summary['precision'])}   (target 95%; drone share {pct(summary['drone_share'])})")
+    print(f"  R5 alarm >= 3 s before impact  {pct(summary['approaches_alarm_3s_before_impact'])}"
+          f"   ({summary['approaches']} approaches with an impact time)")
+    print(f"  windows: {summary['counts']}")
+    if out:
+        out.close()
+        print(f"per-hop decisions -> {args.out}")
+    if args.summary:
+        per_file = [dict({k: v for k, v in r.items() if k in ("file", "seconds", "sr_orig", "channels_orig",
+                                                                 "subtype", "counts", "leads")},
+                         meta=r["truth"].meta if "truth" in r else None) for r in results]
+        Path(args.summary).write_text(json.dumps(dict(detector=args.detector, threshold=threshold,
+                                                      frontend=cfg.describe(), summary=summary,
+                                                      files=per_file), indent=2), encoding="utf-8")
+        print(f"summary -> {args.summary}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="dad", description="Acoustic drone detection, latency first")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -227,6 +302,21 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--clips", type=int, default=40, help="clips per session")
     c.add_argument("--seed", type=int, default=0)
     c.set_defaults(fn=_cmd_compare)
+
+    w = sub.add_parser("wav", help="run a detector over WAV files, hop by hop, and score against sidecars")
+    w.add_argument("paths", nargs="+", help="WAV files, or folders searched for *.wav")
+    w.add_argument("--detector", default="comb",
+                   help="'comb' (no training), a .pt network or a .pkl LightGBM checkpoint")
+    w.add_argument("--threshold", type=float, default=None, help="score at or above this means drone")
+    w.add_argument("--threshold-from", default=None,
+                   help="artifacts/runs/<run>.json: use the threshold that run froze for the checkpoint")
+    w.add_argument("--window", type=float, default=DEFAULT.window_seconds,
+                   help="must match the window the checkpoint was trained with")
+    w.add_argument("--hop", type=float, default=DEFAULT.hop_seconds)
+    w.add_argument("--device", default="cpu")
+    w.add_argument("--out", default=None, help="CSV with every hop's score and answer")
+    w.add_argument("--summary", default=None, help="JSON with the totals and per-file results")
+    w.set_defaults(fn=_cmd_wav)
 
     args = p.parse_args(argv)
     return int(args.fn(args))
