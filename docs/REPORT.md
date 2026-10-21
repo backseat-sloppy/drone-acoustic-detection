@@ -2881,3 +2881,51 @@ flight logs for `ariel_25.02` and a recording with his own two-microphone
 array.
 
 **Next.** Report to Mads.
+
+## 038 - Requirements: the distance requirement withdrawn for now
+
+- Date: 2026-10-20
+- Type: Requirements
+- Commit: uncommitted (on top of 3fd36b4)
+
+**What changed.** Mads withdrew the distance requirement for now, in his
+words: "Lad os trække kravet om distancen tilbage for nu" ("let us withdraw
+the distance requirement for now"). In `REQUIREMENTS.md`:
+
+| Row | Before | Now |
+|---|---|---|
+| Range that matters most | about 150 m, data and metrics weighted toward it | withdrawn for now |
+| Operational scenario | alarm at least 3 s before arrival, "i.e. while it is still at least about 150 m away" | the 3 s budget stays; the 150 m clause is withdrawn |
+| Primary metric | recall at 100-200 m on an unseen rig at 10% window false alarms | withdrawn; replaced by recall on all drone windows of an unseen rig at 10% window false alarms (PROPOSED) |
+| Deployment figure | held-out recall at 100-200 m | held-out recall on all drone windows |
+| Time to detection | share of moments at 100-200 m followed by an alarm within 5 s | share of drone moments followed by an alarm within 5 s |
+
+The withdrawn rows are kept and marked, not deleted. Recall by range is
+still reported wherever range is known, without a target.
+
+**Why.** Mads's decision. It followed a count of the data with known range
+(this conversation, figures from entries 023 and 034): 0.46 h of drone audio
+at 100-200 m in all, from Nightjar, d3set and Lund.
+
+**How.** Edits to `REQUIREMENTS.md`.
+
+**Result.** Not applicable.
+
+**Assessment.**
+
+- The replacement primary metric is Claude's proposal, not Mads's. Changing
+  the primary metric is a council matter (CLAUDE.md section 4), so the
+  council should see it before an iteration is judged by it.
+- Without range, "at least 3 s before arrival" cannot be measured on the
+  real recordings, only on files where the approach is known, such as the
+  generated test files under discussion. Whether the 3 s budget stays a hard
+  requirement is open.
+- Two rows still refer to range and were not changed: the sealed test "for
+  recall by range" (ITU ARIS and RODENT) and the 2026-10-14 priorities text
+  quoted from Mads.
+- Iterations 3 to 5 were judged by the withdrawn metric. Their verdicts
+  stand as records; their recall over all drone windows can be recomputed
+  from the saved run files without retraining (not done).
+
+**Next.** Ask Mads whether the 3 s budget stays, and convene the council on
+the replacement metric before the next iteration.

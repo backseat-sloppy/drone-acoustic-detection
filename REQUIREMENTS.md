@@ -27,9 +27,9 @@ should somehow weigh the data."
 | Requirement | Value | Status |
 |---|---|---|
 | Order of priority | 1. recall, 2. time to detection, 3. false alarms | Decided by Mads, 2026-10-14 |
-| Range that matters most | about 150 m from the microphone to the drone; data and metrics weighted toward it | Decided by Mads, 2026-10-14 |
+| Range that matters most | about 150 m from the microphone to the drone; data and metrics weighted toward it | WITHDRAWN for now by Mads, 2026-10-20 (entry 038); was decided by Mads, 2026-10-14 |
 | Meaning of "time" | time to detection (how soon an alarm follows the drone coming into range), not processing speed | Confirmed by Mads, 2026-10-14 |
-| Operational scenario | small drones, flying at up to about 50 m/s toward a soldier, in heavy noise; the alarm must come at least 3 s before the drone arrives, i.e. while it is still at least about 150 m away | Decided by Mads, 2026-10-14 (entry 032) |
+| Operational scenario | small drones, flying at up to about 50 m/s toward a soldier, in heavy noise; the alarm must come at least 3 s before the drone arrives | Decided by Mads, 2026-10-14 (entry 032). The clause "i.e. while it is still at least about 150 m away" is WITHDRAWN for now by Mads, 2026-10-20 (entry 038) |
 | Drone class | small drones | Decided by Mads, 2026-10-14 |
 | Recall target | as high as can be reached; no fixed number | Decided by Mads, 2026-10-14 |
 
@@ -37,9 +37,10 @@ should somehow weigh the data."
 
 | Requirement | Value | Status |
 |---|---|---|
-| Primary metric (new) | Recall on drone windows at 100-200 m slant range, on a rig never trained on, at 10% window false alarms on that rig's own no-drone audio; worse rig decides; interval from resampling flights | PROPOSED (council, entry 025) |
-| Deployment figure (new) | Held-out recall at 100-200 m, and the false alarms it costs, at a threshold frozen at 10% false alarms on validation | PROPOSED (entry 025) |
-| Time to detection (new) | Share of moments at 100-200 m followed by an alarm within 5 s (window length included); no target yet | PROPOSED (entry 025) |
+| Primary metric (range-free) | Recall on all drone windows of a rig never trained on, at 10% window false alarms on that rig's own no-drone audio; worse rig decides; interval from resampling flights. Recall by range is still reported where range is known, without a target | PROPOSED (entry 038) |
+| Primary metric (at 100-200 m) | Recall on drone windows at 100-200 m slant range, on a rig never trained on, at 10% window false alarms on that rig's own no-drone audio; worse rig decides; interval from resampling flights | WITHDRAWN for now by Mads, 2026-10-20 (entry 038); was PROPOSED (council, entry 025) |
+| Deployment figure (new) | Held-out recall on all drone windows, and the false alarms it costs, at a threshold frozen at 10% false alarms on validation | PROPOSED (entry 025; range clause withdrawn in entry 038) |
+| Time to detection (new) | Share of drone moments followed by an alarm within 5 s (window length included); no target yet | PROPOSED (entry 025; range clause withdrawn in entry 038) |
 | Primary metric | False-alarm rate at 95% drone recall, on held-out test sources | SUPERSEDED by the priorities above (2026-10-14); still reported |
 | Primary target | at most 5% false alarms at 95% recall | SUPERSEDED by the priorities above (2026-10-14); still reported |
 | Accuracy (balanced, held-out sources) | at least 90% | PROPOSED |
