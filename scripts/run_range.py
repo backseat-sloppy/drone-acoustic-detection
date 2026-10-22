@@ -50,7 +50,7 @@ def main() -> None:
     p.add_argument("--arms", nargs="+", default=["nightjar", "d3set"], help="the rig held out")
     p.add_argument("--pool", action="store_true",
                    help="train on every rig but the held-out one (iteration 5); arms may then also be "
-                        "fpv:ariel_25.02, fpv:palmahim_10.02, fpv:palmahim_27.05")
+                        "fpv:ariel_25.02, fpv:palmahim_10.02, fpv:palmahim_27.05, or none to train on all")
     p.add_argument("--pair", action="store_true",
                    help="read Nightjar and d3set from the two-microphone stores (entry 036); use with --load-from")
     p.add_argument("--speed", nargs=2, type=float, default=None, metavar=("LO", "HI"),
@@ -89,7 +89,7 @@ def main() -> None:
             t0 = time.time()
             hop = args.eval_hop
             val = rg.score_chain(scorer, arm.val, cfg, hop)
-            test = rg.score_chain(scorer, arm.test, cfg, hop)
+            test = rg.score_chain(scorer, arm.test, cfg, hop) if arm.test else None
             conf = rg.score_chain(scorer, arm.confuser, cfg, hop)
             unseen = {c: rg.score_chain(scorer, recs, cfg, HOP_S.get(c, hop)) for c, recs in arm.unseen.items()}
             for k in args.integrate:
@@ -101,11 +101,16 @@ def main() -> None:
                 r = dict(arm=arm.name, recipe=recipe, scorer=tag, seed=args.seed, window_s=args.window_seconds,
                          integrate=k, decision_span_s=span, deploy_threshold=thr,
                          val_background_windows=int(len(vneg)), **extra)
-                r["test"] = rg.evaluate_chain(rg.integrate(test, k, hop), thr, span)
-                r["headline"] = rg.headline(r["test"])
+                if test is not None:
+                    r["test"] = rg.evaluate_chain(rg.integrate(test, k, hop), thr, span)
+                    r["headline"] = rg.headline(r["test"])
+                else:
+                    # Nothing held out (--arms none): only validation, which also
+                    # froze the threshold, so these figures are in-distribution.
+                    r["val"] = rg.evaluate_chain(v, thr, span)
                 # Lawn-mower session: drone and mower together, mower alone after landing.
                 c = rg.integrate(conf, k, hop)
-                own10 = rg._get(r["test"], "own", "0.10", "threshold")
+                own10 = rg._get(r.get("test", r.get("val")), "own", "0.10", "threshold")
                 cneg = c.s[c.cw.y == 0]
                 r["confuser"] = dict(
                     background_windows=int(len(cneg)),
@@ -118,7 +123,8 @@ def main() -> None:
                         r["unseen"][name] = rg.evaluate_chain(rg.integrate(sc, k, hop), thr, span)
                 r["eval_seconds"] = round(time.time() - t0, 1)
                 results.append(r)
-                show(f"{tag} [{recipe}] k={k}", r["test"])
+                show(f"{tag} [{recipe}] k={k}" + ("" if test is not None else " VALIDATION"),
+                     r["test"] if test is not None else r["val"])
                 for name, u in r["unseen"].items():
                     show(f"  unseen {name}", u)
                 out_path.write_text(json.dumps(dict(args=vars(args), results=results), indent=2))

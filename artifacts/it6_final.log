@@ -1,0 +1,16 @@
+
+=== hold out none: train on pool (641 segments), validate on 21 segments, test 0 segments
+    comb (no ML) [-] k=1 VALIDATION    recall 100-200 m @10%FA 0.144  0-50 m 0.324  >300 m control AUC   -    deploy: recall 100-200 0.124 FA 0.050  <=5 s 0.542 (no drone 0.341)  all 0.307  3 s at 150-300 m   -   (no drone 0.252)
+      unseen lund                      recall 100-200 m @10%FA   -    0-50 m   -    >300 m control AUC   -    deploy: recall 100-200 0.023 FA   -    <=5 s   -   (no drone   -  )  all   -    3 s at 150-300 m   -   (no drone   -  )
+  recipe simdist: d3set 0-50 m: 62.6 min, share 0.033; fpv 0-50 m: 130.4 min, share 0.033; glasgow 0-50 m: 516.7 min, share 0.033; nightjar 0-50 m: 36.2 min, share 0.033; ddl 0-50 m: 14.8 min, share 0.033; dronenoise 0-50 m: 28.2 min, share 0.033; simulated distance: share 0.800; d3set negatives share 0.233 (12.3 min); fpv negatives share 0.233 (107.2 min); glasgow negatives share 0.233 (60.4 min); nightjar negatives share 0.233 (61.4 min); speed 0.8-1.25
+    lgbm [simdist] k=1 VALIDATION      recall 100-200 m @10%FA 0.000  0-50 m 0.791  >300 m control AUC   -    deploy: recall 100-200 0.000 FA 0.050  <=5 s 0.062 (no drone 0.402)  all 0.758  3 s at 150-300 m   -   (no drone 0.274)
+      unseen lund                      recall 100-200 m @10%FA   -    0-50 m   -    >300 m control AUC   -    deploy: recall 100-200 0.004 FA   -    <=5 s   -   (no drone   -  )  all   -    3 s at 150-300 m   -   (no drone   -  )
+C:\Users\madsb\Documents\GitHub\drone-acoustic-detection\.venv-dml\Lib\site-packages\torch\optim\adamw.py:529: UserWarning: The operator 'aten::lerp.Scalar_out' is not currently supported on the DML backend and will fall back to run on the CPU. This may have performance implications. (Triggered internally at C:\__w\1\s\pytorch-directml-plugin\torch_directml\csrc\dml\dml_cpu_fallback.cpp:17.)
+  torch._foreach_lerp_(device_exp_avgs, device_grads, 1 - beta1)
+    dscnn [buried]:   50048 windows, loss 0.5441, 654 windows/s
+    dscnn [buried]:  100032 windows, loss 0.4533, 620 windows/s
+    dscnn [buried]:  150016 windows, loss 0.4201, 612 windows/s
+    dscnn [buried]:  200000 windows, loss 0.4011, 598 windows/s
+    dscnn [simdist] k=1 VALIDATION     recall 100-200 m @10%FA 0.041  0-50 m 0.879  >300 m control AUC   -    deploy: recall 100-200 0.021 FA 0.050  <=5 s 0.146 (no drone 0.353)  all 0.848  3 s at 150-300 m   -   (no drone 0.252)
+      unseen lund                      recall 100-200 m @10%FA   -    0-50 m   -    >300 m control AUC   -    deploy: recall 100-200 0.629 FA   -    <=5 s   -   (no drone   -  )  all   -    3 s at 150-300 m   -   (no drone   -  )
+done in 459 s -> C:\Users\madsb\Documents\GitHub\drone-acoustic-detection\artifacts\runs\it6_final.json

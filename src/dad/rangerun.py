@@ -95,7 +95,12 @@ def make_pool_arm(manifest: list[Recording], held: str) -> Arm:
     Glasgow always trains. Validation (the deployment threshold) comes from
     the Nightjar and d3set validation sessions that are in training. Lund is
     scored for recall only.
+
+    `held="none"` trains on every unit and leaves nothing out (the final model
+    for the real test, iteration 6); its test list is then empty.
     """
+    if held != "none" and held not in UNITS:
+        raise ValueError(f"unknown unit {held!r}; expected one of {UNITS} or 'none'")
     pool = [r for r in manifest if r.source in ("nightjar", "d3set", "fpv", "glasgow")
             and ch.session(r) not in CONFUSER]
     train = [r for r in pool if _unit(r) != held]

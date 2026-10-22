@@ -23,6 +23,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 3 | 025 to 029 | Leave one rig out (Nightjar, d3set); weight positives toward 150 m with real far drones or with near drones summed into the rig's background at a lower level (simulated distance) | Same-rig negatives remove the reason iteration 2 excluded far drones; Mads's 150 m priority | **Hypothesis rejected.** Recall at 100-200 m at 10% false alarms on an unseen rig: about 0.04 (Mini 2) and 0.21 (X500), best recipe, three seeds. Real far drones did not help; simulated distance helped a little and never hurt. The limit is how much drone the audio holds at 150 m. |
 | Iteration 4 | 030 to 031 | Average the scores of several consecutive windows, and a 2 s window | Per-window evidence at 150 m is weak; Mads ranks recall above time | **Hypothesis rejected by its rule, small consistent gain.** Averaging 8 windows (4.5 s) lifts X500 recall at 100-200 m from 0.21 to 0.28 (three seeds, +7 against +10 required); a 2 s window adds nothing; the Mini 2 stays at chance. Stopped for Mads: the next lever (a microphone array) and the drone class that matters are his decisions. |
 | Iteration 5 | 032 to 037 | Pool every rig but the held-out one (Nightjar, d3set, three FPV campaigns); speed perturbation; two-microphone rescore | Mads's scenario (small drones at 50 m/s, alarm before 150 m, 2 omni mics) and his question about one big pool | **Pooling alone rejected; pooling with speed perturbation is the new best recipe.** Three seeds: X500 at 100-200 m 0.33 (was 0.21), FPV on an unseen campaign 0.66, Mini 2 still at chance. Two microphones: no consistent change. |
+| Iteration 6 | 043 | Iteration 5's best recipe trained once on every rig, threshold frozen at 5% false alarms on validation; CNN, LightGBM and comb saved for the real test | Mads asked for a final model for the real test | **Checkpoints, not evidence.** Validation (in-distribution): CNN recall 0.83 at 5% false alarms. Unseen Lund rig: CNN 0.50, baselines near 0. CNN alarms on 55% of mower-only audio. R2 and R3 not met. |
 
 ## Templates
 
@@ -3173,3 +3174,93 @@ should be loaded; the same already holds for the `.pt` checkpoints.
 
 **Next.** Run the command above on the training PC, then choose the
 checkpoints for the real test.
+
+# Iteration 6 - The final model for the real test
+
+> **Changed from iteration 5:** nothing is held out. Iteration 5's best
+> recipe (pool + speed perturbation 0.8-1.25, `simdist`) is trained once on
+> every unit (Nightjar, d3set, the three FPV campaigns, Glasgow, DDL and
+> DroneNoise near drones, FSD50K), with LightGBM and the comb next to it,
+> and the threshold is frozen at 5% false alarms on validation (R3) instead
+> of 10%.
+>
+> **Why:** Mads asked for a fresh model 6 and chose (this conversation) a
+> final model for the real test over a further experiment. Iteration 5
+> showed the recipe; a deployed model should see all the data.
+>
+> **Kept the same:** small CNN, 1 s window, 200,000 training windows, the
+> recipe, speed range, seed 0, validation sessions (Nightjar flight 3, d3set
+> Validation), the sealed sets (unscored).
+>
+> **Hypothesis:** none to test. This iteration produces checkpoints, not
+> evidence: with nothing held out there is no unseen rig with no-drone
+> audio left to judge it on.
+>
+> **Judged by:** not judged against R2-R4 here. The honest unseen-rig figures
+> remain iteration 5's (entry 037). The model is judged by the real test.
+
+## 043 - The final model trained on every rig
+
+- Date: 2026-10-22
+- Iteration: 6
+- Type: Model
+- Commit: uncommitted (on top of dd09c77)
+
+**What changed.**
+
+- `make_pool_arm` accepts `held="none"`: train on every unit, empty test
+  list; an unknown unit name is now refused instead of silently training on
+  everything.
+- `scripts/run_range.py --arms none`: with no test list, the run scores
+  validation only and stores it under `val` in the run file, marked
+  `VALIDATION` in the log. The lawn-mower figures use validation's 10%
+  threshold in that case. The first launch crashed on that lookup; fixed and
+  rerun.
+- Checkpoints: `artifacts/models/it6_final_none_simdist_dscnn.pt` and
+  `it6_final_none_simdist_lgbm.pkl`; run file `artifacts/runs/it6_final.json`;
+  log `artifacts/it6_final.log`. `dad wav --threshold-from` finds both
+  thresholds (checked: CNN 0.2968, LightGBM 0.6115).
+
+**Why.** Entry 037's "final model trained on the whole pool", and Mads's
+choice of it as model 6.
+
+**How.**
+
+```powershell
+.venv-dml\Scripts\python.exe -u scripts\run_range.py --name it6_final --pool --arms none --recipes simdist --models comb lgbm dscnn --device dml --windows 200000 --speed 0.8 1.25 --deploy-fa 0.05 --seed 0
+```
+
+459 s in all on the AMD GPU through DirectML (CNN about 600 windows/s).
+64 tests pass.
+
+**Result.** 1 s window, 0.5 s evaluation hop, threshold frozen at 5% false
+alarms on the validation sessions' own no-drone audio (4 sessions, 2,648
+drone and 1,565 no-drone windows; 92% of the drone windows within 50 m).
+Validation also chose the threshold, so its recall is in-distribution and
+optimistic. Lund is a rig never trained on, drone audio only (12 flights,
+7,871 windows), so only recall can be measured there. The lawn-mower
+session's mower-only audio (125 windows) is a confuser never trained on.
+
+| Scorer | Threshold | Validation recall, all | 0-50 m | 50-100 m | 100-200 m (97 windows, 1 session) | Lund recall, all | Mower-only false alarms |
+|---|---|---|---|---|---|---|---|
+| comb | 1.914 | 0.305 | 0.323 | 0.087 | 0.124 | 0.022 | 0.248 |
+| lgbm | 0.612 | 0.735 | 0.768 | 0.635 | 0.000 | 0.035 | 0.344 |
+| dscnn | 0.297 | **0.825** | 0.856 | 0.852 | 0.021 | **0.502** | 0.552 |
+
+**Assessment.**
+
+- Against R2 (recall 95%) and R3 (5% false positives) at one threshold: not
+  met even in-distribution. At exactly 5% false alarms on validation the CNN
+  finds 83% of drone windows, nearly all of them within 100 m.
+- On an unseen rig (Lund) the CNN finds half the drone windows at that
+  threshold; both baselines fall to near zero there. The CNN is the only
+  candidate worth taking to the test.
+- The mower: the CNN alarms on 55% of mower-only windows. A loud motor
+  without a drone is the weakest point found so far, and the real test may
+  hold similar noise (generators, vehicles).
+- Nothing here is comparable to iteration 5's figures, which were measured on
+  held-out rigs at 10% false alarms.
+- One seed. Not checked: digital silence (entry 041), and the sealed sets.
+
+**Next.** Report to Mads. Run the three models over the real-test WAV files
+with `dad wav` once they exist.
