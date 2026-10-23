@@ -3264,3 +3264,123 @@ session's mower-only audio (125 windows) is a confuser never trained on.
 
 **Next.** Report to Mads. Run the three models over the real-test WAV files
 with `dad wav` once they exist.
+
+## 044 - First generated WAV file through model 6
+
+- Date: 2026-10-23
+- Iteration: 6
+- Type: Evaluation
+- Commit: 76fdf73 (with uncommitted report edits)
+
+**What changed.** Nothing in the code. Mads made a first test file with his
+generator, `drone_seed233957.wav` (4.5 s, 16 kHz, 16-bit, 2 channels that
+differ by 2.4 dB, no sidecar), and asked for it to be run through model 6.
+
+**Why.** A first end-to-end check of generator output through the detector.
+
+**How.**
+
+```powershell
+uv run dad wav C:\Users\madsb\Downloads\drone_seed233957.wav --detector artifacts\models\it6_final_none_simdist_dscnn.pt --threshold-from artifacts\runs\it6_final.json
+uv run dad wav C:\Users\madsb\Downloads\drone_seed233957.wav --detector artifacts\models\it6_final_none_simdist_lgbm.pkl --threshold-from artifacts\runs\it6_final.json
+uv run dad wav C:\Users\madsb\Downloads\drone_seed233957.wav --detector comb --threshold 1.9136685717165247
+```
+
+Thresholds frozen at 5% false alarms on validation (entry 043). Channel 0
+only. 1 s window, 0.125 s hop: 29 decisions, the first at 1.0 s.
+
+**Result.** Decisions `True` (drone):
+
+| Scorer | Threshold | `True` | Where |
+|---|---|---|---|
+| CNN (model 6) | 0.297 | 9 of 29 | every decision from 3.5 s to the end (scores 0.30 to 0.58); before that 0.07 to 0.28 |
+| LightGBM | 0.612 | 2 of 29 | at 3.75 s and 4.0 s |
+| comb | 1.914 | 27 of 29 | nearly everywhere |
+
+**Assessment.** Not a result: one file, no ground truth, and how the drone
+in the file was made is not recorded here. It shows the generator's output
+runs through all three detectors. Whether the CNN's late alarm is right
+cannot be told without a sidecar saying when the drone is present.
+
+**Next.** A sidecar from the generator; then a handful of files with known
+truth.
+
+## 045 - Second generated WAV file through model 6
+
+- Date: 2026-10-23
+- Iteration: 6
+- Type: Evaluation
+- Commit: 76fdf73 (with uncommitted report edits)
+
+**What changed.** Nothing in the code. A second file from Mads's generator,
+`drone_seed798191.wav`: 4.5 s, 16 kHz, 16-bit, mono this time, RMS
+-33.2 dBFS, no sidecar. Same commands and frozen thresholds as entry 044.
+
+**Result.** 29 decisions, the first at 1.0 s:
+
+| Scorer | Threshold | `True` | Where |
+|---|---|---|---|
+| CNN (model 6) | 0.297 | 22 of 29 | from the first decision on, with gaps at 1.625-1.875 s, 3.0 s and 3.25-3.5 s; scores 0.21 to 0.62 |
+| LightGBM | 0.612 | 1 of 29 | at 4.25 s only; scores rise from about 0.1-0.3 to 0.5-0.6 after 2.5 s |
+| comb | 1.914 | 1 of 29 | at 4.5 s only; score 0 everywhere before |
+
+**Assessment.** Not a result: one file, no ground truth, origin of the drone
+sound not recorded here. If the drone is present from the start, the CNN
+finds it in three of four decisions and both baselines miss it; if it is
+not, the CNN false-alarms through most of the file.
+
+**Next.** As entry 044: sidecars from the generator.
+
+## 046 - A no-drone twin of the second file
+
+- Date: 2026-10-23
+- Iteration: 6
+- Type: Evaluation
+- Commit: 76fdf73 (with uncommitted report edits)
+
+**What changed.** Nothing in the code. Mads sent `nodorne.wav` (4.5 s,
+16 kHz, mono, 16-bit, RMS -35.2 dBFS, no sidecar), by its name a file with
+no drone. Same commands and frozen thresholds as entry 044.
+
+**Result.**
+
+| Scorer | `True` on `nodorne.wav` | Mean score, `drone_seed798191` / `nodorne` |
+|---|---|---|
+| CNN (model 6) | 12 of 29: 1.0-1.25 s, 2.625-3.125 s, 3.75 s, 4.125-4.375 s; scores 0.12 to 0.40 | 0.382 / 0.263 |
+| LightGBM | 0 of 29 | 0.359 / 0.231 |
+| comb | 1 of 29 (4.375 s) | 0.189 / 0.112 |
+
+*The two files are the same background.* Subtracting `nodorne.wav` from
+`drone_seed798191.wav` sample by sample leaves a signal that rises steadily
+from about -60 dBFS (0.0-0.25 s) to -42 dBFS (4.0-4.25 s) and -25 dBFS in
+the last 0.25 s, against a background of -30 to -45 dBFS: by all appearance
+a drone approaching through the whole file and arriving at its end. Before
+about 3.5 s the drone is some 10 to 25 dB below the background. This is
+inferred from the two files; the generator's own parameters were not seen.
+
+*Paired, hop by hop:* with the drone added, the CNN's score is higher in 26
+of 29 decisions and so is LightGBM's. The CNN alarms in 11 decisions in both
+files (alarms the background alone causes) and in 11 more only with the
+drone (1.375-1.5 s, 2.0-2.5 s, 3.625 s, 3.875-4.0 s, 4.5 s). LightGBM alarms
+once, only with the drone (4.25 s).
+
+**Assessment.** Still two files and no sidecar, so no requirement figure.
+Three things are already visible:
+
+- On this background the CNN false-alarms in 41% of decisions (12 of 29),
+  against the 5% its threshold was set for on validation. The generator's
+  soundscape lies outside what the model was tuned on, or the threshold does
+  not carry over; either way R3 would fail badly here.
+- The drone does raise the CNN's score almost everywhere, even where it is
+  far below the background, so the model hears something. At the frozen
+  threshold that is swamped by the background's own alarms.
+- R5: if impact is at 4.5 s, an alarm is needed by 1.5 s, where the drone
+  is about 25 dB below the background. No detector here can be credited
+  with that.
+
+Paired files (the same background with and without the drone) are the right
+design for the generator: they separate what the drone causes from what the
+background causes.
+
+**Next.** Sidecars from the generator, with the drone's start and impact
+time and the levels used.
