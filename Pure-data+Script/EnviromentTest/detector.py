@@ -24,3 +24,29 @@ class TonalDetector:
         score = 10 * np.log10((Pb / local).max())
         self.hits = self.hits + 1 if score > self.thresh else 0
         return self.hits >= self.need, score
+
+def score_trace(sig, fs):
+    det = TonalDetector(fs, thresh_db=1e9)
+    blk, t, s = int(fs * 0.02), [], []
+    for k in range(len(sig) // blk):
+        res = det.process(sig[k * blk:(k + 1) * blk])
+        if res:
+            t.append((k + 1) * blk / fs)
+            s.append(res[1])
+    return np.array(t), np.array(s)
+
+def first_alarm(t, s, thresh, need):
+    run = 0
+    for ti, si in zip(t, s):
+        run = run + 1 if si > thresh else 0
+        if run >= need:
+            return ti
+    return None
+
+def sustained(s, need):
+    """Highest score that was held for `need` consecutive hops."""
+    if len(s) < need:
+        return -1e9
+    return np.lib.stride_tricks.sliding_window_view(s, need).min(axis=1).max()
+
+    
