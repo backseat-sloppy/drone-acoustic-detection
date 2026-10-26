@@ -3445,3 +3445,386 @@ sidecars of the drone-only files are not tracked for now. They were never
 committed. With entry 046 the whole `drone_only/` folder is now ignored.
 
 **Next.** Wait for Mads.
+
+## 050 - Council: a deterministic synthetic soundscape test of model 6
+- Date: 2026-10-26
+- Iteration: 6
+- Type: Council
+- Commit: uncommitted (on top of e924a30)
+
+**Question.** Should we build and run Mads's soundscape test? Each 20 s
+noise clip (from a colleague's generator, about 10,000 clips) is scored:
+- once alone,
+- once with each Pure Data drone from entry 048 added, at a deterministic
+  onset that rotates per clip.
+
+That is about 110k runs. Each run writes its WAVs and a sidecar, scores
+them, appends one result line and deletes the WAVs. The alternatives were a
+modified version, or no synthetic test (wait for the real-test WAVs).
+
+**Devil's Advocate.**
+- *Decisive: the absolute level mapping is arbitrary.* The frontend is raw
+  log-mel (`src/dad/features.py` `frames`, checked) and the model has no
+  input normalisation (first layer conv + BatchNorm, `models/dscnn.py`,
+  checked). Moving the full-scale mapping moves the scores.
+  *Answer:* measured in the gate (entry 051). A ±20 dB gain on the mix
+  leaves comb and lgbm unchanged. dscnn false alarms on noise go from 45% to
+  37% at −20 dB and do not change at +20 dB. So level matters moderately.
+  The objection partly stands, and it applies equally to the real test
+  hardware.
+- *Decisive: one drone timbre.* All runs use seed 1, so the effective n is
+  10 drones. *Left standing.* More seeds or patch settings are cheap
+  (deterministic), but it is Mads's choice.
+- *Decisive: the result cannot be reported under §5.* Accepted. The test is
+  a diagnostic tool, not a performance figure. The gate already found a
+  failure mode (entry 051). The real-test WAVs remain the only reportable
+  numbers.
+- *Serious: R5 is flattered.* Confirmed in the gate. `lead_times` credits
+  the first alarm after the drone starts, so false alarms in the noise count
+  as early detections. R5 must be read together with the false alarms on
+  the same noise clip alone.
+- *Serious: re-thresholding from the stored traces is tuning on test.* The
+  rule is that thresholds stay frozen at it6 validation. The traces are for
+  diagnosis only. This is written into the script docstring.
+- *Serious: the placeholder noise is not the real scenario.* True. It is a
+  placeholder until the colleague's generator arrives.
+- *Weak: speed is tied to start range.* This follows from Mads's
+  10-s-per-file rule, so range is recorded per hop.
+
+**Scholar.**
+- Best practice (Scaper / DCASE Task 4) uses synthetic soundscapes for
+  diagnosis with controlled factors. Claims about the target are made on
+  real recordings.
+- A deterministic factorial grid with rotation is a "defensible variation".
+- Store per-window scores.
+- Confidence intervals must resample by background clip and target variant,
+  not by mixture.
+- Record commit, checkpoint hash, frontend, every mixture parameter, label
+  rule and threshold source.
+- Our design follows this. The CI rule is adopted for any later summary.
+
+**Problem Solver.** *Try a modified version.*
+- Add baselines (comb, lgbm) to every run.
+- Record range per hop.
+- Run a clean-drone sanity check and a ~130-run gate before scaling.
+- Use a factorial over noise types rather than 10k clips.
+- Keep the real-test path going in parallel.
+
+**Decision.** Build the harness with the Problem Solver's changes:
+- three scorers at frozen thresholds,
+- per-hop score, label and range,
+- checkpoint hashes and commit,
+- resumable by test id,
+- WAVs deleted after each test.
+
+Run the gate on placeholder noise and do not scale to 110k runs. Before
+that, Mads must decide on drone variety, and the colleague's noise must
+exist with the same level convention.
+
+## 051 - Soundscape test harness and its gate run
+- Date: 2026-10-26
+- Iteration: 6
+- Type: Evaluation
+- Commit: uncommitted (on top of e924a30)
+
+**What changed.** New `Pure-data+Script/EnviromentTest/soundscape_test.py`,
+following entry 050. Per noise clip k it runs:
+- the noise alone,
+- noise + drone i at onset ((i + k) mod 10) s.
+
+Each run writes a noise WAV, then a mix WAV with sidecar
+`{drones: [{start_s = onset + start_dist/343, end_s = impact_s = onset + 10 s}]}`.
+It scores the mix with `dad.wavio.evaluate_file` for dscnn, lgbm and comb at
+the frozen it6 thresholds (0.2968, 0.6115, 1.9137) and appends one line to
+`artifacts/soundscape/results.jsonl`, which is git-ignored. The line holds:
+- every parameter, commit, dirty flag and checkpoint hashes,
+- per-hop time, label, drone range, and each scorer's score, counts and
+  leads.
+
+The WAVs are then deleted, and tests already in the file are skipped. Noise
+is `--noise placeholder` (scene.py's 40 dB white background + 45 dB wind +
+bangs and passing vehicles, seed 10000+k) or `--noise silence`. `--gain-db`
+scales the whole mix. Asserts check the range formula.
+
+**How.** In `Pure-data+Script/EnviromentTest`:
+- `uv run python soundscape_test.py --clips 1 --noise silence`
+- `uv run python soundscape_test.py --clips 10 --gain-db G` for G in 0, −20, +20
+
+The drones are entry 048's 10 files. Results: 341 lines, 2.4 MB. Run time
+is about 1.3 s per test with all three scorers on CPU, so 110k tests take
+about 40 h in one process.
+
+**Result.** Synthetic scaffolding; not detection performance. Window
+counts are pooled over 10 clips (110 tests) per row; the silence row is one
+clip (11 tests). Window 1 s, hop 0.125 s, 16 kHz after resampling.
+
+| Noise, gain | Scorer | False alarms, noise alone | Recall in mixes | R5 met |
+|---|---|---|---|---|
+| silence, 0 dB | dscnn | 0.0% | 94.7% | 10/10 |
+| silence, 0 dB | lgbm | 0.0% | 1.9% | 2/10 |
+| silence, 0 dB | comb | 0.0% | 77.5% | 10/10 |
+| placeholder, 0 dB | dscnn | 45.2% | 74.0% | 100% |
+| placeholder, 0 dB | lgbm | 61.8% | 80.0% | 100% |
+| placeholder, 0 dB | comb | 15.3% | 32.3% | 75% |
+| placeholder, −20 dB | dscnn | 36.6% | 62.9% | 99% |
+| placeholder, +20 dB | dscnn | 45.4% | 74.1% | 100% |
+
+lgbm and comb change by less than 3 points across gain.
+
+- **dscnn false alarms on the noise alone, at 0 dB**, by what is in the
+  window:
+  - windows with a passing vehicle (harmonic engine, f0 70–130 Hz): 86.4%
+    of 575;
+  - bangs: 19.0% of 205;
+  - background and wind only: 20.7% of 750.
+- **dscnn recall in the mixes by drone range**, at 0 dB:
+
+  | Range | Recall | Windows |
+  |---|---|---|
+  | 0–100 m | 0.98 | 1830 |
+  | 100–200 m | 0.77 | 1780 |
+  | 200–300 m | 0.58 | 1570 |
+  | 300–400 m | 0.53 | 840 |
+  | 400–500 m | 0.44 | 260 |
+
+  Above 200 m these figures are close to the false-alarm rate, so they are
+  mostly false alarms, not detections.
+
+**Assessment.**
+- The harness works end to end, and model 6 does respond to the Pd drone:
+  in silence it alarms 7.5–8.3 s before impact on all 10.
+- The test cannot judge R2–R5 while the noise itself triggers 45% of
+  windows. R5 "100% met" is then an artefact of false alarms (entry 050).
+- The vehicle tone is the same weakness as the mower in entry 043: a
+  steady harmonic motor is taken for a drone.
+- lgbm barely fires on the clean synth drone (1.9%). Its 80% recall in
+  the mixes therefore comes from the noise, not the drone.
+
+**Next.** Report to Mads. Do not scale up yet. Open points:
+1. the colleague's noise generator and its level convention,
+2. more drone timbres,
+3. whether the test should keep "first alarm after drone start" for R5 or
+   also require no alarm in the noise before it.
+
+## 052 - Five drone sounds in the soundscape test
+- Date: 2026-10-26
+- Iteration: 6
+- Type: Data
+- Commit: uncommitted (on top of e924a30)
+
+**What changed.** Mads asked for more drone sounds with fixed seeds. This
+answers the council's "one timbre" objection (entry 050).
+
+`drone_only.py` now renders `N_DRONES` = 10 flights for each of
+`SEEDS = [1, 2, 3, 4, 5]`, as files `drone_s<seed>_<i>.*`, 50 in all. The
+seed sets the throttle curve and the level `L_1m`. The pitch scale is fixed
+per seed, evenly from 0.85 to 1.25 (`PSCALES`), because the drawn values
+bunched together: seeds 1, 3, 4 and 5 drew 1.00–1.02. Everything else is as
+in entry 048: speeds 27.8–55.6 m/s, 10 s each, start distance = speed x 10 s.
+
+`soundscape_test.py` rotates the drone sound with the noise clip:
+clip k uses seed number (k mod 5). There are still 11 tests per clip, and
+the test id now holds the seed. The old single-seed drone files were
+deleted. The gate results of entry 051 were kept as
+`artifacts/soundscape/results_gate051.jsonl`.
+
+**How.** In `Pure-data+Script/EnviromentTest`:
+- `uv run python drone_only.py` (50 files, all 10.0 s, no NaN, checked)
+- `uv run python soundscape_test.py --clips 5 --noise silence`
+- `uv run python soundscape_test.py --clips 10`
+
+**Result.** Synthetic scaffolding; not detection performance. Thresholds
+are frozen at it6 values. Each row is recall in mixes, then R5 met
+(approaches). In silence there is 1 clip per seed (10 approaches each); with
+placeholder noise there are 2 clips per seed (20 approaches each).
+
+| Drone sound | dscnn, silence | dscnn, placeholder | comb, silence | lgbm, silence |
+|---|---|---|---|---|
+| seed 1, pitch 0.85 | 26.4%, 4/10 | 63.3%, 100% | 89.2%, 10/10 | 0.3%, 0/10 |
+| seed 2, pitch 0.95 | 63.2%, 7/10 | 77.1%, 100% | 86.1%, 10/10 | 1.0%, 0/10 |
+| seed 3, pitch 1.05 | 98.9%, 10/10 | 81.7%, 100% | 78.3%, 10/10 | 3.5%, 5/10 |
+| seed 4, pitch 1.15 | 95.2%, 10/10 | 75.6%, 100% | 5.9%, 1/10 | 11.5%, 9/10 |
+| seed 5, pitch 1.25 | 79.1%, 10/10 | 73.9%, 100% | 1.4%, 2/10 | 10.4%, 10/10 |
+| all | 72.6%, 82% | 74.3%, 100% | 52.2%, 66% | 5.3%, 48% |
+
+False alarms on the placeholder noise alone are unchanged from entry 051:
+dscnn 45.2%, lgbm 61.8%, comb 15.3%. It is the same noise, seeds 10000–10009.
+
+**Assessment.**
+- The one-timbre objection was real. In silence, model 6 finds the
+  higher-pitched drones (pitch 1.05–1.25) almost every time. The lowest
+  pitch (0.85) is found in 26% of windows, with an alarm 3 s before impact
+  on only 4 of 10 approaches.
+- With the old single drone sound (pitch 1.02, entry 051) this weakness was
+  invisible.
+- The comb is the mirror image: it finds low-pitched drones and misses
+  high-pitched ones. That suggests its harmonic search range is limited.
+- In the placeholder noise these differences are masked by false alarms.
+  There, R5 "100%" still says nothing (entry 051).
+
+**Next.** Report to Mads. The soundscape test now covers 5 drone sounds.
+Scaling up still waits for the colleague's noise.
+
+## 053 - Council: a pretrained audio embedding as frontend
+- Date: 2026-10-26
+- Iteration: 6 (prepares the next iteration)
+- Type: Council
+- Commit: uncommitted (on top of bf8e1ac)
+
+**Question.** Should the next iteration add a frozen pretrained audio
+embedding (PANNs, YAMNet, BEATs or similar) with a small classifier, next to
+or instead of the log-mel + small CNN trained from scratch? The alternatives:
+- A. keep the current approach and spend the effort on hard negatives or data;
+- B. frozen embedding + linear probe as an extra candidate;
+- C. fine-tune a pretrained network;
+- D. finer, time-stamped labels instead.
+
+Mads asked for the council after asking whether we had "transcribed" the
+sound for the CNN (labels by time, or pretrained audio models). No code was
+written. This idea was first raised in entry 016 and listed as Mads's
+decision in entry 020.
+
+**Devil's Advocate** (full brief). Against B and C.
+- *Decisive:* the embeddings aim at the wrong failure. The requirement that
+  fails is false alarms on engines: 55% of mower-only windows (entry 043).
+  AudioSet training puts propellers, light engines, lawn mowers and vehicles
+  close together, and a linear probe cannot separate what the frozen
+  encoder has merged.
+- *Serious:*
+  - Embeddings encode the recording chain strongly, and with about 6 rigs
+    the protocol is too weak to tell a 0.05-0.10 gain from seed and fold
+    spread.
+  - Opportunity cost just before the field test.
+  - C overfits on tens of minutes of drone audio (entry 019: 30x capacity
+    did not help).
+- *Weak:* 32/48 kHz encoders on 16 kHz audio; Pi compute; FSD50K possibly in
+  some encoders' pretraining (not verified).
+- *What would make B right:* a cheap check that the embedding separates
+  drone from mower within one rig better than dscnn, a gain larger than the
+  seed spread on two held-out rigs at a fixed false-alarm rate, a 16 kHz
+  native encoder, and about a day of work.
+
+**Scholar** (context-free brief). Best practice for small labelled data
+that must transfer to unseen setups is to start from an AudioSet-scale
+pretrained network:
+- First a frozen encoder with a linear/MLP head (the HEAR protocol), then
+  fine-tuning a compact pretrained CNN with augmentation, preferably
+  linear-probe-then-fine-tune (LP-FT).
+- The closest drone study (Reuter, Ohlenbusch, Rollwage, arXiv 2605.31329,
+  2026) found pretraining "the dominant factor" for generalising to unseen
+  recording setups. The Scholar read the abstract only.
+- Pitfalls named:
+  - Sample rate: PANNs' default is 32 kHz, but an official `Cnn14_16k`
+    exists. YAMNet's 0.96 s patches set a floor on the window.
+  - AudioSet's "Drone" class is the musical drone, not a UAV.
+  - Several AudioSet classes are our confusers.
+  - Embeddings encode site and microphone: run a "predict the rig from the
+    embedding" sanity probe.
+  - Full fine-tuning can lose out-of-distribution accuracy against a linear
+    probe (Kumar et al., ICLR 2022, shown in vision).
+- Verdicts:
+  - A: defensible as a control, below current practice as the main bet.
+  - B: the standard first step.
+  - C: standard and best supported for the end system.
+  - D: a complement, against practice as a substitute.
+- Unsettled: which encoder keeps the fine harmonic structure that separates
+  a drone from a mower.
+
+**Problem Solver** (full brief, read the code). Verdict: **try a modified
+B**.
+- Encoder: PANNs `Cnn14_16k`, frozen. It is native 16 kHz like the store,
+  MIT licence, plain PyTorch, and one embedding per 1 s window.
+- Classifier: logistic regression on cached embeddings of the same sampled
+  windows dscnn trains on (`RangeSampler.batch`, pool + simdist + speed
+  0.8-1.25).
+- New code: about one module plus a `--models` entry.
+- Not C before B; D later.
+- Pre-declared rule, with comb, lgbm and dscnn alongside:
+  - *Success:* mower-only false alarms ≤ 25% at the threshold frozen at 5%
+    on validation (dscnn 55%), and Lund recall ≥ 0.45 (dscnn 0.50), and mean
+    held-out recall at 10% false alarms within 0.05 of dscnn on the
+    iteration-5 arms, no rig worse by more than 0.10, three seeds.
+  - *Failure:* mower false alarms above 40%, or Lund recall below 0.35.
+  - *In between:* try a probe on the embedding plus the dscnn score.
+- If B fails: real hard negatives (licence-filtered FSD50K engine and
+  vehicle clips) mixed in as negatives.
+- Confidence: medium that it cuts mower false alarms, low that it reaches
+  R2/R3.
+
+**Weighing.**
+- *Decisive objection (engines clustered).* It cannot be settled by
+  argument. The Scholar raises the same doubt as unsettled, and the Problem
+  Solver argues the opposite: AudioSet has seen thousands of hours of
+  mowers. The experiment is built around it:
+  - The mower false-alarm figure is the first gate.
+  - Before any full run, a within-rig check: a probe on cached embeddings,
+    drone against mower-only windows of the lawn-mower session, compared
+    with the same probe on dscnn's penultimate features.
+  - The objection stands until that check is run.
+- *Weak protocol.* Partly answered. The success margin on the mower figure
+  (55% → 25%) is far larger than the seed spread seen so far, and three
+  seeds are required. It stays a limit: the mower and Lund figures rest on
+  one session each, and that is written next to every result.
+- *Chain encoding.* Answered by adopting the Scholar's sanity probe: report
+  how well the rig can be predicted from the embedding, against the same
+  probe on dscnn features.
+- *Opportunity cost.* Answered by design. The cache-based arm is about one
+  module, and its rule is fixed now, so it ends in a verdict, not a
+  tour of encoders. Only one encoder is tried, and Lund is never used to
+  choose between encoders. The timing against the field test is Mads's
+  call.
+- *C overfits.* Accepted for now.
+- *Sample rate.* Answered by `Cnn14_16k`. Its 8 kHz top matches the 16 kHz
+  store and the 50-8000 Hz band.
+- *FSD50K in pretraining.* PANNs are trained on AudioSet (YouTube), not
+  Freesound. The figures that decide are on Lund and the mower session,
+  which are not from either source.
+
+**Departures from the Scholar's practice.**
+- Fine-tuning (C), which the Scholar calls the best-supported end system,
+  is deferred, not rejected. The reason is our situation: about 6 rigs,
+  tens of minutes of distinct drone audio, and entry 019, where 30x
+  capacity did not help. If B shows the encoder helps, LP-FT on
+  `Cnn14_16k` is the next step.
+- D (strong labels) is kept as a complement. The Scholar is right that the
+  long FPV blocks and per-file DDL labels are label noise. It is not the
+  lever on the mower false alarms, which is the failure that blocks the
+  field test.
+
+**Decision.** Modified B, as the Problem Solver specified, with two checks
+added:
+1. the within-rig drone-against-mower probe first;
+2. the rig-ID sanity probe.
+
+The success and failure rule above is fixed as of this entry. It is the
+start of iteration 7 once Mads approves:
+- a new dependency (PANNs model code, or loading its checkpoint directly in
+  torch);
+- a checkpoint download of about 300 MB (`Cnn14_16k`, size not verified).
+
+Nothing is downloaded and no code is written before that.
+
+**Next.** Ask Mads:
+- for the dependency and download;
+- whether this should run before or after the field test.
+
+## 054 - Decision: embeddings wait until after the field test
+- Date: 2026-10-26
+- Iteration: 6
+- Type: Requirements
+- Commit: uncommitted (on top of bf8e1ac)
+
+**What changed.** Mads decided that the pretrained-embedding experiment of
+entry 053 waits until after the field test. Nothing was downloaded and no
+dependency or code was added.
+
+**Why.** Mads's call on timing (entry 053, "Next"). Model 6 (entry 043)
+stays the candidate for the field test.
+
+**Next.** After the field test, start iteration 7 as fixed in entry 053:
+1. the within-rig drone-against-mower probe;
+2. the rig-ID sanity probe;
+3. the full rule.
+
+The rule is unchanged, but the field-test results may add a confuser
+figure. If they do, that is logged before iteration 7 starts.
