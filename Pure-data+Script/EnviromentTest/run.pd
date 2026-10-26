@@ -1,0 +1,4 @@
+#N canvas 0 0 300 200 12;
+#X obj 10 10 loadbang;
+#X msg 10 50 \; autorun bang;
+#X connect 0 0 1 0;

@@ -3265,122 +3265,141 @@ session's mower-only audio (125 windows) is a confuser never trained on.
 **Next.** Report to Mads. Run the three models over the real-test WAV files
 with `dad wav` once they exist.
 
-## 044 - First generated WAV file through model 6
-
-- Date: 2026-10-23
+## 044 - Ten drone-only WAVs from the Pure Data patch
+- Date: 2026-10-26
 - Iteration: 6
-- Type: Evaluation
-- Commit: 76fdf73 (with uncommitted report edits)
+- Type: Data
+- Commit: uncommitted (on top of e924a30)
 
-**What changed.** Nothing in the code. Mads made a first test file with his
-generator, `drone_seed233957.wav` (4.5 s, 16 kHz, 16-bit, 2 channels that
-differ by 2.4 dB, no sidecar), and asked for it to be run through model 6.
+**What changed.** New script
+`Pure-data+Script/EnviromentTest/drone_only.py`. It renders 10 flights of
+the Pure Data drone with no background, wind or events, one per seed (1-10).
+Each seed draws its own start point (distance 300-500 m, elevation 20-60 deg,
+azimuth 0-360 deg) and speed (28-45 m/s) through the existing `make_scene`.
+The flight is a straight line to the microphone with delay, Doppler and 1/r.
+Two fixes came with it, both in `render.py`:
+- Pd is now also found at `C:/Program Files*/Pd*/bin/pd.com` (Windows).
+  Before this, the script only looked under macOS `/Applications`.
+- Pd quits right after `wr stop`, and sometimes does so before `writesf~`
+  has written the WAV header. The header then says 0 samples, although the
+  samples are in the file. This always happened for seed 6 and gave a NaN
+  scene. `render_dry` now reads the raw 16-bit data after the 44-byte header
+  when the file reports 0 samples.
 
-**Why.** A first end-to-end check of generator output through the detector.
+**Why.** Mads asked for drone sound only, at different start points and
+speeds.
 
-**How.**
+**How.** `cd Pure-data+Script/EnviromentTest; uv run python drone_only.py`
+(Pd 0.55.2). It writes these files to `Pure-data+Script/EnviromentTest/drone_only/`:
+- `drone_NN.wav`: calibrated, full scale = 110 dB SPL, 32-bit float.
+- `drone_NN_listen.wav`: peak-normalised.
+- `drone_NN.json`: every drawn parameter.
 
-```powershell
-uv run dad wav C:\Users\madsb\Downloads\drone_seed233957.wav --detector artifacts\models\it6_final_none_simdist_dscnn.pt --threshold-from artifacts\runs\it6_final.json
-uv run dad wav C:\Users\madsb\Downloads\drone_seed233957.wav --detector artifacts\models\it6_final_none_simdist_lgbm.pkl --threshold-from artifacts\runs\it6_final.json
-uv run dad wav C:\Users\madsb\Downloads\drone_seed233957.wav --detector comb --threshold 1.9136685717165247
-```
-
-Thresholds frozen at 5% false alarms on validation (entry 043). Channel 0
-only. 1 s window, 0.125 s hop: 29 decisions, the first at 1.0 s.
-
-**Result.** Decisions `True` (drone):
-
-| Scorer | Threshold | `True` | Where |
-|---|---|---|---|
-| CNN (model 6) | 0.297 | 9 of 29 | every decision from 3.5 s to the end (scores 0.30 to 0.58); before that 0.07 to 0.28 |
-| LightGBM | 0.612 | 2 of 29 | at 3.75 s and 4.0 s |
-| comb | 1.914 | 27 of 29 | nearly everywhere |
-
-**Assessment.** Not a result: one file, no ground truth, and how the drone
-in the file was made is not recorded here. It shows the generator's output
-runs through all three detectors. Whether the CNN's late alarm is right
-cannot be told without a sidecar saying when the drone is present.
-
-**Next.** A sidecar from the generator; then a handful of files with known
-truth.
-
-## 045 - Second generated WAV file through model 6
-
-- Date: 2026-10-23
-- Iteration: 6
-- Type: Evaluation
-- Commit: 76fdf73 (with uncommitted report edits)
-
-**What changed.** Nothing in the code. A second file from Mads's generator,
-`drone_seed798191.wav`: 4.5 s, 16 kHz, 16-bit, mono this time, RMS
--33.2 dBFS, no sidecar. Same commands and frozen thresholds as entry 044.
-
-**Result.** 29 decisions, the first at 1.0 s:
-
-| Scorer | Threshold | `True` | Where |
-|---|---|---|---|
-| CNN (model 6) | 0.297 | 22 of 29 | from the first decision on, with gaps at 1.625-1.875 s, 3.0 s and 3.25-3.5 s; scores 0.21 to 0.62 |
-| LightGBM | 0.612 | 1 of 29 | at 4.25 s only; scores rise from about 0.1-0.3 to 0.5-0.6 after 2.5 s |
-| comb | 1.914 | 1 of 29 | at 4.5 s only; score 0 everywhere before |
-
-**Assessment.** Not a result: one file, no ground truth, origin of the drone
-sound not recorded here. If the drone is present from the start, the CNN
-finds it in three of four decisions and both baselines miss it; if it is
-not, the CNN false-alarms through most of the file.
-
-**Next.** As entry 044: sidecars from the generator.
-
-## 046 - A no-drone twin of the second file
-
-- Date: 2026-10-23
-- Iteration: 6
-- Type: Evaluation
-- Commit: 76fdf73 (with uncommitted report edits)
-
-**What changed.** Nothing in the code. Mads sent `nodorne.wav` (4.5 s,
-16 kHz, mono, 16-bit, RMS -35.2 dBFS, no sidecar), by its name a file with
-no drone. Same commands and frozen thresholds as entry 044.
+The WAVs are 32-bit float because the start of the calibrated files sits
+near -84 dBFS, which is too close to the 16-bit floor.
 
 **Result.**
 
-| Scorer | `True` on `nodorne.wav` | Mean score, `drone_seed798191` / `nodorne` |
-|---|---|---|
-| CNN (model 6) | 12 of 29: 1.0-1.25 s, 2.625-3.125 s, 3.75 s, 4.125-4.375 s; scores 0.12 to 0.40 | 0.382 / 0.263 |
-| LightGBM | 0 of 29 | 0.359 / 0.231 |
-| comb | 1 of 29 (4.375 s) | 0.189 / 0.112 |
+| Seed | Speed (m/s) | Start (m) | Length (s) |
+|---|---|---|---|
+| 1 | 36.7 | 490 | 13.4 |
+| 2 | 32.4 | 360 | 11.1 |
+| 3 | 29.5 | 347 | 11.8 |
+| 4 | 44.0 | 402 | 9.1 |
+| 5 | 41.7 | 462 | 11.1 |
+| 6 | 37.1 | 369 | 9.9 |
+| 7 | 38.6 | 479 | 12.4 |
+| 8 | 33.6 | 497 | 14.8 |
+| 9 | 42.8 | 357 | 8.4 |
+| 10 | 44.3 | 342 | 7.7 |
 
-*The two files are the same background.* Subtracting `nodorne.wav` from
-`drone_seed798191.wav` sample by sample leaves a signal that rises steadily
-from about -60 dBFS (0.0-0.25 s) to -42 dBFS (4.0-4.25 s) and -25 dBFS in
-the last 0.25 s, against a background of -30 to -45 dBFS: by all appearance
-a drone approaching through the whole file and arriving at its end. Before
-about 3.5 s the drone is some 10 to 25 dB below the background. This is
-inferred from the two files; the generator's own parameters were not seen.
+All 10 files were checked: none holds NaN, and each gets louder towards
+impact (RMS of the last second is about 100x the RMS of the first half).
+This is synthetic data and is not detection performance (section 5).
 
-*Paired, hop by hop:* with the drone added, the CNN's score is higher in 26
-of 29 decisions and so is LightGBM's. The CNN alarms in 11 decisions in both
-files (alarms the background alone causes) and in 11 more only with the
-drone (1.375-1.5 s, 2.0-2.5 s, 3.625 s, 3.875-4.0 s, 4.5 s). LightGBM alarms
-once, only with the drone (4.25 s).
+**Assessment.** Scaffolding only; no requirement is affected.
 
-**Assessment.** Still two files and no sidecar, so no requirement figure.
-Three things are already visible:
+**Next.** Wait for Mads.
 
-- On this background the CNN false-alarms in 41% of decisions (12 of 29),
-  against the 5% its threshold was set for on validation. The generator's
-  soundscape lies outside what the model was tuned on, or the threshold does
-  not carry over; either way R3 would fail badly here.
-- The drone does raise the CNN's score almost everywhere, even where it is
-  far below the background, so the model hears something. At the frozen
-  threshold that is swamped by the background's own alarms.
-- R5: if impact is at 4.5 s, an alarm is needed by 1.5 s, where the drone
-  is about 25 dB below the background. No detector here can be credited
-  with that.
+## 045 - Drone-only WAVs: rising speed instead of random draws
+- Date: 2026-10-26
+- Iteration: 6
+- Type: Data
+- Commit: uncommitted (on top of e924a30)
 
-Paired files (the same background with and without the drone) are the right
-design for the generator: they separate what the drone causes from what the
-background causes.
+**What changed.** Mads asked for the 10 files from entry 044 to step through
+rising speed instead of using random draws.
+- `make_scene` in `drone_sim.py` now takes `**fixed`, which overrides any
+  drawn parameter. The override is applied after the draws, so the random
+  sequence, and with it every existing scene, is unchanged.
+- `drone_only.py` now uses one seed (1) for all 10 files, so the drone's
+  pitch and throttle are the same everywhere. Only speed and start point
+  differ:
+  - Speed rises in even steps from 28 to 45 m/s.
+  - Start distance is fixed at 400 m and elevation at 40 deg.
+  - Azimuth steps 0, 36, ..., 324 deg.
 
-**Next.** Sidecars from the generator, with the drone's start and impact
-time and the levels used.
+The files from entry 044 were overwritten under the same names.
+
+**How.** `cd Pure-data+Script/EnviromentTest; uv run python drone_only.py`.
+
+**Result.**
+
+| File | Speed (m/s) | Azimuth (deg) | Length (s) |
+|---|---|---|---|
+| 01 | 28.0 | 0 | 14.3 |
+| 02 | 29.9 | 36 | 13.4 |
+| 03 | 31.8 | 72 | 12.6 |
+| 04 | 33.7 | 108 | 11.9 |
+| 05 | 35.6 | 144 | 11.2 |
+| 06 | 37.4 | 180 | 10.7 |
+| 07 | 39.3 | 216 | 10.2 |
+| 08 | 41.2 | 252 | 9.7 |
+| 09 | 43.1 | 288 | 9.3 |
+| 10 | 45.0 | 324 | 8.9 |
+
+All 10 files were checked: they are 32-bit float, none holds NaN, and each
+gets louder towards impact. Synthetic data, not detection performance.
+
+**Assessment.** Scaffolding only; no requirement is affected.
+
+**Next.** Wait for Mads.
+
+## 046 - Generated WAV files are git-ignored
+- Date: 2026-10-26
+- Iteration: 6
+- Type: Infrastructure
+- Commit: uncommitted (on top of e924a30)
+
+**What changed.** Mads asked for all generated WAV files to be ignored by git.
+- `.gitignore` now has `*.wav`.
+- The 16 WAV files that were already committed under
+  `Pure-data+Script/EnviromentTest/` (scenes, live runs, `out.wav`, dry and
+  approach tests) were removed from the index with `git rm --cached`. They
+  remain on disk.
+
+The scripts in that folder re-create them. The JSON sidecars in
+`drone_only/` are still tracked candidates.
+
+**Result.** No numbers. **Next.** Wait for Mads.
+
+## 047 - Drone-only WAVs are all 10 s long
+- Date: 2026-10-26
+- Iteration: 6
+- Type: Data
+- Commit: uncommitted (on top of e924a30)
+
+**What changed.** Mads asked for every drone file to be 10 s long.
+`drone_only.py` now sets the start distance to speed x 10 s instead of a
+fixed 400 m (entry 045). Every flight therefore reaches the microphone after
+exactly 10 s, and no file is cut or padded. Speed (28-45 m/s, even steps),
+azimuth (36 deg steps), elevation (40 deg) and the drone sound (seed 1) are
+unchanged. The start distance now rises with the speed: 280, 299, 318, 337,
+356, 374, 393, 412, 431, 450 m.
+
+**How.** `cd Pure-data+Script/EnviromentTest; uv run python drone_only.py`.
+
+**Result.** All 20 WAVs (10 calibrated, 10 listen) are 10.0000 s at 44.1 kHz,
+none holds NaN. Synthetic data, not detection performance.
+
+**Next.** Wait for Mads.
