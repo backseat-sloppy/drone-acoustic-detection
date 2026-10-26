@@ -8,9 +8,10 @@ HERE = Path(__file__).parent
 PATCH = HERE / "DroneSound.pd"
 LAUNCH = HERE / "run.pd"
 
-_found = glob.glob("/Applications/Pd*.app/Contents/Resources/bin/pd")
+_found = (glob.glob("/Applications/Pd*.app/Contents/Resources/bin/pd")      # macOS
+          + glob.glob("C:/Program Files*/Pd*/bin/pd.com"))                   # Windows (console build)
 if not _found:
-    raise SystemExit("Pd not found in /Applications. Run: ls /Applications | grep -i pd")
+    raise SystemExit("Pd not found in /Applications or C:/Program Files")
 PD = _found[0]
 
 
@@ -41,6 +42,10 @@ def render_dry(throttle, pscale=1.0, step_ms=20):
     if not out.exists():
         raise SystemExit("Pd produced no out.wav")
     x, fs = sf.read(out)
+    if len(x) == 0:
+        # Pd quits right after "wr stop", sometimes before writesf~ fixes the header (data size 0).
+        # The samples are there: 16-bit mono PCM after the 44-byte header.
+        x = np.fromfile(out, dtype="<i2", offset=44) / 32768.0
     return x, fs
 
 
