@@ -24,6 +24,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 4 | 030 to 031 | Average the scores of several consecutive windows, and a 2 s window | Per-window evidence at 150 m is weak; Mads ranks recall above time | **Hypothesis rejected by its rule, small consistent gain.** Averaging 8 windows (4.5 s) lifts X500 recall at 100-200 m from 0.21 to 0.28 (three seeds, +7 against +10 required); a 2 s window adds nothing; the Mini 2 stays at chance. Stopped for Mads: the next lever (a microphone array) and the drone class that matters are his decisions. |
 | Iteration 5 | 032 to 037 | Pool every rig but the held-out one (Nightjar, d3set, three FPV campaigns); speed perturbation; two-microphone rescore | Mads's scenario (small drones at 50 m/s, alarm before 150 m, 2 omni mics) and his question about one big pool | **Pooling alone rejected; pooling with speed perturbation is the new best recipe.** Three seeds: X500 at 100-200 m 0.33 (was 0.21), FPV on an unseen campaign 0.66, Mini 2 still at chance. Two microphones: no consistent change. |
 | Iteration 6 | 043 | Iteration 5's best recipe trained once on every rig, threshold frozen at 5% false alarms on validation; CNN, LightGBM and comb saved for the real test | Mads asked for a final model for the real test | **Checkpoints, not evidence.** Validation (in-distribution): CNN recall 0.83 at 5% false alarms. Unseen Lund rig: CNN 0.50, baselines near 0. CNN alarms on 55% of mower-only audio. R2 and R3 not met. |
+| Iteration 7 | 055 to 057 | Edge Impulse model (MFE + small CNN) on upload-licensed data, scored locally next to model 6 | Mads asked to try Edge Impulse; deployment hardware still open | **Negative result.** On the shared windows the EI model detects nothing off its training rig (Halmstad recall 0 at the frozen threshold, test AUC 0.36); model 6 0.55 at 4.8% false positives on Halmstad. Small on Cortex-M4F (12 ms, 20 KB RAM), but its MFE is too slow at FFT 1024. Model 6 stays the candidate. |
 
 ## Templates
 
@@ -3828,3 +3829,278 @@ stays the candidate for the field test.
 
 The rule is unchanged, but the field-test results may add a confuser
 figure. If they do, that is logged before iteration 7 starts.
+
+# Iteration 7 - An Edge Impulse candidate (side experiment)
+
+> **Changed from iteration 6:** a second training path. A model is built in
+> Edge Impulse Studio (MFE frontend + small Keras CNN, trained in the
+> vendor's cloud) on the data whose licences allow upload to a third party:
+> Nightjar (CC BY) for training, Halmstad (CC0), DroneNoise (CC BY, one
+> microphone per event) and two held-out Nightjar sessions for testing.
+>
+> **Why:** Mads asked (this conversation, 2026-10-26) to try building it in
+> Edge Impulse with his school access. Deployment hardware is still OPEN,
+> and Edge Impulse profiles and exports models for a Pi or a microcontroller.
+>
+> **Kept the same:** model 6 and the baselines, unchanged; the 1 s window and
+> 0.125 s hop of `dad info`; R2-R4 measured by the repo's own scorer
+> (`dad wav`, 1 s guard at drone edges) at one threshold frozen on a
+> validation session. Edge Impulse's own model-testing numbers are not
+> reported as results.
+>
+> **Hypothesis:** none that the evidence favours (entry 055): the Edge
+> Impulse model is the same family as model 6 trained on a subset of its
+> data, so it is not expected to beat it on detection. The experiment asks
+> whether the vendor's pipeline is competitive on the same windows, and what
+> it costs on embedded targets.
+>
+> **Judged by:** recall, false-positive rate and precision at one
+> validation-frozen threshold on the same test clips, Edge Impulse next to
+> model 6, `lgbm` and `comb`; Halmstad's false-positive rate reported first.
+> Keep it as a candidate only if it is clearly above model 6 there, or
+> matches it and fits a target model 6 cannot. This iteration is
+> time-boxed and must not delay the field test. The embedding plan of entry
+> 054, called "iteration 7" there, becomes iteration 8.
+
+## 055 - Council: an Edge Impulse model next to model 6
+- Date: 2026-10-26
+- Iteration: 7
+- Type: Council
+- Commit: uncommitted (on top of ddfc33d)
+
+**Question.** Build a model in Edge Impulse Studio, and if so (a) not at all,
+(b) as an extra candidate next to model 6, or (c) move development there?
+
+**Devil's Advocate.** Decisive: the Edge Impulse model trains on a strict
+subset of model 6's data (one drone type, one rig) on exactly the axis that
+fails, and that drone type is already at chance off-rig (entry 037); it
+cannot beat model 6. Serious: (1) the test sets are asymmetric (DroneNoise is
+drone-only, Halmstad is off-rig), so a model that learned "Nightjar room tone
+= no drone" shows high recall and hides its cost in Halmstad false alarms;
+(2) Studio reports per-window accuracy at its own threshold, not R2/R3;
+(3) looking at Studio's test page while tuning is tuning on test; (4) it costs
+field-test preparation time. Verdict: reject (c), postpone (b).
+*Answered:* (1) Halmstad's false-positive rate is reported first, DroneNoise
+gives recall only; (2) and (3) the model is exported and scored locally on
+the same clips as model 6 with `dad wav`, threshold frozen on a Nightjar
+session that is never uploaded, and Studio's test page is not used for
+choices; (4) left standing: Mads asked for it now, so it is time-boxed and
+kept off the field-test path. The decisive objection is accepted as the
+expected outcome, not refuted.
+
+**Scholar.** Standard: log-mel + small CNN, split by recording, threshold
+fixed on validation, recall at a low false-positive rate on unseen setups
+(DCASE 2022-2026 Task 2; Mesaros et al. 2016). A hosted platform used as a
+model builder with grouping by recording and metrics computed outside it is
+a defensible variation; its default random split with per-window accuracy
+reported as the result is against practice. Edge Impulse staff confirm its
+train/validation split is random across windows and can leak with overlap.
+*Departure:* none, if the conditions hold. Edge Impulse's internal
+validation split (early stopping only) is random by window inside the
+training sessions; this inflates only its own validation accuracy, which is
+not reported.
+
+**Problem Solver.** Try a modified version of (b), at most about a day:
+split fixed before upload, a local validation session, score the exported
+model (WebAssembly) on the same windows as model 6, `lgbm` and `comb`, and
+collect Edge Impulse's latency/RAM/flash estimates for the open hardware
+question. Key control: model 6's recipe retrained on the same restricted
+data, so a gap is not just "less data". Success: at least 0.10 recall above
+the restricted model 6 at 5% false positives; partial: Edge Impulse becomes
+the deployment toolchain only; failure: logged as a negative result.
+Confidence medium.
+
+**Decision.** (b), modified as the Problem Solver proposes; (c) rejected.
+The restricted-data model 6 control is planned but not part of the first
+pass; if it is not run, the comparison is reported as confounded by data.
+Model 6 itself trained on DroneNoise near drones and on every Nightjar
+session (entry 043), so for model 6 only Halmstad is unseen; the comparison
+rests on Halmstad.
+
+**Next.** Export the clips (`scripts/export_edge_impulse.py`), upload,
+train, export, score locally.
+
+## 056 - Edge Impulse: data, impulse and first training; the repo's models on the same clips
+- Date: 2026-10-26
+- Iteration: 7
+- Type: Model
+- Commit: uncommitted (on top of ddfc33d)
+
+**What changed.**
+
+- Raw Nightjar, DroneNoise and Halmstad were linked into `data/` from the
+  Google Drive copy with directory junctions (nothing copied or changed) and
+  prepared with the existing scripts into `data/processed/`.
+- New `scripts/export_edge_impulse.py`: 10 s clips per drone (label 1) and
+  no-drone (label 0) stretch, at most 900 s per session and label, guard bands
+  skipped, label in the file name, a `dad wav` sidecar next to each clip.
+  Training: Nightjar sessions 0804, 0804-2, 0804-4, 0804-night, 0806-2 and
+  both night-ambient sessions. Validation (kept local, never uploaded):
+  Nightjar 0806-1. Testing: Nightjar 0804-3 and the lawn-mower session,
+  Halmstad (30 drone, 59 helicopter/background), DroneNoise microphone M5
+  only. Clips are also joined into files under 10 MB (`packed/`), because the
+  browser bridge takes at most 10 MB per call.
+- New `scripts/score_hops.py`: scores per-hop CSVs per source at one
+  threshold, given or frozen at 5% false positives on a validation CSV.
+- Edge Impulse project `drone-acoustic-detection` (ID 1149245, AAU-CREATE
+  organisation, private). 29 training samples, 1 h 42 min, uploaded through
+  the browser. Two of them are 10 s clips that are also inside a packed file
+  (20 s duplicated of 102 min).
+- Impulse: 1000 ms window, 250 ms training stride (24,433 windows), 16 kHz.
+  MFE: frame 0.025 s, stride 0.01 s, 64 filters, FFT 1024, 50 Hz to 8 kHz,
+  noise floor -100 dB (the default -52 dB set every feature of a Nightjar
+  sample to zero). Classifier: Edge Impulse's default 1D CNN (8 and 16
+  filters, kernel 3, dropout 0.25), 100 epochs, learning rate 0.005, GPU,
+  Edge Impulse's audio augmentation on (noise high, time masks low).
+
+**How.**
+
+```powershell
+cmd /c mklink /J data\Nightjar_HF "G:\My Drive\drone-acoustic-detection-data\Nightjar_HF"   # and DroneNoise_Salford, Halmstad
+uv run python -I scripts/prepare_data.py dronenoise halmstad
+uv run python -I scripts/prepare_new_data.py nightjar
+uv run python -I scripts/export_edge_impulse.py
+uv run dad wav data/edge_impulse/testing --detector artifacts/models/it6_final_none_simdist_dscnn.pt --threshold-from artifacts/runs/it6_final.json --out artifacts/edge_impulse/hops_dscnn_testing.csv
+uv run python -I scripts/score_hops.py artifacts/edge_impulse/hops_dscnn_testing.csv --val artifacts/edge_impulse/hops_dscnn_validation.csv
+```
+
+(`comb` and `lgbm` the same way; logs and CSVs in `artifacts/edge_impulse/`.)
+
+**Result.** Edge Impulse's own figures, on its internal validation split,
+which is random by window inside the training sessions and so leaks and
+flatters (entry 055); not a detection result:
+
+| Run | Architecture | Model | Accuracy | AUC |
+|---|---|---|---|---|
+| 1 | 1D CNN (default) | int8 | 0.692 | 0.69 |
+| 2 | 2D CNN preset (dropout 0.5) | int8 | 0.533 (every window called drone) | 0.50 |
+| 3 | 1D CNN again | int8 | 0.687 | 0.69 |
+
+Run 1 on Cortex-M4F 80 MHz, EON compiler: inference 12 ms, 20.3 KB RAM,
+41.1 KB flash. The MFE block was estimated at 150 ms with FFT 512 and 592 ms
+with FFT 1024 per 1 s window, so the FFT 1024 frontend does not keep up with
+a 0.125 s hop on that chip.
+
+The repo's models on the same exported clips, 1 s window, 0.125 s hop,
+`dad wav` window labels. Model 6 trained on all of Nightjar (including the
+validation session 0806-1) and on DroneNoise near drones (entry 043), so
+only Halmstad is unseen for it. Thresholds: (a) each model's own, frozen in
+entry 043; (b) frozen at 5% false positives on Nightjar 0806-1.
+
+| Scorer | Threshold | Halmstad recall | Halmstad FP rate | Halmstad precision | Nightjar test recall / FP | DroneNoise recall |
+|---|---|---|---|---|---|---|
+| comb | (a) 1.914 | 0.268 | 0.261 | 0.343 | 0.028 / 0.054 | 0.494 |
+| comb | (b) 4.42 | 0.142 | 0.088 | 0.450 | 0.011 / 0.003 | 0.365 |
+| lgbm | (a) 0.612 | 0.503 | 0.200 | 0.561 | 0.402 / 0.068 | 0.502 |
+| lgbm | (b) 0.723 | 0.396 | 0.140 | 0.591 | 0.312 / 0.016 | 0.333 |
+| model 6 | (a) 0.297 | 0.831 | 0.365 | 0.537 | 0.716 / 0.083 | 0.871 |
+| model 6 | (b) 0.879 | 0.551 | 0.048 | 0.854 | 0.239 / 0.001 | 0.497 |
+
+Halmstad: 2,190 drone and 4,307 no-drone windows (drone share 34%).
+Nightjar test: 5,037 / 5,694. DroneNoise: 3,139 drone windows, no
+negatives. One seed each.
+
+At threshold (b), the validation session is hard even for model 6, which
+trained on it: recall 0.057 at 5% false positives. Its drone labels come
+from motor-on logs, and much of a flight is far and quiet.
+
+**Assessment.**
+
+- The Edge Impulse model has not yet been scored on the shared windows. That
+  needs its WebAssembly export downloaded, which waits for Mads's go-ahead.
+- Even on its own leaky split it separates the classes poorly (AUC 0.69).
+  The Devil's Advocate's decisive objection looks right: Nightjar alone, with
+  motor-on labels, does not teach a usable detector. Model 6 at its own
+  threshold still has 37% false positives on Halmstad, so R2/R3 are not met by
+  any model.
+- The 2D preset collapsed to one class after int8 quantisation. Not
+  investigated further (the float32 model was not checked).
+
+**Next.** Ask Mads for the WebAssembly download. Then score the Edge Impulse
+model locally on the same clips at threshold (b), and give iteration 7 its
+verdict.
+
+## 057 - The Edge Impulse model scored on the shared windows, and iteration 7's verdict
+- Date: 2026-10-26
+- Iteration: 7
+- Type: Evaluation
+- Commit: uncommitted (on top of ddfc33d)
+
+**What changed.** On Mads's go-ahead, the run-3 model (1D CNN, int8) was
+built as a WebAssembly library in Studio and downloaded
+(`drone-acoustic-detection-wasm-v1-impulse-#1.zip`, 3.6 MB, unpacked into
+`artifacts/edge_impulse/wasm/`). New `scripts/edge_impulse/run_wasm.js` runs
+it over the exported clips hop by hop like `dad wav`: 1 s window, 0.125 s
+hop, decision at the window's end, the clip's raw int16 values as input (as
+Studio feeds them).
+
+**Why.** Entry 055: Edge Impulse's own figures are not results; the model is
+judged on the same windows as model 6, `lgbm` and `comb`.
+
+**How.**
+
+```powershell
+node scripts/edge_impulse/run_wasm.js artifacts/edge_impulse/wasm/node data/edge_impulse/validation artifacts/edge_impulse/hops_ei_validation.csv
+node scripts/edge_impulse/run_wasm.js artifacts/edge_impulse/wasm/node data/edge_impulse/testing artifacts/edge_impulse/hops_ei_testing.csv
+uv run python -I scripts/score_hops.py artifacts/edge_impulse/hops_ei_testing.csv --truth-from artifacts/edge_impulse/hops_dscnn_testing.csv --val artifacts/edge_impulse/hops_ei_validation.csv --val-truth-from artifacts/edge_impulse/hops_dscnn_validation.csv
+```
+
+The window counts match `dad wav` exactly (7,811 validation, 20,367 test),
+and the window labels are taken from its CSVs. As a sanity check of the
+runner, validation AUC is 0.647, close to Studio's 0.69 on its own split. The
+runner's output was not compared sample by sample with Studio.
+
+**Result.** Threshold frozen at 5% false positives on Nightjar 0806-1:
+0.703, validation recall 0.002.
+
+| Scorer | Threshold | Halmstad recall / FP rate | Nightjar test recall / FP rate | DroneNoise recall | AUC test, all | AUC Halmstad |
+|---|---|---|---|---|---|---|
+| Edge Impulse 1D CNN | (b) 0.703 | 0.000 / 0.000 | 0.023 / 0.000 | 0.000 | 0.358 | 0.462 |
+| Edge Impulse 1D CNN | 0.5 (not frozen, for reference) | 0.000 / 0.000 | 0.364 / 0.846 | 0.000 | | |
+| model 6 | (b) 0.879 | 0.551 / 0.048 | 0.239 / 0.001 | 0.497 | 0.856 | 0.854 |
+| lgbm | (b) 0.723 | 0.396 / 0.140 | 0.312 / 0.016 | 0.333 | 0.727 | 0.755 |
+| comb | (b) 4.42 | 0.142 / 0.088 | 0.011 / 0.003 | 0.365 | 0.534 | 0.510 |
+
+Validation AUC: Edge Impulse 0.647, model 6 0.680, lgbm 0.708, comb 0.431.
+Same windows and conditions as entry 056. One seed.
+
+Score distribution of the Edge Impulse model: on every Halmstad and
+DroneNoise window the score sits at the floor (0.133, max 0.191 on Halmstad
+drone, 0.133 on all DroneNoise). On Nightjar's test sessions no-drone windows
+score higher than drone windows (means 0.548 against 0.358).
+
+**Assessment.**
+
+- **Failure, by the rule of entry 055.** The Edge Impulse model is far below
+  model 6 and below `lgbm` on every source, and its AUC on the test windows is
+  below chance. It is not a candidate.
+- Off the training rig it returns an almost constant score, so it detects
+  nothing there: the recording-chain confound of iteration 1, as the Devil's
+  Advocate predicted. A likely contributor, not verified: Edge Impulse's MFE
+  scales log energy by the noise floor and clips it, and with the -100 dB
+  floor chosen in entry 056 the louder Halmstad and DroneNoise recordings may
+  saturate. The other contributor is the data itself: one drone, one rig and
+  motor-on labels (entry 056: even model 6 finds 6% of 0806-1's drone
+  windows at 5% false positives).
+- **Deployment toolchain:** partly useful. The int8 classifier is small
+  (12 ms, 20 KB RAM, 41 KB flash on Cortex-M4F; 2 ms in all on a laptop
+  CPU, Studio's estimate). The MFE frontend at FFT 1024 does not keep up with
+  a 0.125 s hop on that chip (592 ms per window). Profiling model 6 itself
+  through Edge Impulse (bring your own model) was not tried.
+- The restricted-data control (model 6's recipe retrained on the uploaded
+  data only) was not run. So "Edge Impulse pipeline" and "less data" are not
+  separated; given the size of the gap this does not change the verdict.
+- Test sources were scored once for this verdict. No choice was made from
+  them.
+
+**Verdict on iteration 7: hypothesis-free side experiment, negative
+result.** An Edge Impulse MFE + 1D CNN trained on Nightjar alone does not
+detect drones on other rigs (Halmstad recall 0 at the frozen threshold). Model
+6 remains the candidate for the field test. Edge Impulse is kept only as an
+option for deployment profiling.
+
+**Next.** Report to Mads. Nothing further in Edge Impulse unless Mads wants
+either (a) model 6 profiled through bring-your-own-model for the open
+hardware question, or (b) one retry with a level-robust MFE setting, which
+needs the noise floor chosen on validation, not on test. The plan of entry
+054 (embeddings after the field test, now iteration 8) is unchanged.
