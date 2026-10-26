@@ -24,7 +24,8 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 4 | 030 to 031 | Average the scores of several consecutive windows, and a 2 s window | Per-window evidence at 150 m is weak; Mads ranks recall above time | **Hypothesis rejected by its rule, small consistent gain.** Averaging 8 windows (4.5 s) lifts X500 recall at 100-200 m from 0.21 to 0.28 (three seeds, +7 against +10 required); a 2 s window adds nothing; the Mini 2 stays at chance. Stopped for Mads: the next lever (a microphone array) and the drone class that matters are his decisions. |
 | Iteration 5 | 032 to 037 | Pool every rig but the held-out one (Nightjar, d3set, three FPV campaigns); speed perturbation; two-microphone rescore | Mads's scenario (small drones at 50 m/s, alarm before 150 m, 2 omni mics) and his question about one big pool | **Pooling alone rejected; pooling with speed perturbation is the new best recipe.** Three seeds: X500 at 100-200 m 0.33 (was 0.21), FPV on an unseen campaign 0.66, Mini 2 still at chance. Two microphones: no consistent change. |
 | Iteration 6 | 043 | Iteration 5's best recipe trained once on every rig, threshold frozen at 5% false alarms on validation; CNN, LightGBM and comb saved for the real test | Mads asked for a final model for the real test | **Checkpoints, not evidence.** Validation (in-distribution): CNN recall 0.83 at 5% false alarms. Unseen Lund rig: CNN 0.50, baselines near 0. CNN alarms on 55% of mower-only audio. R2 and R3 not met. |
-| Iteration 7 | 055 to 057 | Edge Impulse model (MFE + small CNN) on upload-licensed data, scored locally next to model 6 | Mads asked to try Edge Impulse; deployment hardware still open | **Negative result.** On the shared windows the EI model detects nothing off its training rig (Halmstad recall 0 at the frozen threshold, test AUC 0.36); model 6 0.55 at 4.8% false positives on Halmstad. Small on Cortex-M4F (12 ms, 20 KB RAM), but its MFE is too slow at FFT 1024. Model 6 stays the candidate. |
+| Iteration 7 | 055 to 058 | Edge Impulse model (MFE + small CNN) on upload-licensed data, scored locally next to model 6 | Mads asked to try Edge Impulse; deployment hardware still open | **Negative result.** On the shared windows the EI model detects nothing off its training rig (Halmstad recall 0 at the frozen threshold, test AUC 0.36); model 6 0.55 at 4.8% false positives on Halmstad. Small on Cortex-M4F (12 ms, 20 KB RAM), but its MFE is too slow at FFT 1024. Model 6 stays the candidate. |
+| Iteration 8 | 059 to 061 | Edge Impulse on the pool, d3set held out, clips scaled to -30 dBFS | Mads asked for leave-one-dataset-out in Edge Impulse; iteration 7 failed on a 50 dB level gap between rigs | **Hypothesis rejected.** In-distribution AUC rose to 0.92, but on unseen d3set AUC 0.12 (background ranked above drones), worse than the untrained comb (0.53). Microcontroller out of scope (entry 060); Edge Impulse stopped. |
 
 ## Templates
 
@@ -4238,3 +4239,85 @@ local GPU (entry 043). Edge Impulse needed about 20 min for the features of
 
 **Next.** Finish iteration 8 as planned, so its result is on record. Unless
 it is clearly better than expected, training stays in the repo.
+
+## 061 - Edge Impulse on the pool, scored on held-out d3set, and iteration 8's verdict
+- Date: 2026-10-26
+- Iteration: 8
+- Type: Evaluation
+- Commit: uncommitted (on top of 68cb072)
+
+**What changed.** Features (98,161 windows; the 29 disabled samples are
+excluded) and the same 1D CNN as entry 056 were trained in Edge Impulse on
+the upload of entry 059. The int8 WebAssembly build 2 was downloaded through
+the deployment API with the ingestion/deployment key, because the browser
+download stalled. It was run locally with each clip scaled to -30 dBFS, as
+for training.
+
+**How.**
+
+```powershell
+node scripts/edge_impulse/run_wasm.js artifacts/edge_impulse/hold_d3set/wasm/node data/edge_impulse_hold_d3set/validation artifacts/edge_impulse/hold_d3set/hops_ei_validation.csv -30
+node scripts/edge_impulse/run_wasm.js artifacts/edge_impulse/hold_d3set/wasm/node data/edge_impulse_hold_d3set/testing artifacts/edge_impulse/hold_d3set/hops_ei_testing.csv -30
+uv run python -I scripts/score_hops.py artifacts/edge_impulse/hold_d3set/hops_ei_testing.csv --truth-from artifacts/edge_impulse/hold_d3set/hops_dscnn_testing.csv --val artifacts/edge_impulse/hold_d3set/hops_ei_validation.csv --val-truth-from artifacts/edge_impulse/hold_d3set/hops_dscnn_validation.csv
+```
+
+(`comb`, `lgbm` and model 6 via `dad wav` on the raw clips, then
+`score_hops.py` the same way.)
+
+**Result.** Studio's own validation split (random by window, leaks): int8
+accuracy 0.698, AUC 0.67.
+
+Local, 1 s window, 0.125 s hop. Threshold frozen at 5% false positives on
+Nightjar 0804-3 (1,241 drone and 5,329 no-drone windows). d3set: 47,669
+drone and 4,891 no-drone windows (drone share 91%); Edge Impulse 4,526
+no-drone windows, because five silent clips are skipped.
+
+| Scorer | Trained on d3set? | Threshold | d3set recall | d3set FP rate | d3set precision | d3set AUC | Validation AUC |
+|---|---|---|---|---|---|---|---|
+| Edge Impulse 1D CNN | no | 0.113 | 0.662 | 1.000 | 0.875 | 0.124 | 0.916 |
+| comb | no (no training) | 1.905 | 0.198 | 0.136 | 0.934 | 0.533 | |
+| lgbm (entry 043) | yes | 0.608 | 0.735 | 0.055 | 0.992 | 0.936 | |
+| model 6 (entry 043) | yes | 0.291 | 0.916 | 0.170 | 0.981 | 0.956 | |
+
+Mean Edge Impulse score on d3set: drone 0.230, no drone 0.576. Per
+session, the no-drone stretches (before take-off, after landing, and the
+pure "SNR test/background noise" recording) score 0.21 to 0.85, and drone
+stretches 0.10 to 0.33. The order is inverted in almost every session.
+
+d3set levels are the same for both classes (median RMS -47.9 dBFS drone,
+-46.6 no drone), so the scaling does not cause the inversion.
+
+For context only, on other windows at 10% false positives per decision:
+iteration 5's repo model with d3set held out (pool + speed perturbation,
+three seeds, entry 037) reached recall 0.555 within 50 m and 0.333 at
+100-200 m.
+
+**Assessment.**
+
+- **Hypothesis rejected.** On the unseen d3set rig the Edge Impulse model is
+  worse than chance (AUC 0.12) and worse than the untrained `comb` (0.53).
+  At the frozen threshold it alarms on every no-drone window.
+- **Level normalisation worked where it was aimed.** In-distribution
+  (Nightjar 0804-3) AUC rose from 0.65 (iteration 7) to 0.92. The constant
+  off-rig score of entry 057 is gone; it is replaced by a confident but wrong
+  ranking.
+- **Likely reason, not verified:** the pool's no-drone audio is narrow
+  (Nightjar, FPV, Halmstad; no FSD50K, no Glasgow). Three of six training
+  datasets hold drone audio only (DDL, Lund, DroneNoise). So "a microphone
+  chain unlike Nightjar, FPV or Halmstad" is evidence for drone, and d3set's
+  ambient noise is such a chain. That is iteration 1's confound again.
+  Iteration 5's repo pool had FSD50K as varied negatives, and its recipe
+  buried near drones in real backgrounds.
+- Model 6 and `lgbm` trained on d3set, so their figures here are
+  in-distribution references, not a comparison. One seed.
+- d3set was scored once for this verdict. Nothing was chosen from it.
+
+**Verdict on iteration 8: negative.** Leave-one-dataset-out in Edge Impulse
+with the level cue removed does not give a detector that works on an unseen
+rig; it ranks d3set's background above its drones. Combined with entry 060
+(no microcontroller), Edge Impulse is stopped for this project. Model 6
+stays the candidate for the field test. The embedding plan of entry 054 is
+next (iteration 9 after this renumbering).
+
+**Next.** Report to Mads. Open data question: FSD50K and Glasgow need 7-Zip
+on this PC before the repo's own pool can be rebuilt here.
