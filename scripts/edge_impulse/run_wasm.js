@@ -6,7 +6,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const [wasmDir, folder, outCsv] = process.argv.slice(2);
+// Optional 4th argument: scale each clip to this RMS dBFS first, exactly as
+// export_edge_impulse.py --norm-dbfs does for the training clips.
+const [wasmDir, folder, outCsv, normDbfs] = process.argv.slice(2);
 if (!outCsv) { console.error('usage: run_wasm.js <wasm node dir> <wav folder> <out.csv>'); process.exit(1); }
 const Module = require(path.resolve(wasmDir, 'edge-impulse-standalone.js'));
 
@@ -49,6 +51,14 @@ Module.onRuntimeInitialized = () => {
   const lines = ['file,t_end_s,score'];
   for (const f of files) {
     const x = readWav(path.join(folder, f));
+    if (normDbfs !== undefined) {
+      let ss = 0, peak = 0;
+      for (const v of x) { ss += (v / 32768) ** 2; peak = Math.max(peak, Math.abs(v / 32768)); }
+      const rms = Math.sqrt(ss / x.length);
+      if (rms < 1e-7) continue;
+      const g = Math.min(10 ** (Number(normDbfs) / 20) / rms, 0.99 / peak);
+      for (let i = 0; i < x.length; i++) x[i] = Math.round((x[i] / 32768) * g * 32767);
+    }
     for (let s = 0; s + WIN <= x.length; s += HOP)
       lines.push(`${path.join(folder, f)},${((s + WIN) / SR).toFixed(4)},${classify(x.subarray(s, s + WIN))}`);
   }

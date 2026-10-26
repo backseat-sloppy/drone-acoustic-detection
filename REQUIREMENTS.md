@@ -112,6 +112,7 @@ held-out-source false-alarm rate is the one that predicts field behaviour.
 | Acoustic UAV Field Recordings (FPV, Zenodo) | may be fetched | Decided by Mads, 2026-10-14 |
 | Licences allowed | CC0 and CC BY | PROPOSED |
 | d3set (GPL-3.0) and Lund (no licence stated) | allowed for internal use; not for publishing results or audio without a further decision (Lund: ask the authors) | Decided by Mads, 2026-10-14 |
+| Lund in a cloud tool | Lund may be used for research, including upload to the private Edge Impulse project; publishing results or audio still needs the authors' permission | Decided by Mads, 2026-10-26 (entry 058) |
 | Training and test rigs from iteration 3 | leave one rig out between Nightjar and d3set; Lund and Glasgow scored as further unseen rigs (entry 025) | PROPOSED |
 | Sealed test for recall by range | ITU ARIS and RODENT (fetched 2026-10-14 on Mads's go-ahead), scored only for a finished candidate | PROPOSED |
 

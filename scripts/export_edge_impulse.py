@@ -17,6 +17,12 @@ label goes in front of the file name, as Edge Impulse's uploader expects:
 Run after prepare_data.py (dronenoise halmstad) and prepare_new_data.py (nightjar):
 
     uv run python -I scripts/export_edge_impulse.py
+
+Iteration 8, leave one dataset out (every prepared source but SOURCE trains;
+SOURCE is the test; Nightjar 0804-3 is the local validation), each clip
+scaled to one RMS level:
+
+    uv run python -I scripts/export_edge_impulse.py --hold d3set --norm-dbfs -30
 """
 from __future__ import annotations
 
@@ -44,7 +50,22 @@ LABEL = {1: "drone", 0: "no_drone"}
 CATEGORIES = ("training", "validation", "testing")
 
 
+HOLD: str | None = None      # --hold SOURCE: leave-one-dataset-out (iteration 8)
+NORM_DBFS: float | None = None  # --norm-dbfs X: scale every clip to this RMS level
+POOL = ("nightjar", "halmstad", "dronenoise", "ddl", "fpv", "lund", "d3set")
+
+
 def category(r: dict) -> str | None:
+    if HOLD:
+        if r["source"] == HOLD:
+            return "testing"
+        if r["source"] == "nightjar" and r["group"] == "nightjar:nightjar-flight-20260804-3":
+            return "validation"
+        if r["source"] == "nightjar" and r["group"] == "nightjar:nightjar-lawnmower1-20260805":
+            return None  # the mower confuser stays out of the pool, as in iteration 5
+        if r["source"] == "dronenoise" and r["subset"] != "M5":
+            return None
+        return "training" if r["source"] in POOL else None
     if r["source"] == "nightjar":
         return "testing" if r["group"] in NJ_TEST else "validation" if r["group"] in NJ_VAL else "training"
     if r["source"] == "halmstad":
@@ -91,6 +112,13 @@ def main() -> None:
                 y = np.asarray(x[s:s + int(CLIP_S * SR)])
                 if dtype == np.float32:
                     y = np.clip(np.round(y * 32767), -32768, 32767).astype(np.int16)
+                # Only uploaded clips are scaled; validation and test stay raw so the repo's
+                # models see them unchanged, and run_wasm.js scales them for Edge Impulse.
+                if NORM_DBFS is not None and cat == "training":
+                    y = normalise(y, NORM_DBFS)
+                    if y is None:
+                        stats["silent_skipped"] += 1
+                        continue
                 rid = r["recording_id"].replace("/", "_").replace("#", "_").replace(".", "_")
                 path = OUT / cat / f"{LABEL[lab]}.{r['source']}_{rid}_{s // SR:05d}.wav"
                 sf.write(path, y, SR, subtype="PCM_16")
@@ -101,7 +129,19 @@ def main() -> None:
     for k, v in sorted(stats.items()):
         print(*k, v, f"({v * CLIP_S / 60:.1f} min)")
     assert stats, "nothing exported: run the prepare scripts first"
-    pack()
+    if not HOLD:
+        pack()  # the CLI upload of iteration 8 takes single clips
+
+
+def normalise(y: np.ndarray, dbfs: float) -> np.ndarray | None:
+    """Scale an int16 clip to `dbfs` RMS, lowered if needed so the peak stays below full scale.
+    The recording chains differ by about 50 dB (entry 059); without this the level gives the source away."""
+    x = y.astype(np.float64) / 32768
+    rms = np.sqrt(np.mean(x ** 2))
+    if rms < 1e-7:
+        return None
+    g = min(10 ** (dbfs / 20) / rms, 0.99 / np.max(np.abs(x)))
+    return np.round(x * g * 32767).astype(np.int16)
 
 
 def pack(max_clips: int = 29) -> None:
@@ -121,5 +161,13 @@ def pack(max_clips: int = 29) -> None:
 
 
 if __name__ == "__main__":
+    t = normalise(np.full(SR, 100, np.int16) * np.sign(np.sin(np.arange(SR))).astype(np.int16), -30.0)
+    assert abs(20 * np.log10(np.sqrt(np.mean((t / 32768.0) ** 2))) + 30) < 0.1  # self-check
+    args = sys.argv[1:]
+    if "--hold" in args:
+        HOLD = args[args.index("--hold") + 1]
+        OUT = ROOT / "data" / f"edge_impulse_hold_{HOLD}"
+    if "--norm-dbfs" in args:
+        NORM_DBFS = float(args[args.index("--norm-dbfs") + 1])
     main()
     sys.exit(0)

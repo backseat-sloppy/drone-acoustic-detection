@@ -4104,3 +4104,23 @@ either (a) model 6 profiled through bring-your-own-model for the open
 hardware question, or (b) one retry with a level-robust MFE setting, which
 needs the noise floor chosen on validation, not on test. The plan of entry
 054 (embeddings after the field test, now iteration 8) is unchanged.
+
+## 058 - Requirements: Lund may be uploaded to the private Edge Impulse project
+- Date: 2026-10-26
+- Iteration: 7
+- Type: Requirements
+- Commit: uncommitted (on top of 68cb072)
+
+**What changed.** New row in `REQUIREMENTS.md`: Lund may be used for
+research, including upload to the private Edge Impulse project. Publishing
+results or audio on Lund still needs the authors' permission (the row of
+2026-10-14 is unchanged).
+
+**Why.** Mads's decision, in this conversation: "vi bruger det til
+forskning". Before deciding, he was told that a dataset with no licence
+falls under ordinary copyright (all rights reserved), that local research
+use is the safe part, and that an upload hands a copy to a third party.
+
+**Next.** Lund can go into a leave-one-dataset-out run in Edge Impulse. It
+holds drone audio only, so it can be a test set for recall, or training
+positives.
