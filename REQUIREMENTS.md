@@ -96,6 +96,7 @@ held-out-source false-alarm rate is the one that predicts field behaviour.
 | Requirement | Value | Status |
 |---|---|---|
 | Deployment hardware | not decided (laptop, Raspberry Pi or microcontroller) | OPEN |
+| Deployment on a microcontroller | out of scope | Decided by Mads, 2026-10-26 (entry 060) |
 | Deployment microphones | an array of 2 omnidirectional microphones | Decided by Mads, 2026-10-14 |
 | Training hardware | Mads's PC. The AMD GPU may be used through DirectML, in a separate environment. | Decided by Mads, 2026-10-10 |
 | Cold-onset latency | no target yet | OPEN |

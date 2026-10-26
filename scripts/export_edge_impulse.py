@@ -43,6 +43,7 @@ OUT = ROOT / "data" / "edge_impulse"
 
 CLIP_S = 10.0                # Edge Impulse windows each clip itself
 MAX_S_PER_GROUP_LABEL = 900  # caps each (session, label) so no session dominates
+MAX_S_NO_DRONE_HOLD = 3600
 NJ_TEST = {"nightjar:nightjar-flight-20260804-3",      # model 6's validation session
            "nightjar:nightjar-lawnmower1-20260805"}    # mower: a confuser never trained on
 NJ_VAL = {"nightjar:nightjar-flight-20260806-1"}       # never uploaded; freezes the threshold
@@ -100,7 +101,9 @@ def main() -> None:
 
     stats = collections.Counter()
     for (group, lab), rs in sorted(by_key.items()):
-        budget = int(MAX_S_PER_GROUP_LABEL * SR)
+        # In iteration 8 no-drone audio is scarcer (FPV is one group per campaign), so it gets a higher cap.
+        cap = MAX_S_NO_DRONE_HOLD if HOLD and lab == 0 else MAX_S_PER_GROUP_LABEL
+        budget = int(cap * SR)
         total = sum(int(r["n_samples"]) for r in rs)
         for r in rs:
             n = int(r["n_samples"])

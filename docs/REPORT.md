@@ -4124,3 +4124,117 @@ use is the safe part, and that an upload hands a copy to a third party.
 **Next.** Lund can go into a leave-one-dataset-out run in Edge Impulse. It
 holds drone audio only, so it can be a test set for recall, or training
 positives.
+
+# Iteration 8 - Edge Impulse on the pool, d3set held out, level-normalised
+
+> **Changed from iteration 7:** (1) the Edge Impulse model trains on every
+> prepared dataset but one (Nightjar, FPV, DDL, Lund, DroneNoise M5,
+> Halmstad) and is tested on the held-out one, d3set; (2) every training clip
+> is scaled to -30 dBFS RMS before upload, and the local runner scales each
+> test clip the same way before the Edge Impulse model sees it.
+>
+> **Why:** Mads asked for leave-one-dataset-out with all data in Edge
+> Impulse, with d3set first. Iteration 7's model returned a constant score
+> off its training rig, and the recording levels explain it: Nightjar's
+> median RMS is about -78 dBFS against about -27 dBFS for Halmstad and
+> DroneNoise (entry 059).
+>
+> **Kept the same:** the MFE settings and the default 1D CNN of entry 056; 1 s
+> window, 0.125 s hop; threshold frozen at 5% false positives on a local
+> validation session (now Nightjar 0804-3); scoring in the repo with
+> `score_hops.py`. Not in the pool: FSD50K and Glasgow (7-Zip is not
+> installed on this PC), and the Nightjar mower session (a confuser, as in
+> iteration 5).
+>
+> **Hypothesis:** with the level cue removed and six datasets in training,
+> the Edge Impulse model detects drones on the unseen d3set rig (recall clearly
+> above `comb`, at most 5% false positives on d3set's own no-drone audio).
+>
+> **Judged by:** d3set recall, false-positive rate and precision at the
+> validation-frozen threshold, against `comb` on the same windows. Model 6
+> and `lgbm` trained on d3set (entry 043) and are shown only as an
+> in-distribution reference. Iteration 5's held-out-d3set figures (entry 037)
+> come from other windows and a 10% operating point, and are quoted for
+> context only. No council was convened: the protocol is iteration 5's
+> (council entry 033) and the model family is iteration 7's (council entry
+> 055). The changes are the data pool and one preprocessing step.
+
+## 059 - The pool exported for Edge Impulse, level-normalised, uploaded
+- Date: 2026-10-26
+- Iteration: 8
+- Type: Preprocessing
+- Commit: uncommitted (on top of 68cb072)
+
+**What changed.**
+
+- DDL, d3set, FPV and Lund linked from Google Drive with directory junctions
+  and prepared with the existing scripts.
+- `export_edge_impulse.py` gained:
+  - `--hold SOURCE`: leave one dataset out. Validation is Nightjar 0804-3,
+    the mower session is left out, and DroneNoise is limited to microphone M5.
+  - `--norm-dbfs X`: scale each training clip to X dBFS RMS, with the peak
+    kept below full scale. Silent clips are skipped.
+  - A 3600 s cap for no-drone audio per group in hold mode (900 s for drone).
+- `run_wasm.js` gained the same scaling as an optional fourth argument.
+- Level check that motivated the scaling, `rms_dbfs` in the manifest, median
+  per recording:
+
+  | Source | Drone | No drone |
+  |---|---|---|
+  | Nightjar | -76.7 | -80.7 |
+  | Halmstad | -25.0 | -26.8 |
+  | DroneNoise | -30.3 | |
+
+- Edge Impulse:
+  - The 29 iteration-7 training samples were disabled in Studio, not deleted.
+  - The API key has the ingestion role only. Mads put it in
+    `data/.ei_api_key`, which is git-ignored.
+  - Uploads used the Edge Impulse CLI uploader 1.40.0, installed without its
+    native serial-port build.
+
+**How.**
+
+```powershell
+uv run python -I scripts/prepare_data.py ddl
+uv run python -I scripts/prepare_new_data.py d3set fpv lund
+uv run python -I scripts/export_edge_impulse.py --hold d3set --norm-dbfs -30
+# upload: edge-impulse-uploader --category training|testing, 200 files per call
+```
+
+**Result.** Exported clips (10 s each):
+
+| Split | Source | Drone | No drone |
+|---|---|---|---|
+| Training | Nightjar | 59.5 min | 60.7 min |
+| Training | FPV | 40.3 min | 94.5 min |
+| Training | DDL | 96.7 min | |
+| Training | Lund | 68.5 min | |
+| Training | DroneNoise | 7.2 min | |
+| Training | Halmstad | 5.0 min | 9.8 min |
+| Training | All (2,653 clips) | 277 min | 165 min |
+| Validation | Nightjar 0804-3 | 2.8 min | 12.2 min |
+| Testing | d3set | 108.8 min | 11.2 min |
+
+Five test clips are digitally silent. They are not in the normalised copy
+uploaded to Edge Impulse's test set, and the runner skips them.
+
+**Next.** Train in Edge Impulse, export, score d3set locally.
+
+## 060 - Requirements: a microcontroller is out of scope
+- Date: 2026-10-26
+- Iteration: 8
+- Type: Requirements
+- Commit: uncommitted (on top of 68cb072)
+
+**What changed.** New row in `REQUIREMENTS.md`: deployment on a
+microcontroller is out of scope (Mads, this conversation). Laptop and
+Raspberry Pi remain open.
+
+**Why.** Mads's decision. It removes the main reason left for Edge Impulse
+(entry 057: profiling and export for small targets). Training in Edge
+Impulse is also not faster end to end here. Model 6 trained in 459 s on the
+local GPU (entry 043). Edge Impulse needed about 20 min for the features of
+98,161 windows, plus the upload, before training even began.
+
+**Next.** Finish iteration 8 as planned, so its result is on record. Unless
+it is clearly better than expected, training stays in the repo.
