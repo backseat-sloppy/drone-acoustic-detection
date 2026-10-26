@@ -3403,3 +3403,45 @@ unchanged. The start distance now rises with the speed: 280, 299, 318, 337,
 none holds NaN. Synthetic data, not detection performance.
 
 **Next.** Wait for Mads.
+
+## 048 - Drone-only WAVs: a drone count and a 100-200 km/h speed range
+- Date: 2026-10-26
+- Iteration: 6
+- Type: Data
+- Commit: uncommitted (on top of e924a30)
+
+**What changed.** At Mads's request, `drone_only.py` now has an integer
+`N_DRONES` that sets how many files are generated (default 10). The speeds
+always run from 27.778 m/s (100 km/h) to 55.556 m/s (200 km/h) in
+`N_DRONES` equal steps (`np.linspace`). Before this the range was 28-45 m/s
+(entry 045). The start azimuths are spread evenly at 360/`N_DRONES` deg. The
+other settings are unchanged:
+- Start distance = speed x 10 s, so every file lasts 10 s (entry 047).
+- Elevation 40 deg.
+- Seed 1.
+
+**How.** `cd Pure-data+Script/EnviromentTest; uv run python drone_only.py`,
+with `N_DRONES = 10`.
+
+**Result.** Speeds were 27.8, 30.9, 34.0, 37.0, 40.1, 43.2, 46.3, 49.4, 52.5
+and 55.6 m/s (step 3.09 m/s). Start distances ran from 278 m to 556 m. All 20
+WAVs are 10 s long and none holds NaN. Synthetic data, not detection
+performance.
+
+Not handled: files from an earlier run with a larger `N_DRONES` stay in
+`drone_only/` until they are deleted by hand.
+
+**Next.** Wait for Mads.
+
+## 049 - drone_only JSON sidecars are git-ignored for now
+- Date: 2026-10-26
+- Iteration: 6
+- Type: Infrastructure
+- Commit: uncommitted (on top of e924a30)
+
+**What changed.** At Mads's request, `.gitignore` now has
+`Pure-data+Script/EnviromentTest/drone_only/*.json`, so the parameter
+sidecars of the drone-only files are not tracked for now. They were never
+committed. With entry 046 the whole `drone_only/` folder is now ignored.
+
+**Next.** Wait for Mads.

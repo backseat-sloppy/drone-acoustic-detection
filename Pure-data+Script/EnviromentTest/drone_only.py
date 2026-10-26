@@ -1,4 +1,4 @@
-"""Render 10 drone-only flights (no background, wind or events) to drone_only/.
+"""Render N_DRONES drone-only flights (no background, wind or events) to drone_only/.
 
 Nothing is random between files: the same drone (one seed) flies at speeds that rise
 in even steps, each from its own start point around the microphone. Start distance =
@@ -10,9 +10,10 @@ import soundfile as sf
 from drone_sim import make_scene, HERE, P_REF, FULL_SCALE_DB
 
 SEED = 1                                   # same drone sound (pitch, throttle) in every file
-SPEEDS = np.linspace(28, 45, 10)           # m/s, rising
+N_DRONES = 10                              # number of files to generate
+SPEEDS = np.linspace(100 / 3.6, 200 / 3.6, N_DRONES)   # m/s: 27.778 (100 km/h) to 55.556 (200 km/h), even steps
 DURATION_S, ELEV_DEG = 10.0, 40.0          # every flight reaches the mic after exactly 10 s
-AZIMUTHS = np.arange(10) * 36.0            # deg: 10 start points, 36 deg apart
+AZIMUTHS = np.arange(N_DRONES) * 360.0 / N_DRONES      # deg: start points evenly around the mic
 
 OUT = HERE / "drone_only"
 OUT.mkdir(exist_ok=True)
