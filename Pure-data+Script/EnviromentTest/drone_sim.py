@@ -8,7 +8,8 @@ HERE = Path(__file__).parent
 C, P_REF = 343.0, 20e-6
 FULL_SCALE_DB = 110.0                      # dB SPL that maps to +-1.0 in the calibrated WAV
 
-def make_scene(seed, bg_db=40.0, dist_range=(300, 500)):
+def make_scene(seed, bg_db=40.0, dist_range=(300, 500), **fixed):
+    """fixed: set any drawn parameter (speed, start_dist, elev_deg, az_deg, ...) instead of drawing it."""
     rng = np.random.default_rng(seed)
 
     # random parameters of this drone and flight
@@ -26,6 +27,7 @@ def make_scene(seed, bg_db=40.0, dist_range=(300, 500)):
         dive_gain=rng.uniform(60, 90),
         bg_db=bg_db,
     )
+    p.update(fixed)                        # after the draws, so the rng sequence stays the same
 
     T = p["start_dist"] / p["speed"]       # flight time = time to impact
     n = int(T / 0.02)

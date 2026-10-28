@@ -8,3 +8,6 @@ artifacts/*
 data/*
 !data/.gitkeep
 .venv-dml/
+
+# generated audio (Pure Data renders, scenes, drone_only/)
+*.wav

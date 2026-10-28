@@ -3264,3 +3264,142 @@ session's mower-only audio (125 windows) is a confuser never trained on.
 
 **Next.** Report to Mads. Run the three models over the real-test WAV files
 with `dad wav` once they exist.
+
+## 044 - Ten drone-only WAVs from the Pure Data patch
+- Date: 2026-10-26
+- Iteration: 6
+- Type: Data
+- Commit: uncommitted (on top of e924a30)
+
+**What changed.** New script
+`Pure-data+Script/EnviromentTest/drone_only.py`. It renders 10 flights of
+the Pure Data drone with no background, wind or events, one per seed (1-10).
+Each seed draws its own start point (distance 300-500 m, elevation 20-60 deg,
+azimuth 0-360 deg) and speed (28-45 m/s) through the existing `make_scene`.
+The flight is a straight line to the microphone with delay, Doppler and 1/r.
+Two fixes came with it, both in `render.py`:
+- Pd is now also found at `C:/Program Files*/Pd*/bin/pd.com` (Windows).
+  Before this, the script only looked under macOS `/Applications`.
+- Pd quits right after `wr stop`, and sometimes does so before `writesf~`
+  has written the WAV header. The header then says 0 samples, although the
+  samples are in the file. This always happened for seed 6 and gave a NaN
+  scene. `render_dry` now reads the raw 16-bit data after the 44-byte header
+  when the file reports 0 samples.
+
+**Why.** Mads asked for drone sound only, at different start points and
+speeds.
+
+**How.** `cd Pure-data+Script/EnviromentTest; uv run python drone_only.py`
+(Pd 0.55.2). It writes these files to `Pure-data+Script/EnviromentTest/drone_only/`:
+- `drone_NN.wav`: calibrated, full scale = 110 dB SPL, 32-bit float.
+- `drone_NN_listen.wav`: peak-normalised.
+- `drone_NN.json`: every drawn parameter.
+
+The WAVs are 32-bit float because the start of the calibrated files sits
+near -84 dBFS, which is too close to the 16-bit floor.
+
+**Result.**
+
+| Seed | Speed (m/s) | Start (m) | Length (s) |
+|---|---|---|---|
+| 1 | 36.7 | 490 | 13.4 |
+| 2 | 32.4 | 360 | 11.1 |
+| 3 | 29.5 | 347 | 11.8 |
+| 4 | 44.0 | 402 | 9.1 |
+| 5 | 41.7 | 462 | 11.1 |
+| 6 | 37.1 | 369 | 9.9 |
+| 7 | 38.6 | 479 | 12.4 |
+| 8 | 33.6 | 497 | 14.8 |
+| 9 | 42.8 | 357 | 8.4 |
+| 10 | 44.3 | 342 | 7.7 |
+
+All 10 files were checked: none holds NaN, and each gets louder towards
+impact (RMS of the last second is about 100x the RMS of the first half).
+This is synthetic data and is not detection performance (section 5).
+
+**Assessment.** Scaffolding only; no requirement is affected.
+
+**Next.** Wait for Mads.
+
+## 045 - Drone-only WAVs: rising speed instead of random draws
+- Date: 2026-10-26
+- Iteration: 6
+- Type: Data
+- Commit: uncommitted (on top of e924a30)
+
+**What changed.** Mads asked for the 10 files from entry 044 to step through
+rising speed instead of using random draws.
+- `make_scene` in `drone_sim.py` now takes `**fixed`, which overrides any
+  drawn parameter. The override is applied after the draws, so the random
+  sequence, and with it every existing scene, is unchanged.
+- `drone_only.py` now uses one seed (1) for all 10 files, so the drone's
+  pitch and throttle are the same everywhere. Only speed and start point
+  differ:
+  - Speed rises in even steps from 28 to 45 m/s.
+  - Start distance is fixed at 400 m and elevation at 40 deg.
+  - Azimuth steps 0, 36, ..., 324 deg.
+
+The files from entry 044 were overwritten under the same names.
+
+**How.** `cd Pure-data+Script/EnviromentTest; uv run python drone_only.py`.
+
+**Result.**
+
+| File | Speed (m/s) | Azimuth (deg) | Length (s) |
+|---|---|---|---|
+| 01 | 28.0 | 0 | 14.3 |
+| 02 | 29.9 | 36 | 13.4 |
+| 03 | 31.8 | 72 | 12.6 |
+| 04 | 33.7 | 108 | 11.9 |
+| 05 | 35.6 | 144 | 11.2 |
+| 06 | 37.4 | 180 | 10.7 |
+| 07 | 39.3 | 216 | 10.2 |
+| 08 | 41.2 | 252 | 9.7 |
+| 09 | 43.1 | 288 | 9.3 |
+| 10 | 45.0 | 324 | 8.9 |
+
+All 10 files were checked: they are 32-bit float, none holds NaN, and each
+gets louder towards impact. Synthetic data, not detection performance.
+
+**Assessment.** Scaffolding only; no requirement is affected.
+
+**Next.** Wait for Mads.
+
+## 046 - Generated WAV files are git-ignored
+- Date: 2026-10-26
+- Iteration: 6
+- Type: Infrastructure
+- Commit: uncommitted (on top of e924a30)
+
+**What changed.** Mads asked for all generated WAV files to be ignored by git.
+- `.gitignore` now has `*.wav`.
+- The 16 WAV files that were already committed under
+  `Pure-data+Script/EnviromentTest/` (scenes, live runs, `out.wav`, dry and
+  approach tests) were removed from the index with `git rm --cached`. They
+  remain on disk.
+
+The scripts in that folder re-create them. The JSON sidecars in
+`drone_only/` are still tracked candidates.
+
+**Result.** No numbers. **Next.** Wait for Mads.
+
+## 047 - Drone-only WAVs are all 10 s long
+- Date: 2026-10-26
+- Iteration: 6
+- Type: Data
+- Commit: uncommitted (on top of e924a30)
+
+**What changed.** Mads asked for every drone file to be 10 s long.
+`drone_only.py` now sets the start distance to speed x 10 s instead of a
+fixed 400 m (entry 045). Every flight therefore reaches the microphone after
+exactly 10 s, and no file is cut or padded. Speed (28-45 m/s, even steps),
+azimuth (36 deg steps), elevation (40 deg) and the drone sound (seed 1) are
+unchanged. The start distance now rises with the speed: 280, 299, 318, 337,
+356, 374, 393, 412, 431, 450 m.
+
+**How.** `cd Pure-data+Script/EnviromentTest; uv run python drone_only.py`.
+
+**Result.** All 20 WAVs (10 calibrated, 10 listen) are 10.0000 s at 44.1 kHz,
+none holds NaN. Synthetic data, not detection performance.
+
+**Next.** Wait for Mads.
