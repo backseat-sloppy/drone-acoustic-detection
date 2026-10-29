@@ -245,3 +245,50 @@ Facts established on the files, not in the hosts' descriptions:
 Processing: `scripts/prepare_new_data.py` (entry 023) writes each recording
 once and one manifest row per stretch of drone, background or uncertain
 state, plus `range_track.csv` with the slant range at 10 Hz.
+
+## Added on 2026-10-23: five FSD50K eval clips for the stress test
+
+`scripts/fetch_env_clips.py` reads five members of `FSD50K.eval_audio`
+straight from Zenodo with HTTP range requests (the central directory of the
+split zip, then only those members), so the 6.3 GB archive is not needed.
+They are written to `data/extracted/fsd50k_env/` (derived data) with a
+`sources.csv` that records the FSD50K id, labels, licence and uploader. The
+ground-truth and metadata zips were downloaded to `data/FSD50K/` as published.
+
+| Category | FSD50K id | Title | Uploader | Licence |
+|---|---|---|---|---|
+| gunfire | 404334 | Firefight | TheBuilder15 | CC0 |
+| explosion | 353421 | Landing Bomb.wav | djfroyd | CC BY 3.0 |
+| wind | 344887 | Sound Of Strong Wind.mp3 | thearxx08 | CC0 |
+| birds | 427369 | birds swarm in bush.wav | Douglas711 | CC0 |
+| car | 336754 | Car Drive by 03.WAV | luminadii | CC BY 3.0 |
+
+FSD50K eval is a held-out test source (REQUIREMENTS.md), and the models
+trained only on dev. These clips are therefore used only to score finished
+models (report entry 044), never for training or tuning.
+
+## Added on 2026-10-26: Glasgow archive on the Mac, and the stems
+
+The Glasgow drone-authentication archive was fetched again on this machine
+from its host, the University of Glasgow research data repository:
+<https://researchdata.gla.ac.uk/1348> (DOI 10.5525/gla.researchdata.1348,
+CC BY 4.0; Diao, Zhang, Zhao and Khamis, "Drone Authentication via Acoustic
+Fingerprint", ACSAC 2022).
+
+- Files: `data/Glasgow_Drone_Authentication/ACSAC_2022_Drone_Authentication.7z`
+  (MD5 `49136cf99204b5b84d6c103f1c2a40c1`) and `readme.txt`. The repository
+  page publishes no checksum to compare against.
+- Extracted with 7-Zip to `data/extracted/Glasgow/` (2.9 GB): 256 drone
+  recordings in `1to8/`, `9to16/`, `17to24/` and one noise recording,
+  `noise/_uav_2022noise_n_noise_1m_.WAV`.
+- Facts established on the files: 44.1 kHz, mono, 16-bit. A drone recording
+  at 1 m is about -53 dBFS throughout, with no stretch where the motors are
+  off. The noise recording (60.5 min) sits at about -62 dBFS with events up
+  to about -40 dBFS. By RMS it is louder than the drone recordings (2.5 dB),
+  and by 21 dB in 50-200 Hz.
+
+`scripts/build_stems.py` writes `data/processed/stems/` (report entry 052):
+75 mono 44.1 kHz stems with a `manifest.csv` that carries each stem's
+source, licence and uploader. The FSD50K eval clips in it are read by range
+request, like the stress-test clips above, and the same held-out rule
+applies to them.
