@@ -4468,3 +4468,76 @@ this.
 **Next.** None decided. Re-rendering the 10 short `drone_only` files
 (`uv run python drone_only.py` in `Pure-data+Script/EnviromentTest`) would
 make entries 062-064 cleaner.
+
+## 066 - A window for the drone-in-war test
+- Date: 2026-10-29
+- Iteration: between 8 and 9 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted, branch PySound (on top of 3f97135)
+
+**What changed.** New `scripts/drone_war_gui.py`, a matplotlib window in the
+style of `stress_gui.py`. Sliders set the parameters of
+`scripts/drone_war_grid.py`: number of speeds and their range, number of war
+clips, number of war levels, first level and step in dB, wind, and the drone
+(seed, pitch scale, elevation, time to impact). Run starts the grid in a
+background thread, Stop ends it after the current clip, and each war
+level's grid (all three detectors per panel) appears as it finishes,
+next to a table of recall, false positives, alarms 3 s before impact and
+missed approaches. `< level` and `level >` page between levels. Output in
+`artifacts/drone_war/gui/`.
+
+To serve both the CLI and the window, `drone_war_grid.py` was split into
+`run()` (the grid, writing `results.csv` and `hops.csv`), `draw_grid()`
+(draws a level into any figure) and `summarise()`. Models and the war
+track load once per session. The drone cache moved to
+`artifacts/drone_war/drones/`, shared by all runs. Its file names now hold
+every drone parameter (seed, pitch scale, elevation, flight time, speed),
+because the old names (seed and speed only) would have reused a wrong
+drone when the GUI changed the pitch. The 10 drones of entry 065 were moved
+there under the new names.
+
+**Why.** Mads asked for a GUI, started from the command line, to change the
+parameters, run the virtual test and see the graphs.
+
+**How.**
+```
+uv run python scripts/drone_war_gui.py
+```
+Checks: after the split, `drone_war_grid.py --speeds 2 --wars 2 --levels 1`
+gave results identical to entry 065's `results.csv` for the same 12
+(mix, detector) cells. The window was driven headless (Agg backend,
+sliders set to 2 speeds x 3 war clips x 2 levels, Run pressed): it
+finished 12 mixes, drew both levels and filled the table. It was not
+opened as a real window here.
+
+**Result.** Tooling; no new numbers.
+
+**Next.** None decided.
+
+## 067 - The drone-in-war window takes three counts, no sliders
+- Date: 2026-10-29
+- Iteration: between 8 and 9 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted, branch PySound (on top of f3dd9f8)
+
+**What changed.** Mads: the drone should be set only by how many speeds to
+run between 100 and 200 km/h, the war level the same way, and no sliders.
+`scripts/drone_war_gui.py` (entry 066) now has three number fields:
+drone speeds (100-200 km/h), war clips (spread over the 10 min track) and
+war levels (-20 to 0 dB), each 1 to 20. The other drone and wind settings
+are fixed at the defaults of entry 065 (seed 1, pitch scale 0.85,
+40 deg, 10 s to impact, no wind). Bad input shows a message in the window.
+In `scripts/drone_war_grid.py` the war levels now work like the speeds:
+`--levels` gains spread evenly from `--war-min-db` (-20) to `--war-max-db`
+(0). These replace `--war-start-db` and `--war-step-db`. The default of
+3 levels gives -20, -10 and 0 dB, the same as entry 065.
+
+**How.**
+```
+uv run python scripts/drone_war_gui.py
+```
+Check: driven headless with "abc" and "0" typed in the speeds field (both
+refused with a message), then 2 speeds x 3 war clips x 2 levels: levels
+-20 and 0 dB drawn, 12 mixes, table filled. Not opened as a real window.
+
+**Result.** Tooling; no new numbers.
