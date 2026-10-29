@@ -4321,3 +4321,88 @@ next (iteration 9 after this renumbering).
 
 **Next.** Report to Mads. Open data question: FSD50K and Glasgow need 7-Zip
 on this PC before the repo's own pool can be rebuilt here.
+
+## 062 - Confidence-over-time plot, tried on the synthetic drone_only flights
+- Date: 2026-10-29
+- Iteration: between 8 and 9 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted (on top of 287bf4c)
+
+**What changed.** New `scripts/plot_confidence.py`. It reads the per-hop
+CSVs from `dad wav --out` and draws one panel per WAV file: the detector's
+score (confidence) on the y axis, window-end time on the x axis, one line
+per detector, its threshold dashed, and the hops labelled drone shaded.
+
+**Why.** Mads: what matters is how confidence develops over time, not only
+the per-window totals.
+
+**How.**
+```
+uv run dad wav <copy of drone_only with dad sidecars> --detector artifacts/models/it6_final_none_simdist_dscnn.pt --threshold-from artifacts/runs/it6_final.json --out drone_only_dscnn.csv
+uv run dad wav <same> --detector artifacts/models/it6_final_none_simdist_lgbm.pkl --threshold-from artifacts/runs/it6_final.json --out drone_only_lgbm.csv
+uv run python scripts/plot_confidence.py drone_only_dscnn.csv drone_only_lgbm.csv --labels CNN LightGBM --thresholds 0.2968 0.6115 --out confidence_drone_only.png
+```
+The `.json` files in `Pure-data+Script/EnviromentTest/drone_only/` are scene
+parameters, not `dad` sidecars, so `dad wav` reads them as "no drone". The
+scored run used a copy of the 50 calibrated WAVs (not `_listen`) with
+sidecars `{"drones": [{"start_s": 0, "end_s": 10, "impact_s": 10}]}`, from
+`drone_only.py` (start distance = speed x 10 s, every flight ends at the mic).
+The raw folder was not changed. Window 1 s, hop 0.125 s, frozen iteration 6
+thresholds.
+
+**Result.** Synthetic audio (Pure Data drone, no background), so these are
+scaffolding, not detection performance (CLAUDE.md section 5). 50 flights,
+5 drone sounds x 10 speeds (100-200 km/h), every window labelled drone.
+CNN: per-window recall 64.3%, alarm at least 3 s before impact in 41 of 50.
+`lgbm`: 4.7%, 24 of 50, no alarm at all in 16. `comb` not run. False alarms
+cannot be measured: the set has no no-drone audio.
+
+What the plot shows that the totals did not:
+- Seeds 1 and 2 (lowest pitch scales): CNN confidence stays low until the
+  last 2-4 s, then rises.
+- Seeds 3-5: CNN confidence rises within about 1.5 s of the start and stays
+  near 0.9, then **falls to near 0 before impact** on all 20 flights of
+  seeds 4 and 5: in the last 0.5-1 s for seed 4, the last 2 s for seed 5
+  (read off the plot, not computed). Not investigated; candidates are the overhead
+  pass at 40 deg elevation, clipping at close range, or a level outside the
+  training range.
+- `lgbm` confidence is noisy and mostly below its threshold.
+
+**Assessment.** The tool works; the drop near impact matters for R5 if it
+holds on real audio. Not verified on real recordings.
+
+**Next.** Use the plot on the real test files. Check whether the near-impact
+drop also appears on real close passes before acting on it.
+
+## 063 - plot_confidence.py now scores the WAVs itself
+- Date: 2026-10-29
+- Iteration: between 8 and 9 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted (on top of 287bf4c)
+
+**What changed.** `scripts/plot_confidence.py` (entry 062) took CSVs from
+`dad wav --out`. It now takes WAV files or folders, runs the detectors
+itself through `dad.wavio` (read and resample, 1 s window every 0.125 s,
+log-mel, model score; the same path as `dad wav`) and plots. Defaults: the
+iteration 6 CNN and `lgbm` with the thresholds frozen in
+`artifacts/runs/it6_final.json`. `--csv` writes every hop's score.
+
+**Why.** Mads: the script should hold the computation as well as the plot,
+one command from WAV to graph.
+
+**How.**
+```
+uv run python scripts/plot_confidence.py "Pure-data+Script/EnviromentTest/out.wav" --out confidence_out_wav.png --csv out_wav_hops.csv
+```
+Check: the CNN's 75 per-hop scores on `out.wav` equal those from
+`uv run dad wav ... --out` in entry 062 to within 1e-6.
+
+**Result.** `out.wav` (10.3 s Pure Data render, synthetic, no sidecar, so
+not scored): CNN confidence 0.5-0.94 until about 8.5 s, then falls to
+0.1-0.2; `lgbm` stays below its threshold 0.61 except the last hop.
+Scaffolding only, not detection performance.
+
+**Assessment.** Tooling; no requirement is moved. The late CNN drop matches
+the near-impact drop seen in entry 062.
+
+**Next.** Unchanged from entry 062.
