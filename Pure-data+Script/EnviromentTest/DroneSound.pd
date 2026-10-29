@@ -88,6 +88,9 @@
 #X msg 1738 938 \; wr stop \; pd quit;
 #X obj 730 235 * 1;
 #X obj 828 212 r pscale;
+#X obj 1367 1108 writesf~ 1;
+#X msg 1637 1162 stop;
+#X msg 1533 1099 open -bytes 3 pd_drone.wav \, start;
 #X connect 0 0 1 0;
 #X connect 0 1 2 0;
 #X connect 0 2 3 0;
@@ -163,6 +166,7 @@
 #X connect 61 0 7 0;
 #X connect 61 0 7 1;
 #X connect 61 0 82 0;
+#X connect 61 0 89 0;
 #X connect 64 0 67 0;
 #X connect 65 0 66 0;
 #X connect 66 0 6 0;
@@ -177,3 +181,5 @@
 #X connect 85 0 86 0;
 #X connect 87 0 0 0;
 #X connect 88 0 87 1;
+#X connect 90 0 89 0;
+#X connect 91 0 89 0;
