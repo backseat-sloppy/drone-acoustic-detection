@@ -4321,3 +4321,150 @@ next (iteration 9 after this renumbering).
 
 **Next.** Report to Mads. Open data question: FSD50K and Glasgow need 7-Zip
 on this PC before the repo's own pool can be rebuilt here.
+
+## 064 - One synthetic drone in the war soundscape env_001, CNN, lgbm and comb over time
+- Date: 2026-10-29
+- Iteration: between 8 and 9 (synthetic check)
+- Type: Evaluation
+- Commit: uncommitted, branch PySound (on top of 3f97135). Entries 062-063
+  and the first `scripts/plot_confidence.py` are on master (8d90f3d); the
+  script was copied here and extended.
+
+**What changed.** The first Pure Data drone, `drone_s01_01` (seed 1,
+100 km/h, start 277.8 m, 40 deg elevation, impact at 10.0 s), added to the
+first 10 s of the war soundscape `artifacts/environment/saved/env_001.wav`
+(20 s, calm war phase, wind, distant front, machine gun at 3.3-7.2 s
+(1.4 km) and 10.5-12.6 s (356 m), small arms at 14.6 s). Both start at 0 s.
+`plot_confidence.py` now also plots `comb`: the threshold comes from the
+`comb (no ML)` row of `it6_final.json` (hold out none, 1.914), a single
+file gets one panel per detector, and a panel whose scores exceed 1 uses
+a symlog axis.
+
+**Why.** Mads asked for the drone in a war soundscape, scored by all three
+detectors over time.
+
+**How.** Both WAVs are calibrated 1.0 = 110 dB SPL, so they were summed
+with no gain. Sidecar: drone from 0.81 s (start distance / 343 m/s, when
+the first sound arrives) to impact at 10.0 s, none after. Output in
+`artifacts/soundscape/env001_mix/` (git-ignored).
+```
+uv run python scripts/plot_confidence.py artifacts/soundscape/env001_mix/env001_drone_s01_01.wav --detector artifacts/models/it6_final_none_simdist_dscnn.pt --detector artifacts/models/it6_final_none_simdist_lgbm.pkl --detector comb --out artifacts/soundscape/env001_mix/confidence_env001_drone_s01_01.png --csv artifacts/soundscape/env001_mix/hops.csv
+uv run dad wav artifacts/soundscape/env001_mix/env001_drone_s01_01.wav --detector <each> --threshold-from artifacts/runs/it6_final.json   # comb: --threshold 1.9136685717165247
+```
+
+**Result.** Synthetic scaffolding, one clip, one drone: never detection
+performance (CLAUDE.md section 5). Window 1 s, hop 0.125 s, 153 decisions:
+66 drone, 73 no drone, 14 left out (window partly drone).
+Levels: drone 31.6 dB SPL at 0-5 s, 39.4 at 5-8 s, 48.8 at 8-9 s,
+70.6 at 9-10 s; war noise 62-69 dB SPL over the same spans.
+
+| Detector | Threshold | Recall | False pos. | First hit | Alarm >= 3 s before impact |
+|---|---|---|---|---|---|
+| CNN | 0.297 | 30.3% | 0.0% | 7.63 s (2.38 s before) | no |
+| `lgbm` | 0.612 | 0.0% | 0.0% | none | no |
+| `comb` | 1.914 | 19.7% | 12.3% | 6.00 s (4.00 s before) | yes |
+
+`comb` false alarms at 11.25-12.0 s and at 14.9 and 15.6 s, during the
+356 m machine gun and the small arms. The CNN stays below 0.12 through
+the war noise, including both machine-gun bursts, and rises to 1.0 at
+7.6-9.5 s, when the drone is within about 20 dB of the background.
+
+**Assessment.** The CNN gives no false alarms on this clip but alarms
+only 2.4 s before impact (R5 asks for 3 s). It needs the drone within
+about 20 dB of the war noise. The near-impact drop of entry 062 does not
+show here; seed 1 is the lowest-pitched drone. `comb` alarms earlier but
+fires on gunfire. One clip and one drone: not evidence for a requirement.
+
+**Next.** None decided. The soundscape test in
+`Pure-data+Script/EnviromentTest/soundscape_test.py` does the same for
+every drone over many noise clips if a broader check is wanted.
+
+## 065 - Drone speeds x war clips x war levels grid; a Pd render bug fixed
+- Date: 2026-10-29
+- Iteration: between 8 and 9 (synthetic check)
+- Type: Evaluation, Correction
+- Commit: uncommitted, branch PySound (on top of 3f97135)
+
+**What changed.**
+1. New `scripts/drone_war_grid.py`. For each war level, each drone speed and
+   each war clip it mixes one Pure Data drone into a window of the war
+   track, scores the mix with CNN, `lgbm` and `comb`, and plots one figure
+   per war level: rows are speeds, columns are war clips, and all three
+   detectors share each panel. The number of speeds, war clips and levels
+   and the level step are arguments (`--speeds`, `--wars`, `--levels`,
+   `--war-start-db`, `--war-step-db`). Drones are rendered by
+   `DroneSound.pd` through `drone_sim.make_scene`, as `drone_only.py` does,
+   and cached per speed. `out.wav` and `throttle.txt` next to the patch are
+   restored after rendering.
+2. **Bug fix in `Pure-data+Script/EnviromentTest/render.py`.** Pd sometimes
+   quits (`wr stop; pd quit`, 300 ms after the last step) before
+   writesf~'s disk thread has written the last buffer. The render is then
+   about 0.6 s short, and `drone_sim.make_scene` pads it with zeros, which
+   removes the closest part of the flight. `render_dry` now checks the
+   length, renders again (up to 3 attempts), and fails if it stays short.
+   It also reads the raw samples whenever the header holds fewer frames
+   than the file.
+
+**Why.** Mads asked for drones at several speeds mixed into several war
+clips, repeated at rising war levels, with the counts easy to change, and
+all three detectors in one plot.
+
+**How.**
+```
+uv run python scripts/drone_war_grid.py --out artifacts/drone_war/run1
+```
+Defaults: drone seed 1, pitch scale 0.85 (as `drone_only.py` seed 1),
+10 speeds 100-200 km/h, each starting speed x 10 s away at 40 deg
+elevation and hitting the mic 10 s after the clip starts; 10 war clips of
+20 s, offsets 0-580 s spread evenly over the 600 s track; war gain -20,
+-10 and 0 dB (0 = the track as rendered); no wind. Truth: drone from its
+first sound at the mic (start distance / 343 m/s) to impact at 10 s, none
+after. Window 1 s, hop 0.125 s, frozen iteration 6 thresholds (CNN 0.297,
+`lgbm` 0.612, `comb` 1.914). In the plots `comb` is shown as
+s / (s + 1.914), so its threshold sits at 0.5 on the same 0-1 axis.
+Outputs (git-ignored): `results.csv` (one row per mix and detector),
+`hops.csv`, `grid_war-20dB.png`, `grid_war-10dB.png`, `grid_war+0dB.png`.
+
+The render check: the 100 km/h drone, rendered again after the fix, is
+sample-identical to `drone_only/drone_s01_01.wav`. One of the 10 renders
+in this run came out short and was redone. **10 of the 50 existing
+`drone_only` renders are short** (last sound before 10 s): s01_06 (9.70 s),
+s01_10 (7.76 s), s02_01, s02_04, s02_05, s02_06, s02_07, s03_07, s05_03,
+s05_08 (9.69-9.71 s). They were not re-rendered. Entry 062's drop to near
+zero before impact holds for seed 4 (no short render), but two of its
+seed 5 flights are short.
+
+**Result.** Synthetic scaffolding, never detection performance (CLAUDE.md
+section 5). 100 mixes per level, each 153 decisions; drone share of the
+scored windows about 0.48.
+
+| War gain | Detector | Recall | False pos. | Alarm >= 3 s before impact | No alarm |
+|---|---|---|---|---|---|
+| -20 dB | CNN | 52.9% | 0.8% | 83/100 | 1 |
+| -20 dB | `lgbm` | 3.0% | 0.0% | 0/100 | 38 |
+| -20 dB | `comb` | 23.7% | 13.5% | 80/100 | 0 |
+| -10 dB | CNN | 35.5% | 0.9% | 70/100 | 6 |
+| -10 dB | `lgbm` | 1.2% | 0.0% | 0/100 | 76 |
+| -10 dB | `comb` | 15.3% | 13.5% | 56/100 | 1 |
+| 0 dB | CNN | 20.1% | 0.9% | 46/100 | 16 |
+| 0 dB | `lgbm` | 0.4% | 0.0% | 0/100 | 90 |
+| 0 dB | `comb` | 10.3% | 13.5% | 58/100 | 6 |
+
+The war clip matters more than the speed. CNN recall per clip at -10 dB:
+0 s 60%, 64 s 48%, 129 s 2%, 193 s 21%, 258 s 43%, 322 s 1%, 387 s 6%,
+451 s 56%, 516 s 74%, 580 s 45%. The clips at 129, 322 and 387 s lie in
+or next to the track's intense phases (121-224 s and 309-388 s).
+`comb`'s false-positive rate does not change with the war level: it
+reacts to gunfire whatever the gain.
+
+**Assessment.** On the CNN, each 10 dB of war costs about 15-17 points of
+recall and 13-24 alarms in 100 at 3 s before impact, with false
+positives under 1% throughout. In intense firefights it detects almost
+nothing. `lgbm` is not useful here. `comb` gives early alarms but about
+13% false positives on gunfire. One drone sound (seed 1, the lowest
+pitch), no wind, one synthetic war track: no requirement is judged from
+this.
+
+**Next.** None decided. Re-rendering the 10 short `drone_only` files
+(`uv run python drone_only.py` in `Pure-data+Script/EnviromentTest`) would
+make entries 062-064 cleaner.
