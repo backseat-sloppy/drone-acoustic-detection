@@ -4541,3 +4541,306 @@ refused with a message), then 2 speeds x 3 war clips x 2 levels: levels
 -20 and 0 dB drawn, 12 mixes, table filled. Not opened as a real window.
 
 **Result.** Tooling; no new numbers.
+
+## 068 - War-shaped noise: a steady background at exact SNRs, in Python and Pd
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted, branch PySound (on top of eeb1242)
+
+**What changed.** A stationary noise with the long-term average spectrum
+(LTAS) of war sounds, like speech-shaped noise, for testing the detectors at
+exact SNRs. `scripts/war_shaped_noise.py` averages the Welch spectra (Hann,
+nfft 1024, 50 % overlap, 48 kHz) of a folder of war recordings, each scaled to
+unit total power, optionally 1/3-octave smoothed, and writes
+`Pure-data+Script/WarShapedNoise/war_gain.txt` (513 gains, bins 0..512,
+unit power gain, DC = 0), `war_ltas.png` and a reference WAV made in the
+frequency domain. `--check REC.wav` compares a recording's LTAS with the
+table per 1/3-octave band. `Pure-data+Script/WarShapedNoise/war_noise.pd` is
+the Pd vanilla patch: `noise~` (with `seed`) -> `block~ 1024 4` shaper
+(Hann, `rfft~`, gain table, `rifft~`, Hann, `/~ 1536`) -> gain set from
+`env~` levels of drone and noise for a target SNR -> mix, `dac~`, 3-channel
+`writesf~` (mix, drone, noise). Usage, the SNR definition, train/test
+separation and limitations are in `docs/war_shaped_noise.md`.
+
+**Why.** Mads asked for war-shaped noise as a controlled noise variable, so
+noise can be swept like the existing war-level grid but with an exact SNR.
+
+**How.**
+```
+uv run python scripts/war_shaped_noise.py --octave-frac 3 --drone Pure-data+Script/EnviromentTest/drone_only/drone_s01_01.wav
+uv run python scripts/war_shaped_noise.py --check Pure-data+Script/WarShapedNoise/war_noise_ref.wav
+pd -nogui -nosound -batch -r 48000 -open war_noise.pd -open <launcher>.pd   # Pd 0.57
+```
+Input: the 23 clips in `data/processed/stems/war/` (FSD50K, 8 classes). The
+Pd checks used throwaway launcher patches and a synthetic 180 Hz harmonic
+tone at -26 dBFS as the "drone", not a drone recording; they test the patch,
+not detection.
+
+**Result.** Tooling checks only, no detector was run.
+- Reference WAV against the table: max band error 0.34 dB, RMS 0.18 dB
+  (1/3-octave bands 99 Hz to 16 kHz, 30 s).
+- Pd output, 20 s, seed 7, noise channel: max band error 0.43 dB, RMS
+  0.25 dB. Output RMS -5.01 dBFS against -4.77 dBFS for uniform noise through
+  a unit-power gain, which confirms the N x 1.5 = 1536 normalisation (an error
+  there would be 6 dB or more).
+- Seed 7 rendered twice: identical samples. Seed 7 against 1001: correlation
+  0.003.
+- SNR target 0 dB: measured 0.02 dB below; target -20 dB: -20.02 dB
+  (drone channel RMS minus noise channel RMS, after the first second). In the
+  first second the env~ windows are filling and the noise sits at its start
+  level.
+- Two bugs found and fixed while checking: a file name sent to
+  `wsn-drone-file` arrived as a selector (fixed with `[list]`), and the gain
+  jumped to its +40 dB cap before the first noise level arrived (now 1 until
+  the noise level is known).
+
+**Assessment.** The patch reproduces the target spectrum within 0.5 dB per
+1/3-octave band and hits the set SNR within 0.03 dB on a steady signal. The
+FSD50K stems are 44.1 kHz, so the table is empty above 22.05 kHz at 48 kHz.
+The noise is stationary and has none of the transients of the war track;
+`docs/war_shaped_noise.md` proposes running it next to the war-track grid as
+a second, "realistic" condition. No detector numbers yet.
+
+**Next.** Mads decides whether war-shaped noise joins the drone-in-war grid as
+an SNR axis, and whether SNR is defined with the gain tracking the drone or
+frozen at a reference distance. Not run against any detector.
+
+## 069 - War-shaped noise: SNR is set at 150 m and then frozen
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (tooling)
+- Type: Evaluation
+- Commit: uncommitted, branch PySound (on top of eeb1242)
+
+**What changed.** Mads chose the SNR definition left open in entry 068: the
+noise level is set so the SNR is the target at a reference distance, then
+frozen, and the drone rises out of the noise as it approaches. The reference
+distance is 150 m (the alarm distance of the requirements). In
+`Pure-data+Script/WarShapedNoise/war_noise.pd`: the track toggle now listens
+on `wsn-track`; a new `wsn-freeze-at T` (ms) turns tracking on and off again
+at T + 341 ms, so the frozen drone level is the RMS over a 0.68 s window
+centred on T; the drone `env~` now reports every 85 ms (was 0.34 s), so the
+window centre lands within 85 ms before T. T = 1000 x (start_dist - 150) /
+speed for the straight constant-speed flights in the flight `.json` files.
+`docs/war_shaped_noise.md` updated.
+
+**Why.** With a drone that rises about 20 dB over the approach, a tracked SNR
+holds the noise in step with the drone and is not what a soldier hears. A
+frozen SNR at the alarm distance is.
+
+**How.** Headless Pd 0.57, 48 kHz, seed 7, SNR 0 dB, `wsn-freeze-at 8000`,
+"drone" = synthetic 180 Hz harmonic tone rising 1 dB per second from
+-39.5 dBFS (scratch file, not a drone recording), 20 s.
+
+**Result.** Tooling check, no detector run. The noise channel follows the
+drone up to 8 s (-38.9 to -32.8 dBFS per second) and stays at -32.0 to
+-32.7 dBFS from 8 to 20 s while the drone rises to -20.5 dBFS. SNR over the
+0.68 s window centred on 8 s: +0.21 dB (target 0 dB).
+
+**Assessment.** The freeze works and lands within a quarter dB of the target
+on a rising signal. Remaining error comes from the 85 ms update step and the
+noise fluctuating within one window.
+
+**Next.** Use `wsn-freeze-at` with T from each flight's `.json` when war-shaped
+noise is rendered for the detectors. Not run against any detector.
+
+## 070 - War-shaped noise patch: monitor volume, it clipped the speakers
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (tooling)
+- Type: Correction
+- Commit: uncommitted, branch PySound (on top of eeb1242)
+
+**What changed.** Mads opened `war_noise.pd` and it was far too loud on his
+speakers. Cause: the patch sent the mix straight to `dac~`. Before a drone is
+heard the noise gain is 1, and the shaped noise then has RMS 0.56 and peaks
+of 2.58, with 7.5 % of samples beyond full scale (measured on the seed 7
+render of entry 068). The mix now goes to `dac~` through a `monitor_volume`
+number box (linear, set to 0.02, about -34 dB, at load, ramped by `line~` from
+0) and `clip~ -1 1`. `writesf~` still takes the mix before this, so
+recordings are unchanged.
+
+**How.** Headless Pd 0.57, the seed 7 launcher of entry 068 rendered again
+with the new patch.
+
+**Result.** The recording is sample-identical to the one before the change.
+The level at the speakers was not measured; at 0.02 the start-up noise sits
+at about -39 dBFS RMS with peaks near -32 dBFS.
+
+**Assessment.** A safety fix for listening; no effect on test material.
+
+**Next.** None.
+
+## 071 - War-shaped noise patch: new layout in four panels
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted, branch PySound (on top of eeb1242)
+
+**What changed.** Mads found `war_noise.pd` impossible to read. The patch is
+rebuilt with the same signal processing in four coloured panels in signal
+order: 1 noise, 2 drone and SNR, 3 freeze at 150 m, 4 output and recording.
+Signals cross panels by `s~`/`r~` names instead of long wires; start-up
+(table read, Hann window, defaults, DSP on) moved into a `pd init` subpatch;
+comments are short and wrapped. The gain array is now 513 points (bins
+0..512), the size of `war_gain.txt`; `tabreceive~` fills the rest of the
+1024-sample block with zeros, as in Pd's example I03.
+
+Two bugs were introduced by the rebuild and fixed before handing it over:
+the message boxes `open ...wav, start` were written with the escaped comma
+glued to the file name, so Pd read it as part of the name and the drone and
+the record button did nothing; and the mix channel of the recording came one
+64-sample block (1.3 ms) after the drone and noise channels because it went
+through an extra `s~`/`r~`. The recorder now takes all three channels from
+the same objects.
+
+**How.** Headless Pd 0.57, 48 kHz, the six launchers of entries 068-069
+(seed 7 twice, seed 1001, synthetic tone at SNR 0 and -20 dB, rising tone
+frozen at 8 s).
+
+**Result.** Same as before the rebuild: noise RMS -5.01 dBFS; seed 7
+repeats sample for sample, seed 1001 correlation 0.0035; SNR -0.01 and
+-20.01 dB against 0 and -20; frozen SNR at 8 s +0.24 dB, noise held at
+-32.4 dBFS afterwards; spectrum check max band error 0.44 dB, RMS 0.24 dB;
+mix = drone + noise to 1e-6 in all six recordings. The layout was checked
+on a drawn preview, not in the Pd GUI.
+
+**Assessment.** Readability fix; behaviour unchanged as far as these checks
+reach.
+
+**Next.** Mads checks the layout in Pd.
+
+## 072 - War-shaped noise patch: noise only, 44.1 kHz
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted, branch PySound (on top of eeb1242)
+
+**What changed.** Mads wants the patch to generate war-shaped noise only, with
+no drone in it. `Pure-data+Script/WarShapedNoise/war_noise.pd` now has two
+panels: noise (seed, `noise~`, the FFT shaper unchanged, gain table) and level
+and output (noise level in dBFS RMS, mono 32-bit float recording, monitor
+volume with `clip~`). The drone input, the SNR control and the 150 m freeze
+of entries 068-071 are removed; the SNR is set when the noise is mixed with a
+drone in Python, still at 150 m and then held (entry 069), with a snippet in
+`docs/war_shaped_noise.md`. Mads also chose 44.1 kHz, the rate of the war
+clips and the drone renders: `war_gain.txt`, `war_ltas.png` and
+`war_noise_ref.wav` were rebuilt with `--sr 44100`, and `pd init` prints a
+warning when Pd runs at another rate. The level gain is
+`10^((L + 5.0)/20)`, from the -5.0 dBFS RMS the shaper gives with the
+unit-gain table (entry 068).
+
+**How.**
+```
+uv run python scripts/war_shaped_noise.py --sr 44100 --octave-frac 3 --drone Pure-data+Script/EnviromentTest/drone_only/drone_s01_08.wav
+uv run python scripts/war_shaped_noise.py --sr 44100 --check <recording>
+pd -nogui -nosound -batch -r 44100 -open war_noise.pd -open <launcher>.pd   # Pd 0.57, 20 s
+```
+
+**Result.** Tooling checks only, no detector run. Reference WAV against the
+44.1 kHz table: max band error 0.44 dB, RMS 0.19 dB. Pd, seed 7, level -20:
+RMS -19.99 dBFS, peak -6.92 dBFS, max band error 0.51 dB, RMS 0.25 dB. Level
+-30: -29.99 dBFS. Seed 7 twice: identical; seed 7 against 1001: correlation
+0.005. Run at 48 kHz, the console printed the sample-rate warning.
+
+**Assessment.** The patch is now a plain noise generator with a calibrated
+level; SNR handling moved to the mixing step, where it is exact.
+
+**Next.** None until Mads asks for noise renders or mixes.
+
+## 073 - War-shaped noise: what the spectrum is made of; shout clips kept
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (tooling)
+- Type: Data
+- Commit: uncommitted, branch PySound (on top of eeb1242)
+
+**What changed.** Nothing in the table. Mads asked whether the noise is
+really war-shaped; the LTAS of the 23 war clips was split by class.
+
+**How.** Welch LTAS per clip as in `scripts/war_shaped_noise.py` (44.1 kHz,
+nfft 1024, unit total power per clip), averaged per class, run inline (not
+saved as a script).
+
+**Result.** Share of each class's power by band (20-200 / 200-500 / 500-1000
+/ 1000-4000 / 4000+ Hz): explosion_far (3 clips) 84/8/2/0/0 %; tank (2)
+59/22/12/6/0 %; mortar_artillery (5) 44/29/13/9/2 %; machine_gun (3)
+30/24/18/23/4 %; small_arms (3) 41/4/22/24/5 %; jet (3) 15/42/29/13/1 %;
+air_raid_siren (1) 0/17/56/27/0 %; shout (3) 0/14/62/22/2 %; all 23 clips
+37/21/24/14/2 %. Of the power at 600-750 Hz (the bump in `war_ltas.png`),
+shout causes 47 % and the siren 14 %. The drone's harmonics are strongest at
+250-700 Hz.
+
+**Assessment.** The noise matches the LTAS of this clip set, but part of its
+mid-band is shouting, which masks the drone harder than battlefield sound
+alone. The clips are FSD50K uploads, not frontline recordings.
+
+**Next.** Proposed rebuilding without the shout clips; Mads chose to keep the
+table as it is. Results with this noise should state that it includes
+shouting and a siren.
+
+## 074 - War-shaped noise: PNGs regenerated, per-class plot added
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted, branch PySound (on top of eeb1242)
+
+**What changed.** Mads asked for new PNGs. `scripts/war_shaped_noise.py`
+now also writes `war_ltas_by_class.png`: each class's share of the average
+LTAS (folder name = class), 1/3-octave smoothed, so the lines add up to the
+total; it shows the entry 073 breakdown as a picture. All plots in
+`Pure-data+Script/WarShapedNoise/` were regenerated at 44.1 kHz:
+`war_ltas.png` (drone overlay `drone_s01_08.wav`, 49.4 m/s),
+`war_ltas_by_class.png`, `war_noise_ref_check.png`, and
+`war_noise_out_check.png` from a fresh 20 s Pd render (`war_noise_out.wav`,
+seed 7, -20 dBFS).
+
+**How.**
+```
+uv run python scripts/war_shaped_noise.py --sr 44100 --octave-frac 3 --drone Pure-data+Script/EnviromentTest/drone_only/drone_s01_08.wav
+uv run python scripts/war_shaped_noise.py --sr 44100 --check Pure-data+Script/WarShapedNoise/war_noise_ref.wav
+uv run python scripts/war_shaped_noise.py --sr 44100 --check Pure-data+Script/WarShapedNoise/war_noise_out.wav
+```
+
+**Result.** `war_gain.txt` byte-identical to before. Reference: max band
+error 0.44 dB, RMS 0.19 dB. Pd render: RMS -20.0 dBFS, max band error
+0.51 dB, RMS 0.25 dB.
+
+**Assessment.** Plots only; no numbers changed.
+
+**Next.** None.
+
+## 075 - War-shaped noise: an exact-spectrum 20 s clip
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (tooling)
+- Type: Preprocessing
+- Commit: uncommitted, branch PySound (on top of eeb1242)
+
+**What changed.** Mads asked for the most precise spectrum, 20 s long. The
+reference WAV in `scripts/war_shaped_noise.py` is now random-phase noise:
+every FFT bin of the clip has exactly the target magnitude (the 513-bin
+table interpolated in power onto the clip's frequency grid), only the phase
+is random from the seed; DC is 0 and the Nyquist bin real. Before, it was
+Gaussian noise shaped by the table, whose magnitude per bin is random. The
+default length is now 20 s (was 30 s). Output:
+`Pure-data+Script/WarShapedNoise/war_noise_ref.wav`, 44.1 kHz, seed 0,
+-20 dBFS RMS.
+
+**How.**
+```
+uv run python scripts/war_shaped_noise.py --sr 44100 --octave-frac 3 --drone Pure-data+Script/EnviromentTest/drone_only/drone_s01_08.wav --seconds 20
+uv run python scripts/war_shaped_noise.py --sr 44100 --check Pure-data+Script/WarShapedNoise/war_noise_ref.wav
+```
+plus an inline check of the clip's full-length FFT against the table per
+1/3-octave band (not saved as a script).
+
+**Result.** 20.000 s, RMS -20.00 dBFS, peak -6.52 dBFS. Full-length FFT
+against the table, 1/3-octave bands 50 Hz-20 kHz: max |diff| 0.0000 dB.
+The script's Welch-based `--check`: max 0.39 dB, RMS 0.14 dB (was 0.44 /
+0.19 with Gaussian noise at 30 s); the remaining difference is below 1 kHz,
+where a band holds one or two 1024-point bins and the Hann window smears
+them, so it is the check's resolution. Loop seam: jump from last to first
+sample 0.011 against a median step of 0.013. `war_gain.txt` unchanged.
+
+**Assessment.** The clip has the target spectrum exactly; it is the one to
+use as a fixed test background. The Pd patch stays as the live generator.
+
+**Next.** None.
