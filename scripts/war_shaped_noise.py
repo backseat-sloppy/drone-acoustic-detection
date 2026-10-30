@@ -31,9 +31,6 @@ import argparse
 from math import gcd
 from pathlib import Path
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import soundfile as sf
 from scipy.signal import resample_poly, welch
@@ -96,6 +93,15 @@ def db(p):
     return 10 * np.log10(np.maximum(p, 1e-20))
 
 
+def plt():
+    """pyplot on the Agg backend, loaded only to plot: importing this module must not change
+    a GUI's backend (scripts/drone_war_grid.py uses shaped_noise)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot
+    return matplotlib.pyplot
+
+
 def build(a):
     files = sorted(p for p in Path(a.in_dir).rglob("*") if p.suffix.lower() in (".wav", ".mp3"))
     if not files:
@@ -121,7 +127,7 @@ def build(a):
     ref *= 10 ** (-20 / 20) / np.sqrt(np.mean(ref ** 2))        # -20 dBFS RMS
     sf.write(a.out_dir / "war_noise_ref.wav", ref.astype(np.float32), a.sr, subtype="FLOAT")
 
-    fig, ax = plt.subplots(figsize=(9, 5))
+    fig, ax = plt().subplots(figsize=(9, 5))
     ax.semilogx(f[1:], db(raw[1:]), color="0.7", lw=1, label=f"war LTAS, {len(spectra)} files")
     if a.octave_frac:
         ax.semilogx(f[1:], db(p[1:]), color="C3", lw=2, label=f"1/{a.octave_frac}-octave smoothed")
@@ -136,7 +142,7 @@ def build(a):
     fig.savefig(a.out_dir / "war_ltas.png", dpi=130)
 
     # each class's share of the average (lines add up to the black total), 1/3-octave smoothed to read
-    fig, ax = plt.subplots(figsize=(9, 5))
+    fig, ax = plt().subplots(figsize=(9, 5))
     ax.semilogx(f[1:], db(smooth(f, raw, 3)[1:]), color="k", lw=2.5, label="all files")
     for c, v in sorted(by_class.items()):
         part = smooth(f, np.sum(v, axis=0) / len(spectra), 3)
@@ -172,7 +178,7 @@ def check(a):
     err = np.array(err)
     print(f"band error: max |diff| {np.abs(err).max():.2f} dB, RMS {np.sqrt(np.mean(err ** 2)):.2f} dB")
 
-    fig, ax = plt.subplots(figsize=(9, 5))
+    fig, ax = plt().subplots(figsize=(9, 5))
     ax.semilogx(f[1:], db(want[1:]), color="C3", lw=2, label="target (war_gain.txt)")
     ax.semilogx(f[1:], db(got[1:]), color="C0", lw=1, label=Path(a.check).name)
     ax.set(xlabel="frequency (Hz)", ylabel="power per bin (dB re total)", xlim=(20, a.sr / 2))

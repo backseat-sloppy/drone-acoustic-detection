@@ -4777,3 +4777,145 @@ the window only.) Not opened as a real window.
 clip at 0 s, no drone): the CNN raised no false alarm at -20 or 0 dB;
 `comb` alarmed on 10.5% of the windows at both levels, on the machine
 gun at 12.8-14.8 s.
+
+## 075 - The virtual test uses war-shaped noise in place of the war track
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (synthetic check)
+- Type: Evaluation
+- Commit: uncommitted, branch master (on top of 1dd077d)
+
+Note on numbering: the merge 1dd077d kept this log's entries 068-074 and
+dropped the war-shaped-noise entries 068-075 from commit 5b7161b. Their
+text is still in git (`git show 5b7161b -- docs/REPORT.md`). Restoring them
+is Mads's call. This entry is numbered after the last one in the file.
+
+**What changed.** Mads: substitute the war noise in the virtual test with
+the new war-shaped noise.
+`scripts/drone_war_grid.py` has `--war-source shaped` (the default) and
+`track` (the old war track). The shaped noise comes from
+`war_shaped_noise.shaped_noise()`: random-phase noise with exactly the
+committed 44.1 kHz gain table
+(`Pure-data+Script/WarShapedNoise/war_gain.txt`), seed 1000 + clip index
+(the doc's test seeds start at 1000). Its level is set to the RMS of the
+war-track window it replaces, so "war 0 dB" is as loud as before (83.2 dB
+SPL for the first 20 s) and the dB columns stay comparable with entries
+065-074. `results.csv` gains a `war_source` column. The window always uses
+the shaped noise.
+`scripts/war_shaped_noise.py` loaded pyplot on the Agg backend at import,
+which would have taken the GUI's window away. It now loads pyplot only when
+it plots. Its build and `--check` behaviour are unchanged.
+
+**How.**
+```
+uv run python scripts/drone_war_gui.py
+uv run python scripts/drone_war_grid.py --war-source shaped ...
+uv run python scripts/war_shaped_noise.py --sr 44100 --check artifacts/drone_war/run1/listen/war_shaped_noise_0dB_listen.wav
+```
+The listening file (20 s, 0 dB, seed 1000, unscaled, 1.0 = 110 dB SPL):
+RMS 83.2 dB SPL, the same as the war track's first 20 s, with peak -13.3 dBFS
+against +1.0 dBFS for the track. The spectrum check against the table gave
+0.40 dB at most per 1/3-octave band, RMS 0.14 dB.
+
+**Result.** Synthetic, one noise clip, 2 speeds (100, 200 km/h) plus a
+no-drone row, war -20 and 0 dB plus a no-war column:
+
+| War | CNN recall | CNN false pos. | `comb` recall | `comb` false pos. |
+|---|---|---|---|---|
+| none (drone only) | 34.9% | - | 94.4% | - |
+| shaped -20 dB | 100.0% | **100.0%** | 4.8% | 3.6% |
+| shaped 0 dB | 100.0% | **100.0%** | 3.2% | 3.6% |
+
+**The CNN takes war-shaped noise for a drone.** With no drone at all, its
+score stays at 0.4-0.9 for the whole clip, over its threshold of 0.30, at
+both levels. The same score at -20 and 0 dB is expected: the frontend
+removes each window's level, and the noise is all there is. Its recall of
+100% is therefore no evidence of detection. `comb` barely reacts to the
+noise, and barely to the drone in it. Likely reason, not verified: the
+noise is steady and carries strong energy at 600-750 Hz from the shout
+and siren clips (`docs/war_shaped_noise.md`), the band of the drone's
+harmonics, and the CNN never saw steady noise with that spectrum as a
+negative. One noise seed, one drone sound.
+
+**Next.** None decided. The CNN's false alarms on steady noise matter more
+than any recall in this condition. A check with the shout and siren clips
+left out of the table would test the likely reason.
+
+## 076 - Listening files: 150 km/h drone in war-shaped noise at -40 and -80 dB
+
+**Why.** Mads asked for listening files for the 150 km/h drone mixed into
+war-shaped noise at -40 dB and at -80 dB.
+
+**What.** The mixes come from the virtual test itself, with `--keep`, so
+they are what the detectors scored, unscaled (1.0 = 110 dB SPL). Commit
+1dd077d, plus the uncommitted changes from entry 075.
+```
+uv run python scripts/drone_war_grid.py --speeds 1 --speed-min 150 --speed-max 150 --wars 1 --levels 2 --war-min-db -80 --war-max-db -40 --keep --out artifacts/drone_war/listen150
+```
+Files: `artifacts/drone_war/listen150/mixes/war-40dB_150kmh_off0.wav` and
+`war-80dB_150kmh_off0.wav`, 20 s at 44.1 kHz. Seed-1 drone, first sound at
+1.21 s, impact at 10 s. The noise is 43.2 dB SPL at -40 dB and 3.2 dB SPL
+at -80 dB, so the -80 dB file is in effect the drone alone. The whole file
+is 55.8 and 55.5 dB SPL RMS, peak 0.079.
+
+**Result.** Synthetic, one clip each, 63 drone windows and 75 no-drone
+windows, with 15 left out at the boundaries:
+
+| War | CNN recall | CNN false pos. | `comb` recall | `comb` false pos. |
+|---|---|---|---|---|
+| shaped -80 dB | 28.6% | 0.0% | 90.5% | 4.0% |
+| shaped -40 dB | 100.0% | **100.0%** | 25.4% | 4.0% |
+
+At -40 dB the noise sits about 12 dB under the drone's RMS, and the CNN
+still alarms on every window. This agrees with entry 075: the CNN reacts
+to the noise itself, not to its level. At -80 dB the CNN behaves as it
+does on the drone alone (entry 075: 34.9%).
+
+**Next.** None. These are listening files.
+
+## 077 - Drone-in-war window: click to zoom, and page 2 with confidence over SNR
+
+**Why.** Mads asked for panels that can be clicked and zoomed, and for a
+second page with confidence over SNR.
+
+**What.** Commit 1dd077d, plus the uncommitted changes from entries 075-076.
+- `scripts/drone_war_grid.py`: `hop_snr` gives each hop's SNR in dB. It
+  takes the drone's energy over the noise's energy (war plus wind) in the
+  hop's 1 s window, both band-passed with a causal 4th-order Butterworth
+  filter to 50-8000 Hz, the frontend's mel range. A window with no drone
+  sound is -inf; a window with no noise is +inf.
+  - `run()` keeps the drone and the noise apart until the mix, stores the
+    SNR per hop in each cell, and writes it to `hops.csv` as `snr_db`.
+  - `draw_grid` takes `x="time"` or `x="snr"`. On the SNR page each hop is
+    a dot, and a panel with no finite SNR says so ("no drone", "no noise").
+- `scripts/drone_war_gui.py`:
+  - A "Page 2: SNR" / "Page 1: time" button switches the x axis.
+  - Clicking a panel opens it alone in its own window, with matplotlib's
+    zoom and pan toolbar. Scrolling zooms the x axis around the mouse.
+  - After a run, both pages are saved: `grid_speed_x_war.png` and
+    `grid_speed_x_war_snr.png`.
+
+**First version.** It filtered with `sosfiltfilt`. The backward pass leaked
+filter ringing into the silence before the drone's first sound, which gave
+SNRs down to -749 dB. The causal filter leaves those windows at exactly
+zero drone energy (-inf, not plotted).
+
+**Checks.**
+- `hop_snr` on a 1 kHz sine at amplitude 1 against a 500 Hz sine at 0.1
+  gives [-inf, 20.0, 20.0] for windows ending at 1, 2 and 3 s, with the
+  drone silent for the first second.
+- A headless GUI run: speeds 100 and 200 km/h plus no drone, war -40, -20
+  and 0 dB plus no war, 11 mixes. Both pages draw; the five panels with
+  no SNR are labelled; a simulated click opens the panel; a scroll narrows
+  its x range.
+- In that run, at 200 km/h the SNR reaches 24.2 dB at -40 dB, and the
+  -20 dB column sits 20 dB lower, as it should.
+- `uv run pytest`: all pass.
+- Not checked in a live window: real mouse clicks, and the toolbar.
+
+**What page 2 shows (synthetic, one drone, one noise clip).** The CNN
+stays at 0.5-0.85 from -60 to -10 dB SNR at every war level, so its score
+does not follow SNR (see entry 075). `comb` stays near 0 below about
+-10 dB SNR. It reaches its threshold only in the -40 dB column, at
+100 km/h, from about -10 dB SNR up.
+
+**Next.** None. A tool change.

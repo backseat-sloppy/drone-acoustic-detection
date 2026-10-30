@@ -6,7 +6,10 @@ For each war level (dB added to the war track), for each drone speed, for each w
             as drone_only.py does: one drone sound (--drone-seed, --pscale), flying straight at
             the microphone from speed x --flight-s metres, so it hits the mic --flight-s seconds
             after it starts. Rendered once and cached in artifacts/drone_war/drones/.
-    war     a --length s window of the 10 min war track (data/processed/war/war_track.wav,
+    war     war-shaped noise (--war-source shaped, the default; scripts/war_shaped_noise.py):
+            steady noise with the war's long-term spectrum, seed 1000 + clip index, scaled to the
+            RMS of the track window below; or (--war-source track) that window itself:
+            a --length s window of the 10 min war track (data/processed/war/war_track.wav,
             scripts/war_track.py), --wars windows spread evenly over the track, at
             --levels gains spread evenly from --war-min-db to --war-max-db (0 dB = the track as rendered);
             --no-war adds a column without war (drone only); --no-drone adds a row without a
@@ -42,6 +45,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PD_DIR = ROOT / "Pure-data+Script" / "EnviromentTest"
 sys.path[:0] = [str(Path(__file__).parent), str(PD_DIR)]
 import env_sim as es  # noqa: E402
+import war_shaped_noise as wsn  # noqa: E402
 
 from dad.config import DEFAULT  # noqa: E402
 from dad.wavio import evaluate_file, load_scorer, rates, threshold_from_run  # noqa: E402
@@ -49,6 +53,8 @@ from dad.wavio import evaluate_file, load_scorer, rates, threshold_from_run  # n
 C = 343.0
 RUN = ROOT / "artifacts/runs/it6_final.json"
 MODELS = ROOT / "artifacts/models"
+WSN_GAIN = ROOT / "Pure-data+Script/WarShapedNoise/war_gain.txt"   # 44.1 kHz table (docs/war_shaped_noise.md)
+WSN_SEED = 1000                                              # test-noise seeds start at 1000 (docs/war_shaped_noise.md)
 DETECTORS = {"CNN": str(MODELS / "it6_final_none_simdist_dscnn.pt"), "comb": "comb"}   # lgbm dropped (Mads, 2026-10-30)
 COLORS = {"CNN": "#2a78d6", "comb": "#1baf7a"}
 OFF = float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
@@ -98,13 +104,27 @@ def render_drones(speeds_kmh, a, cache):
     return out
 
 
+def hop_snr(drone, noise, t_end, fs, window_s, band=(50.0, 8000.0)):
+    """Per-hop SNR in dB: drone energy over noise energy in each window [t_end - window_s, t_end),
+    both band-passed to the frontend's mel range. -inf with no drone, +inf with no noise."""
+    from scipy.signal import butter, sosfilt
+    sos = butter(4, band, btype="bandpass", fs=fs, output="sos")
+    cum = [np.concatenate([[0.0], np.cumsum(sosfilt(sos, z) ** 2)]) for z in (drone, noise)]
+    b = np.clip(np.round(np.asarray(t_end) * fs).astype(int), 0, len(drone))
+    a = np.clip(b - int(round(window_s * fs)), 0, None)
+    e_d, e_n = (c[b] - c[a] for c in cum)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return 10 * np.log10(np.maximum(e_d, 0) / np.maximum(e_n, 0))
+
+
 def squash(score, thr):
     """comb scores run 0 to hundreds; s/(s+thr) maps them onto 0-1 with the threshold at 0.5."""
     return score / (score + thr)
 
 def draw_grid(fig, cells, rows, cols, row_label, col_label, thr, title, rect=(0.0, 0.0, 1.0, 0.93),
-              row_axis="drone speed", col_axis="war clip"):
-    """A grid of score-over-time panels into `fig`, inside rect (left, bottom, right, top).
+              row_axis="drone speed", col_axis="war clip", x="time"):
+    """A grid of score panels into `fig`, inside rect (left, bottom, right, top), over time
+    (x="time") or over the hop's SNR (x="snr"). Each panel's ax.cell is its (row, col) key.
     cells[(row, col)] holds each detector's decisions; row_label / col_label name one row / column.
     Returns the axes and the two headings it added (the legend is fig.legends)."""
     shown = {k: (0.5 if k == "comb" else t) for k, t in thr.items()}
@@ -118,12 +138,21 @@ def draw_grid(fig, cells, rows, cols, row_label, col_label, thr, title, rect=(0.
         for j, cv in enumerate(cols):
             ax = fig.add_subplot(gs[i, j], sharex=axes[0] if axes else None, sharey=axes[0] if axes else None)
             axes.append(ax)
+            ax.cell = (rv, cv)
             if (rv, cv) not in cells:                       # no drone and no war: silence, not run
                 ax.text(0.5, 0.5, "silence:\nnot run", ha="center", va="center", fontsize=fs, color="#999999",
                         transform=ax.transAxes)
+            elif x == "snr" and not np.isfinite(cells[(rv, cv)]["snr"]).any():
+                ax.text(0.5, 0.5, "no SNR:\n" + ("no drone" if rv == NO_DRONE else "no noise"), ha="center",
+                        va="center", fontsize=fs, color="#999999", transform=ax.transAxes)
             for k in DETECTORS if (rv, cv) in cells else ():
                 d = cells[(rv, cv)][k]
-                ax.plot(d.t_end, squash(d.score, thr[k]) if k == "comb" else d.score, color=COLORS[k], lw=1.0, label=k)
+                y = squash(d.score, thr[k]) if k == "comb" else d.score
+                if x == "snr":
+                    ok = np.isfinite(cells[(rv, cv)]["snr"])
+                    ax.plot(cells[(rv, cv)]["snr"][ok], y[ok], color=COLORS[k], ls="", marker=".", ms=3, label=k)
+                else:
+                    ax.plot(d.t_end, y, color=COLORS[k], lw=1.0, label=k)
                 ax.axhline(shown[k], color=COLORS[k], lw=0.7, ls="--")
             ax.set_ylim(0, 1)
             ax.grid(color="#e5e5e5", lw=0.5)
@@ -137,7 +166,7 @@ def draw_grid(fig, cells, rows, cols, row_label, col_label, thr, title, rect=(0.
             else:
                 ax.tick_params(labelleft=False)
             if i == len(rows) - 1:
-                ax.set_xlabel("time (s)", fontsize=fs)
+                ax.set_xlabel("SNR (dB, 50-8000 Hz, per 1 s window)" if x == "snr" else "time (s)", fontsize=fs)
             else:
                 ax.tick_params(labelbottom=False)
     heads = [fig.text((left + rect[2]) / 2, top + 0.032, f"{col_axis} →", ha="center", fontsize=10, color="#555555"),
@@ -160,12 +189,12 @@ def draw_level(fig, res, speeds, offsets, thr, gain_db, rect=(0.0, 0.0, 1.0, 0.9
                      f"war {war_tag(gain_db)}", rect, col_axis="war clip (start in the track)")
 
 
-def draw_speed_war(fig, by_gain, speeds, gains, offset, thr, rect=(0.0, 0.0, 1.0, 0.93)):
+def draw_speed_war(fig, by_gain, speeds, gains, offset, thr, rect=(0.0, 0.0, 1.0, 0.93), title=None, x="time"):
     """One war clip: rows = drone speeds, columns = war levels (only the levels in by_gain)."""
     cells = {(v, g): by_gain[g][(v, offset)] for g in by_gain for v in speeds if (v, offset) in by_gain[g]}
     cols = [g for g in gains if g in by_gain]
     return draw_grid(fig, cells, speeds, cols, speed_label, lambda g: "no war" if g == OFF else f"war {g:+g} dB", thr,
-                     f"war clip @ {offset:g} s", rect, col_axis="war noise level")
+                     title or f"war clip @ {offset:g} s", rect, col_axis="war noise level", x=x)
 
 
 def plot_level(res, speeds, offsets, thr, gain_db, path):
@@ -176,10 +205,11 @@ def plot_level(res, speeds, offsets, thr, gain_db, path):
     print(f"-> {path}")
 
 
-def plot_speed_war(by_gain, speeds, gains, offset, thr, path):
+def plot_speed_war(by_gain, speeds, gains, offset, thr, path, title=None, x="time"):
     from matplotlib.figure import Figure
     fig = Figure(figsize=(2.3 * len(by_gain) + 0.9, 1.5 * len(speeds) + 1.3))
-    draw_speed_war(fig, by_gain, speeds, gains, offset, thr, rect=(0.0, 0.0, 1.0, 1 - 0.9 / fig.get_figheight()))
+    draw_speed_war(fig, by_gain, speeds, gains, offset, thr, rect=(0.0, 0.0, 1.0, 1 - 0.9 / fig.get_figheight()),
+                   title=title, x=x)
     fig.savefig(path, dpi=110)
     print(f"-> {path}")
 
@@ -214,7 +244,7 @@ def _detectors():
 def defaults():
     return argparse.Namespace(speeds=10, speed_min=100.0, speed_max=200.0, wars=10, levels=3, war_min_db=-20.0,
                               war_max_db=0.0, wind=1, length=20.0, onset=0.0, flight_s=10.0, drone_seed=1,
-                              pscale=0.85, elev_deg=40.0, keep=False, no_drone=False, no_war=False, out=ROOT / "artifacts/drone_war/run1")
+                              pscale=0.85, elev_deg=40.0, keep=False, no_drone=False, no_war=False, war_source="shaped", out=ROOT / "artifacts/drone_war/run1")
 
 
 def steps(lo, hi, n, what):
@@ -259,11 +289,19 @@ def run(a, progress=print, on_level=None, stop=lambda: False):
     work = a.out / "mixes"
     work.mkdir(parents=True, exist_ok=True)
     war = {o: es.build(10, o, a.wind, {}, n, 0, src)[1] for o in offsets}   # layers: war (0 dB) and wind
+    if a.war_source == "shaped":
+        # war-shaped noise in place of the war track: the war's long-term spectrum, no events,
+        # at the RMS of the track window it replaces, so 0 dB is as loud as the track at 0 dB
+        gain = np.loadtxt(WSN_GAIN)
+        for k, o in enumerate(offsets):
+            if "war" in war[o]:
+                x = wsn.shaped_noise(gain, es.FS, a.length, WSN_SEED + k)[:n]
+                war[o]["war"] = x * np.sqrt(np.mean(war[o]["war"] ** 2) / np.mean(x ** 2))
 
     rows, by_gain = [], {}
     with open(a.out / "hops.csv", "w", newline="", encoding="utf-8") as hops_f:
         hops = csv.writer(hops_f)
-        hops.writerow(["war_gain_db", "speed_kmh", "war_offset_s", "detector", "t_end_s", "score", "drone", "truth"])
+        hops.writerow(["war_gain_db", "speed_kmh", "war_offset_s", "detector", "t_end_s", "score", "drone", "truth", "snr_db"])
         for g in gains:
             res = {}
             for v in speeds:
@@ -281,8 +319,10 @@ def run(a, progress=print, on_level=None, stop=lambda: False):
                     if stop():
                         raise InterruptedError("stopped")
                     L = war[off]
-                    mix = L.get("war", 0) * 10 ** (g / 20) + L.get("wind", 0) + np.zeros(n)
-                    mix[j:j + len(x)] += x[: n - j]
+                    noise = L.get("war", 0) * 10 ** (g / 20) + L.get("wind", 0) + np.zeros(n)
+                    drone_part = np.zeros(n)
+                    drone_part[j:j + len(x)] = x[: n - j]
+                    mix = noise + drone_part
                     wav = work / f"war{war_tag(g)}_{v:g}kmh_off{off:g}.wav"
                     sf.write(wav, (mix / es.FULL).astype(np.float32), es.FS, subtype="FLOAT")
                     wav.with_suffix(".json").write_text(json.dumps(truth))
@@ -291,13 +331,16 @@ def run(a, progress=print, on_level=None, stop=lambda: False):
                         r = evaluate_file(wav, sc, DEFAULT, thr[k])
                         d, lab = r["decisions"], r["labels"]
                         cell[k], cell["labels"] = d, lab
+                        if "snr" not in cell:
+                            cell["snr"] = hop_snr(drone_part, noise, d.t_end, es.FS, DEFAULT.window_seconds)
                         q = rates(r["counts"], r["leads"])
                         lead = r["leads"][0] if r["leads"] else dict(first_alarm_s=None, lead_s=None)
-                        rows.append(dict(war_gain_db=g, speed_kmh=round(v, 1), war_offset_s=off, detector=k,
+                        rows.append(dict(war_source=a.war_source, war_gain_db=g, speed_kmh=round(v, 1), war_offset_s=off, detector=k,
                                          threshold=thr[k], recall=q["recall"], false_positive_rate=q["false_positive_rate"],
                                          first_alarm_s=lead["first_alarm_s"], lead_s=lead["lead_s"], **r["counts"]))
-                        hops.writerows([g, round(v, 1), off, k, round(float(t), 4), float(s), bool(b), int(y)]
-                                       for t, s, b, y in zip(d.t_end, d.score, d.drone, lab))
+                        hops.writerows([g, round(v, 1), off, k, round(float(t), 4), float(s), bool(b), int(y),
+                                        round(float(q_), 2)]
+                                       for t, s, b, y, q_ in zip(d.t_end, d.score, d.drone, lab, cell["snr"]))
                     res[(v, off)] = cell
                     if not a.keep:
                         wav.unlink()
@@ -327,6 +370,8 @@ def main():
     ap.add_argument("--no-war", action="store_true", help="add a column with no war (drone only)")
     ap.add_argument("--war-min-db", type=float, default=d.war_min_db, help="war gain of the quietest level, dB")
     ap.add_argument("--war-max-db", type=float, default=d.war_max_db, help="war gain of the loudest level, dB")
+    ap.add_argument("--war-source", choices=["shaped", "track"], default=d.war_source,
+                    help="shaped: war-shaped noise (stationary, the war's spectrum); track: the war track itself")
     ap.add_argument("--wind", type=int, default=d.wind, help="env_sim wind step 1-10 (1 = off)")
     ap.add_argument("--length", type=float, default=d.length, help="clip length, s")
     ap.add_argument("--onset", type=float, default=d.onset, help="drone start in the clip, s")
