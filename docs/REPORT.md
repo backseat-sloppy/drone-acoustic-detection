@@ -4541,3 +4541,29 @@ refused with a message), then 2 speeds x 3 war clips x 2 levels: levels
 -20 and 0 dB drawn, 12 mixes, table filled. Not opened as a real window.
 
 **Result.** Tooling; no new numbers.
+
+## 068 - Flush plots button with confirmation in the drone-in-war window
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted, branch master (on top of a45d424)
+
+**What changed.** `scripts/drone_war_gui.py` has a "Flush plots" button.
+It deletes nothing by itself: it shows how many PNG files under
+`artifacts/drone_war/` would go and their size, and reveals a red
+"Confirm" button. Confirm deletes those PNGs and clears the grid and the
+table in the window. Results (CSV) and the cached drones are kept. Run
+cancels a pending flush, and neither button deletes anything while a run
+is going.
+
+**Why.** Mads asked for a way to free disk space from the plots, with a
+confirmation step against mistakes.
+
+**How.** Check: the window driven headless with its root pointed at a
+scratch folder holding two PNGs and a CSV. Flush alone deleted nothing,
+Run hid Confirm, then Flush and Confirm deleted both PNGs and kept the
+CSV. At the time of writing the plots under `artifacts/drone_war/` are
+6 files, 4.4 MB. The CSVs (7.7 MB) and WAVs (drone cache and listening
+files, 28 MB) are larger. Not opened as a real window.
+
+**Result.** Tooling; no new numbers.

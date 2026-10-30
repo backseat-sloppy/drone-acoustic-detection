@@ -44,6 +44,10 @@ b_run = Button(fig.add_axes([0.015, 0.65, 0.08, 0.04]), "Run")
 b_stop = Button(fig.add_axes([0.10, 0.65, 0.08, 0.04]), "Stop")
 b_prev = Button(fig.add_axes([0.015, 0.60, 0.08, 0.04]), "< level")
 b_next = Button(fig.add_axes([0.10, 0.60, 0.08, 0.04]), "level >")
+b_flush = Button(fig.add_axes([0.015, 0.06, 0.08, 0.04]), "Flush plots")
+ax_confirm = fig.add_axes([0.10, 0.06, 0.08, 0.04])
+b_confirm = Button(ax_confirm, "Confirm", color="#f4c7c3", hovercolor="#ee9a93")
+ax_confirm.set_visible(False)                                 # only shown after Flush plots
 status = fig.text(0.015, 0.57, "Type the counts and press Run.", fontsize=8, color=TEXT, va="top", wrap=True)
 table = fig.text(0.015, 0.47, "", fontsize=8, family="monospace", color=TEXT, va="top")
 
@@ -121,6 +125,7 @@ def poll():
 def on_run(_):
     if state["thread"]:
         return
+    ax_confirm.set_visible(False)                            # Run cancels a pending flush
     try:
         a = params()
     except ValueError as e:
@@ -138,6 +143,39 @@ def on_run(_):
     state["thread"].start()
 
 
+def plot_files():
+    return sorted((dwg.ROOT / "artifacts/drone_war").rglob("*.png"))
+
+
+def on_flush(_):
+    if state["thread"]:
+        status.set_text("a run is going: Stop it before flushing plots")
+    else:
+        files = plot_files()
+        mb = sum(p.stat().st_size for p in files) / 1e6
+        status.set_text(f"Delete {len(files)} plot files ({mb:.1f} MB) in artifacts/drone_war and clear the window? "
+                        "Press Confirm. Results (CSV) and cached drones are kept.")
+        ax_confirm.set_visible(True)
+    fig.canvas.draw_idle()
+
+
+def on_confirm(_):
+    ax_confirm.set_visible(False)
+    if state["thread"]:                                      # a run started between Flush and Confirm
+        status.set_text("a run is going: nothing deleted")
+    else:
+        files = plot_files()
+        for p in files:
+            p.unlink()
+        for ax in state["grid"]:
+            ax.remove()
+        fig.legends.clear()
+        table.set_text("")
+        state.update(grid=[], levels={}, rows=[], shown=None)
+        status.set_text(f"deleted {len(files)} plot files")
+    fig.canvas.draw_idle()
+
+
 def step(d):
     done = sorted(state["levels"])
     if state["shown"] is None or not done:
@@ -148,6 +186,8 @@ def step(d):
 
 
 b_run.on_clicked(on_run)
+b_flush.on_clicked(on_flush)
+b_confirm.on_clicked(on_confirm)
 b_stop.on_clicked(lambda _: state["stop"].set())
 b_prev.on_clicked(lambda _: step(-1))
 b_next.on_clicked(lambda _: step(+1))
