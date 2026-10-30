@@ -4,8 +4,7 @@ For each WAV the script reads the audio, resamples it to the frontend rate, slid
 1 s window along it hop by hop (0.125 s), turns each window into a log-mel spectrogram
 and lets each detector score it. That is the same code path as `dad wav` (dad.wavio).
 One panel per file: confidence on the y axis, window-end time on the x axis, one line
-per detector with its frozen threshold dashed. Hops labelled drone by a `dad` sidecar
-(.json next to the WAV) are shaded. With a single file, each detector gets its own panel
+per detector with its frozen threshold dashed. With a single file, each detector gets its own panel
 and y scale, since `comb` scores are not on 0-1.
 
     uv run python scripts/plot_confidence.py "Pure-data+Script/EnviromentTest/out.wav"
@@ -70,13 +69,6 @@ def plot(scored, out_path, cols):
     colors = dict(zip(scored, COLORS))
     handles = {}
     for ax, (name, dets) in zip(axes.flat, panels):
-        first = next(iter(scored.values()))[1][name]
-        dec, lab = first["decisions"], first.get("labels")
-        if lab is not None:
-            hop = DEFAULT.hop_seconds
-            for t, y in zip(dec.t_end, lab):
-                if y == 1:
-                    ax.axvspan(t - hop, t, color="#000000", alpha=0.06, lw=0)
         for label in dets:
             thr, res = scored[label]
             d = res[name]["decisions"]
@@ -101,7 +93,7 @@ def plot(scored, out_path, cols):
     for ax in axes[-1, :]:
         ax.set_xlabel("time (s, window end)", fontsize=8)
     fig.legend(list(handles.values()), list(handles), loc="upper center", ncol=len(scored), frameon=False,
-               title="dashed = threshold, grey = drone in truth", title_fontsize=8, fontsize=9)
+               title="dashed = threshold", title_fontsize=8, fontsize=9)
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.6 / fig.get_figheight()))
     fig.savefig(out_path, dpi=130)
     print(f"{len(files)} files -> {out_path}")

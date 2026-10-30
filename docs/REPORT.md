@@ -4567,3 +4567,213 @@ CSV. At the time of writing the plots under `artifacts/drone_war/` are
 files, 28 MB) are larger. Not opened as a real window.
 
 **Result.** Tooling; no new numbers.
+
+## 069 - Drone-in-war window: field limits, war off, lgbm dropped
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted, branch master
+
+**What changed.**
+1. Each number field in `scripts/drone_war_gui.py` shows its limits
+   ("min 1, max 20") and refuses values outside them with a message. Drone
+   speeds and war clips: 1 to 20. War levels: 0 to 20.
+2. **War levels 0 = no war.** In `scripts/drone_war_grid.py` (and the
+   window), `--levels 0` runs the drone alone. The war gain is minus
+   infinity (multiplier 0), shown and saved as "off" (`grid_waroff.png`,
+   `war_gain_db = -inf` in the CSVs). There is one war clip column, since
+   every clip would be the same silence. Before this, 0 was refused (entry
+   067).
+3. **`lgbm` removed from the drone-in-war tool** at Mads's request: only the
+   CNN and `comb` are scored and plotted. CLAUDE.md section 5 asks for both
+   baselines next to any reported model. This tool produces synthetic
+   scaffolding, not reported performance, so the rule is not broken here.
+   Any number taken from this tool into a result needs `lgbm` back.
+
+**Why.** Mads tried 0 war levels to hear and score the drone alone, and got
+no run.
+
+**How.** Check, headless: 21 war levels and 0 war clips were refused with
+their limits. Then 2 speeds, 3 war clips, 0 levels gave one level "off",
+2 mixes (100 and 200 km/h, one column) and detectors CNN and `comb` only
+in `results.csv`. Not opened as a real window.
+
+**Result.** Tooling. For orientation only, synthetic, drone seed 1 alone
+with no background: CNN recall 34.9%, `comb` 94.4% over the two mixes.
+That fits entry 062: the CNN hardly reacts to this low-pitched drone until
+the last seconds.
+
+## 070 - A hovering Pd drone at fixed distances
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (synthetic data)
+- Type: Data
+- Commit: uncommitted, branch master
+
+**What changed.** New `scripts/hover_drones.py`. It renders the seed 1 drone
+of `drone_war_grid.py` hovering (0 km/h) with `DroneSound.pd`: the same
+throttle model and parameters (base 66.6, wobble 5.6, pitch scale 0.85,
+L_1m 78.5 dB SPL) but no dive, for 10 s. The result is calibrated to L_1m
+at 1 m, as `drone_sim.make_scene` does, and carried to each distance by
+`dad.propagation.propagate` (1/r and ISO 9613-1 air absorption). The moving
+flights use 1/r only (`drone_sim.make_scene`), so at a given distance the
+two differ by the air absorption: under 1 dB in RMS here.
+
+**Why.** Mads asked for drone sounds at 0 km/h from 50, 100, 200 and 300 m.
+
+**How.**
+```
+uv run python scripts/hover_drones.py --distances 50 100 200 300
+```
+Output in `artifacts/drone_war/hover/` (git-ignored): a calibrated WAV
+(1.0 = 110 dB SPL), a JSON and a `_listen` WAV per distance. The listening
+files share one gain (the 50 m file peaks at -1 dBFS), so their level
+difference stays audible.
+
+**Result.** RMS at the microphone: 50 m 44.5, 100 m 38.4, 200 m 32.2,
+300 m 28.6 dB SPL (1/r alone gives 44.5, 38.5, 32.5 and 29.0). All four
+files have sound to the end (10.00 s). Not scored by any detector.
+
+## 071 - Listening files are no longer rescaled
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (synthetic data)
+- Type: Correction
+- Commit: uncommitted, branch master
+
+**What changed.** Every `_listen.wav` made in this session was rescaled for
+playback: the flights and mixes to a -1 dBFS peak, the hover files (entry
+070) to one common gain. Mads judged audibility by ear and the rescaling
+misled him. A flight rescaled to its impact peak puts the 300 m part
+60 dB down, while the hover files, rescaled to the 50 m file, put 300 m
+only 16 dB down. All seven listening files were rewritten unscaled, as
+float32 at the calibration of every render here (1.0 = 110 dB SPL). They
+are now sample-identical to the calibrated files they came from.
+`scripts/hover_drones.py` writes its `_listen.wav` unscaled from now on.
+
+Files: `artifacts/drone_war/run1/listen/` (war -20 dB and 0 dB mixes,
+drone alone at 200 km/h) and `artifacts/drone_war/hover/` (50, 100, 200,
+300 m).
+
+**Result.** Peaks: drone alone at 200 km/h -22.8 dBFS (impact), hover at
+50/100/200/300 m -55.1/-61.2/-67.5/-71.2 dBFS, war 0 dB mix +1.0 dBFS,
+which may clip in a player. The 50 m hover is about 32 dB below the flight's
+impact peak, so the hover files are very quiet at a normal volume. That is
+their calibrated level. The `_listen.wav` files from `drone_only.py`
+(Pure-data folder, someone else's code) are still peak-normalised and
+were not touched.
+
+## 072 - Drone-in-war window: min, max and count; grey truth shading removed
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted, branch master
+
+**What changed.**
+1. The drone speeds and the war levels are now set as min, max and count
+   in `scripts/drone_war_gui.py`. The run takes `count` values from min to
+   max, both included and evenly spaced. Mads's examples: speed min 200,
+   max 200, count 1 gives 200 km/h; war min -190, max +10, count 5 gives
+   -190, -140, -90, -40 and +10 dB. The rules live in
+   `drone_war_grid.speeds_and_gains()`, so the CLI (`--speed-min`,
+   `--speed-max`, `--speeds`, `--war-min-db`, `--war-max-db`, `--levels`)
+   follows them too. A min above its max is refused, and so is a count
+   that disagrees with min and max: count 1 needs min = max, and min = max
+   needs count 1. War level count 0 still means no war. Field limits:
+   speed 1-1000 km/h (sound is 1235 km/h), war -300 to +30 dB, counts
+   1-20 (war levels 0-20). A comma is accepted as the decimal point.
+   Before this change, an n = 1 level silently used the min.
+2. **The grey "drone in truth" shading is gone** from the grid
+   (`draw_grid`, so the GUI and the CLI PNGs) and from
+   `scripts/plot_confidence.py`, at Mads's request. The truth is still
+   used for every number in the tables and CSVs; it is only not drawn.
+3. File names now print speeds and war gains in full (`:g`), so close values
+   such as -0.75 and -1 dB no longer share a name. The 10 cached drones were
+   renamed to match, so nothing is rendered again.
+
+**How.** Check, headless: Mads's two examples gave [200] km/h and
+[-190, -140, -90, -40, 10] dB. Count 3 at min = max, count 1 at
+100-200 km/h, min above max and speed 0 were each refused with a message.
+A run at 200 km/h, war -190 to +10 dB in 5 levels and 1 war clip drew all
+5 levels with no shading. `plot_confidence.py` and the CLI refusal were
+also checked. Not opened as a real window.
+
+**Result.** Tooling. One observation, synthetic, one mix: at war -190 dB
+(the war track about 170 dB below full scale, far below anything audible
+or any real microphone's noise floor) `comb` still alarmed on the machine
+gun (false positives 20.5%), while the CNN gave none. `comb`'s score
+ignores level, so a harmonic sound at any level, however faint, can set it
+off.
+
+## 073 - Drone-in-war window: one grid of drone speed x war level
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted, branch master
+
+**What changed.** Mads cares only about drone speed and war noise for now,
+and wants every graph on screen at the end of a run.
+`scripts/drone_war_gui.py` now draws one grid: rows are drone speeds,
+columns are war noise levels. Each column is headed with its level in
+bold ("war -40 dB", or "no war") and each row with its speed in bold
+("150 km/h"). The headings "war noise level →" and "drone speed ↓" sit
+over the columns and beside the rows. The grid fills in column by column
+as each level finishes, and holds every speed x level panel at the end.
+The "< level" / "level >" paging and the war clip count are gone. The
+window uses one war clip, the first 20 s of the war track (calm phase).
+The table on the left has one line per war level: recall, false
+positives and alarms 3 s before impact, for the CNN and `comb`. The run
+saves `grid_speed_x_war.png` in place of one PNG per level.
+
+`drone_war_grid.draw_grid()` now takes any rows and columns. `draw_level()`
+(rows = speeds, columns = war clips, used by the CLI's per-level PNGs) and
+`draw_speed_war()` (rows = speeds, columns = war levels) are two layouts
+on it. The CLI is otherwise unchanged.
+
+**How.** Check, headless: 100-200 km/h in 3 speeds and -40 to 0 dB in 5
+levels gave 15 panels, columns "war -40 dB" ... "war +0 dB", rows
+"100 km/h", "150 km/h" and "200 km/h", and a filled table. 200 km/h with
+war count 0 gave one panel, "no war". The CLI was also checked: 2 speeds
+x 2 clips x 1 level. Not opened as a real window.
+
+**Result.** Tooling. Numbers from the check, for orientation only
+(synthetic, 3 mixes per level, war clip at 0 s): CNN recall 88.9, 87.8,
+82.5, 60.3 and 26.5% at war -40 to 0 dB with no false positives. `comb`
+recall 71.4 to 15.3% with 21.2% false positives at every level.
+
+## 074 - Drone-in-war window: "no drone" row and "no war" column
+- Date: 2026-10-30
+- Iteration: between 8 and 9 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted, branch master
+
+**What changed.** Mads wants a control at both ends: a run with no drone
+(war only) and a run with no war (drone only), set with checkboxes beside
+the drone fields and the war fields.
+`scripts/drone_war_gui.py` has two checkboxes. "no drone" adds a row with
+no drone, so every window there is a no-drone window and only false
+alarms are measured. "no war" adds a column with no war, the drone alone.
+They come on top of the speed and level sweeps, and with a box ticked its
+count may be 0. The cell with neither (silence) is not run and shows
+"silence: not run". This replaces "war level count 0 = no war" (entry 069):
+a count of 0 now means "none from the sweep".
+`scripts/drone_war_grid.py` has the matching flags `--no-drone` and
+`--no-war`. The rules sit in `speeds_and_gains()`: at least one row and
+one column, and not only silence. The no-drone row is speed 0
+(`NO_DRONE`) in the CSVs, and the no-war column is `-inf` dB. The table's
+"no alarm" count leaves out no-drone mixes. The legend now takes its lines
+from the first panel that has any, since the first panel can be the blank
+silence cell.
+
+**How.** Check, headless: count 0 with no box ticked was refused for both
+the drone and the war, and so was "no drone + no war only". 100-200 km/h
+in 2 speeds plus no drone, and -20 to 0 dB in 2 levels plus no war, gave
+3 x 3 panels: rows "no drone", "100 km/h", "200 km/h"; columns "no war",
+"war -20 dB", "war +0 dB"; one blank silence panel; 8 mixes. The no-drone
+row has empty recall and a false-positive rate in `results.csv`. CLI:
+`--speeds 0 --no-drone` ran. (The CLI check of `--speeds 0` alone was
+refused by the war-level rule first, so the speed refusal was checked in
+the window only.) Not opened as a real window.
+
+**Result.** Tooling. From the check, for orientation only (synthetic, war
+clip at 0 s, no drone): the CNN raised no false alarm at -20 or 0 dB;
+`comb` alarmed on 10.5% of the windows at both levels, on the machine
+gun at 12.8-14.8 s.
