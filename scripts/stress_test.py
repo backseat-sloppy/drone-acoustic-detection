@@ -81,14 +81,7 @@ def rms_db(x: np.ndarray) -> float:
 
 # ------------------------------------------------------------------ drone
 
-def make_throttle(rng, n, base=60, wobble=6.0, dive_start=0.7, dive_gain=80):
-    """Copied from Pure-data+Script/EnviromentTest/render.py, whose import exits when Pd is not
-    in /Applications. n steps of 20 ms: steady cruise, small corrections, optional dive."""
-    slow = np.convolve(rng.standard_normal(n), np.ones(25) / 25, mode="same")
-    slow = slow / slow.std() * wobble
-    fast = rng.standard_normal(n) * 0.8
-    ramp = np.clip((np.arange(n) / n - dive_start) / (1 - dive_start), 0, 1) * dive_gain
-    return np.clip(base + slow + fast + ramp, 0, 127)
+make_throttle = pdsynth.make_throttle     # the throttle model of render.py
 
 
 def throttle_for(v_kmh: float) -> float:

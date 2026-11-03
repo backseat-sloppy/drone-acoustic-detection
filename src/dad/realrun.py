@@ -131,10 +131,19 @@ VARIANTS = {
 }
 
 
+def to_model(L: np.ndarray, cfg: FrontendConfig) -> np.ndarray:
+    """Last frontend step: for `kind="mfcc"` the DCT-II (orthonormal) over the log-mel bands, first n_mfcc kept.
+    After level normalisation and the training EQ, both of which act on log-mel bands."""
+    if cfg.kind != "mfcc":
+        return L
+    from scipy.fft import dct
+    return dct(L, type=2, axis=-2, norm="ortho")[..., : cfg.n_mfcc, :].astype(np.float32)
+
+
 def featurise(audio: np.ndarray, variant: Variant, fe: LogMel) -> np.ndarray:
-    """(N, samples) -> (N, n_mels, frames), as the model sees it at inference."""
+    """(N, samples) -> (N, n_bands, frames), as the model sees it at inference."""
     L = np.stack([fe.frames(a) for a in audio])
-    return level_normalise(L) if variant.level_norm else L
+    return to_model(level_normalise(L) if variant.level_norm else L, fe.cfg)
 
 
 def _eq_curve(rng: np.random.Generator, n_mels: int) -> np.ndarray:
@@ -496,13 +505,14 @@ class NetScorer:
         self.mu = warm.mean(axis=(0, 2))[:, None].astype(np.float32)
         self.sigma = (warm.std(axis=(0, 2))[:, None] + 1e-5).astype(np.float32)
 
-        self.model = build(self.arch, self.cfg.n_mels).to(self.device)
+        self.model = build(self.arch, self.cfg.n_bands).to(self.device)
+        max_freq = max(1, round(8 * self.cfg.n_bands / 64))   # the frequency mask covers the same share of bands
         opt = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
         sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=lr, total_steps=steps)
         self.model.train()
         t0, running, mark = time.time(), 0.0, 0
         for step, (L, y) in enumerate(prefetch(sampler, steps, batch_size, workers), start=1):
-            xb = spec_augment(torch.from_numpy((L - self.mu) / self.sigma), rng)
+            xb = spec_augment(torch.from_numpy((L - self.mu) / self.sigma), rng, max_freq=max_freq)
             loss = F.cross_entropy(self.model(xb[:, None].to(self.device)),
                                    torch.from_numpy(y).to(self.device))
             opt.zero_grad(set_to_none=True)
@@ -538,17 +548,23 @@ class NetScorer:
 
     def save(self, path) -> None:
         import torch
+        c = self.cfg
         torch.save(dict(arch=self.arch, variant=self.variant.name, mu=self.mu, sigma=self.sigma,
+                        frontend=dict(kind=c.kind, n_fft=c.n_fft, hop_length=c.hop_length, n_mels=c.n_mels,
+                                      n_mfcc=c.n_mfcc, fmin=c.fmin, fmax=c.fmax),
                         state={k: v.cpu() for k, v in self.model.state_dict().items()}), path)
 
     @classmethod
     def load(cls, path, cfg: FrontendConfig = DEFAULT, device: str = "cpu") -> "NetScorer":
+        """The frontend is the one the checkpoint was trained with; checkpoints older than entry 090 are log-mel."""
+        import dataclasses
         import torch
         from .models.zoo import build
         ck = torch.load(path, map_location="cpu", weights_only=False)
+        cfg = dataclasses.replace(cfg, **ck.get("frontend", {}))
         net = cls(ck["arch"], VARIANTS[ck["variant"]], cfg, device)
         net.mu, net.sigma = ck["mu"], ck["sigma"]
-        net.model = build(ck["arch"], cfg.n_mels)
+        net.model = build(ck["arch"], cfg.n_bands)
         net.model.load_state_dict(ck["state"])
         net.model.to(net.device).eval()
         return net

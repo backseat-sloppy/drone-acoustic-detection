@@ -105,6 +105,16 @@ def _line(targets: np.ndarray, n: int, ramp: int, start: float = 0.0) -> np.ndar
     return out
 
 
+def make_throttle(rng, n, base=60, wobble=6.0, dive_start=0.7, dive_gain=80):
+    """The throttle model of Pure-data+Script/EnviromentTest/render.py (copied: its import exits when Pd
+    is missing). n steps of 20 ms: steady cruise, small corrections, optional dive."""
+    slow = np.convolve(rng.standard_normal(n), np.ones(25) / 25, mode="same")
+    slow = slow / slow.std() * wobble
+    fast = rng.standard_normal(n) * 0.8
+    ramp = np.clip((np.arange(n) / n - dive_start) / (1 - dive_start), 0, 1) * dive_gain
+    return np.clip(base + slow + fast + ramp, 0, 127)
+
+
 def render(throttle, pscale: float = 1.0, fs: int = FS, step_ms: float = 20.0, seed: int = 0) -> np.ndarray:
     """The patch's output for a throttle curve (one 0-127 value per step)."""
     rng = np.random.default_rng(seed)

@@ -50,12 +50,20 @@ def mel_filterbank(cfg: FrontendConfig = DEFAULT) -> np.ndarray:
     return fb
 
 
+def band_matrix(cfg: FrontendConfig = DEFAULT) -> np.ndarray:
+    """Power spectrum -> bands: the mel filterbank, or for `kind="linear"` the bins in fmin-fmax as they are.
+    MFCC starts from the log-mel too; its DCT comes after level normalisation (realrun.to_model)."""
+    if cfg.kind == "linear":
+        return np.eye(cfg.n_freq_bins, dtype=np.float32)[list(cfg.linear_bins())]
+    return mel_filterbank(cfg)
+
+
 class LogMel:
-    """Stateless full-window log-mel. Use for training and offline evaluation."""
+    """Stateless full-window log-mel (or log-linear bands, see band_matrix). Use for training and offline evaluation."""
 
     def __init__(self, cfg: FrontendConfig = DEFAULT) -> None:
         self.cfg = cfg
-        self._fb = mel_filterbank(cfg)
+        self._fb = band_matrix(cfg)
         self._win = np.hanning(cfg.n_fft).astype(np.float32)
 
     def frames(self, x: np.ndarray) -> np.ndarray:
@@ -64,7 +72,7 @@ class LogMel:
         x = np.asarray(x, dtype=np.float32)
         n = 1 + max(0, (len(x) - cfg.n_fft) // cfg.hop_length)
         if n == 0:
-            return np.zeros((cfg.n_mels, 0), dtype=np.float32)
+            return np.zeros((self._fb.shape[0], 0), dtype=np.float32)
         # Strided view avoids materialising the overlapped copies.
         idx = np.lib.stride_tricks.as_strided(
             x,
@@ -88,7 +96,7 @@ class StreamingLogMel:
 
     def __init__(self, cfg: FrontendConfig = DEFAULT) -> None:
         self.cfg = cfg
-        self._fb = mel_filterbank(cfg)
+        self._fb = band_matrix(cfg)
         self._win = np.hanning(cfg.n_fft).astype(np.float32)
         self._tail = np.zeros(0, dtype=np.float32)
         self._frames: deque[np.ndarray] = deque(maxlen=cfg.frames_per_window)

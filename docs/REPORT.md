@@ -26,6 +26,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 6 | 043 | Iteration 5's best recipe trained once on every rig, threshold frozen at 5% false alarms on validation; CNN, LightGBM and comb saved for the real test | Mads asked for a final model for the real test | **Checkpoints, not evidence.** Validation (in-distribution): CNN recall 0.83 at 5% false alarms. Unseen Lund rig: CNN 0.50, baselines near 0. CNN alarms on 55% of mower-only audio. R2 and R3 not met. |
 | Iteration 7 | 055 to 058 | Edge Impulse model (MFE + small CNN) on upload-licensed data, scored locally next to model 6 | Mads asked to try Edge Impulse; deployment hardware still open | **Negative result.** On the shared windows the EI model detects nothing off its training rig (Halmstad recall 0 at the frozen threshold, test AUC 0.36); model 6 0.55 at 4.8% false positives on Halmstad. Small on Cortex-M4F (12 ms, 20 KB RAM), but its MFE is too slow at FFT 1024. Model 6 stays the candidate. |
 | Iteration 8 | 059 to 061 | Edge Impulse on the pool, d3set held out, clips scaled to -30 dBFS | Mads asked for leave-one-dataset-out in Edge Impulse; iteration 7 failed on a 50 dB level gap between rigs | **Hypothesis rejected.** In-distribution AUC rose to 0.92, but on unseen d3set AUC 0.12 (background ranked above drones), worse than the untrained comb (0.53). Microcontroller out of scope (entry 060); Edge Impulse stopped. |
+| Iteration 9 | 090 to | Iteration 5's recipe on real data, with the frontend as the only change: MFE (log-mel), MFCC, linear spectrogram | The supervisor's feedback (entry 086) and Mads's choice to compare frontends on real data, after dropping synthetic training (entries 087-089) | In progress: code and notebook ready, runs on JupyterLab not started. |
 
 ## Templates
 
@@ -5074,3 +5075,511 @@ of file 1 (20 s); Stop sent `PlaySound(None)`. Not checked: real sound
 output and real mouse clicks.
 
 **Next.** None. A tool change.
+
+Note on numbering (2026-11-03): entries 083 to 090 below were first
+written, uncommitted, as entries 080 to 087. A `git pull` that brought in
+commit 0576e0b (Nicolai's detection window, entries 080 to 082 above)
+discarded the uncommitted copy of this file; nothing was stashed or left in
+git. The text was restored from the session that wrote it and renumbered
+after 082, with every cross-reference between them renumbered to match.
+The content is otherwise unchanged.
+
+## 083 - Listening file and spectrogram: 200 km/h drone in war-shaped noise at -70 dB
+
+**Why.** Mads asked for a spectrogram and a WAV for 200 km/h at -70 dB.
+
+**What.** As in entry 076, the mix comes from the virtual test with
+`--keep`, so it is what the detectors scored, unscaled (1.0 = 110 dB SPL).
+Commit 3545b69.
+```
+uv run python scripts/drone_war_grid.py --speeds 1 --speed-min 200 --speed-max 200 --wars 1 --levels 1 --war-min-db -70 --war-max-db -70 --keep --out artifacts/drone_war/listen200
+```
+Files in `artifacts/drone_war/listen200/mixes/`: `war-70dB_200kmh_off0.wav`
+(20 s at 44.1 kHz, sidecar `.json`) and
+`war-70dB_200kmh_off0_spectrogram.png` (4096-point FFT, 75% overlap,
+0-8000 Hz, first drone sound and impact marked). The spectrogram was drawn
+by a scratch script (matplotlib `specgram`), not a repo script.
+
+Seed-1 drone, first sound at 1.62 s, impact at 10 s. Levels: whole file
+-56.1 dBFS RMS, peak -22.8 dBFS; the noise alone (11-20 s) -96.9 dBFS;
+the drone part (1.62-10 s) -52.3 dBFS; the last second before impact
+-43.1 dBFS. So the noise sits about 45 dB under the drone: in effect the
+drone alone, as at -80 dB in entry 076. The spectrogram shows the
+fundamental near 250-330 Hz and its harmonics rising towards impact.
+
+**Result.** Synthetic, one clip, 60 drone windows and 78 no-drone
+windows, with 15 left out at the boundaries:
+
+| War | CNN recall | CNN false pos. | `comb` recall | `comb` false pos. |
+|---|---|---|---|---|
+| shaped -70 dB | 100.0% | 0.0% | 86.7% | 3.8% |
+
+Both first alarm at 2.1 s, 7.9 s before impact. Unlike 150 km/h at
+-80 dB (entry 076, CNN recall 28.6%), the CNN catches every window here.
+One clip each: not a speed effect until more seeds say so.
+
+**Next.** None. These are listening files.
+
+## 084 - Log-mel spectrogram of the 200 km/h, -70 dB listening file
+
+**Why.** Mads asked for the spectrogram of entry 083 as a log-mel
+spectrogram.
+
+**What.** Commit 3545b69, plus the uncommitted entry 083. The log-mel is
+the project frontend itself: `dad.wavio.read_wav` (resampled to 16 kHz)
+then `dad.features.LogMel`, i.e. 64 mel bands 50-8000 Hz, 25 ms frames,
+10 ms stride, the frozen contract (`uv run dad info`). The natural-log
+power is shown in dB (times 10 / ln 10), relative to full scale, unscaled
+input. The y axis is the 64 bands, labelled in Hz. Drawn by a scratch
+script (matplotlib `imshow`), not a repo script. File:
+`artifacts/drone_war/listen200/mixes/war-70dB_200kmh_off0_logmel.png`.
+
+**Checks.** 64 x 1998 frames covering 0.01-19.98 s; band centres 79 to
+7678 Hz; values -100.0 dB (the frontend's 1e-10 floor) to -2.7 dB (at
+impact). The picture matches the linear spectrogram of entry 083: the
+drone's harmonics from 1.62 s, rising and growing towards impact at 10 s,
+and only faint noise after it.
+
+**Next.** None. A listening and viewing aid.
+
+## 085 - Listening file: 200 km/h drone in war-shaped noise at -20 dB
+
+**Why.** Mads asked for a WAV for 200 km/h at -20 dB.
+
+**What.** As in entry 083, from the virtual test with `--keep`, unscaled
+(1.0 = 110 dB SPL). Commit 3545b69, plus the uncommitted entries 083-084.
+```
+uv run python scripts/drone_war_grid.py --speeds 1 --speed-min 200 --speed-max 200 --wars 1 --levels 1 --war-min-db -20 --war-max-db -20 --keep --out artifacts/drone_war/listen200m20
+```
+File: `artifacts/drone_war/listen200m20/mixes/war-20dB_200kmh_off0.wav`
+(20 s at 44.1 kHz, sidecar `.json`). Same seed-1 drone as entry 083:
+first sound at 1.62 s, impact at 10 s.
+
+Levels: whole file -46.3 dBFS RMS, peak -23.0 dBFS; the noise alone
+(11-20 s) -46.9 dBFS; drone plus noise (1.62-10 s) -45.7 dBFS; the last
+second before impact -41.6 dBFS. Taking the drone's own level from entry
+083 (-52.3 dBFS over 1.62-10 s, -43.1 dBFS in the last second, where the
+noise was 45 dB lower), the drone sits about 5 dB under the noise on
+average and about 4 dB over it in the last second.
+
+**Result.** Synthetic, one clip, 60 drone windows and 78 no-drone
+windows, with 15 left out at the boundaries:
+
+| War | CNN recall | CNN false pos. | `comb` recall | `comb` false pos. |
+|---|---|---|---|---|
+| shaped -20 dB | 100.0% | **100.0%** | 3.3% | 3.8% |
+
+The CNN alarms on every window, drone or not, as at -40 dB in entry 076:
+it reacts to the war-shaped noise itself (entry 075). `comb` finds the
+drone in 2 of 60 windows, first at 5.9 s (4.1 s before impact).
+
+**Next.** None. A listening file.
+
+## 086 - Supervisor feedback and council: synthetic training, CRNN, linear STFT
+- Date: 2026-11-03
+- Iteration: between 8 and 9
+- Type: Council
+- Commit: 3545b69, plus the uncommitted entries 083-085
+
+**What changed.** Nothing in the code. Mads passed on written feedback
+from the supervisor, with a drone-in-war detail plot (150 and 200 km/h,
+war-shaped noise at -70 dB, seed 1000). The council was convened because
+the feedback proposes a new model family, a new frontend and a new source
+of training data (CLAUDE.md section 4).
+
+The feedback, in short:
+1. Train on synthetic data and use real data only for validation. Reasons
+   given: the real data is unreliable, mostly DJI-type drones flying slower
+   than an FPV, and its labels are inconsistent.
+2. Drone synth with a random fundamental per example (100 Hz to 600-700 Hz)
+   and integer harmonics, plus a random harmonic falloff rate, so the model
+   learns the relations between harmonics, not fixed frequencies.
+3. Labelled random soundscapes (drone, light_wind, artillery_explosion,
+   small_gun_fire, truck_engine, helicopter_close, shouting_close, ...):
+   30-50% of examples with confusers (helicopters, trucks, cars,
+   motorcycles, delivery scooters), 20-30% without a drone.
+4. A CRNN (3-4 2D conv layers, then a recurrent layer), so loud transients
+   that mask whole frames can be bridged in time.
+5. A linear STFT spectrogram (or log-mel), 16 kHz, window 64-128 ms
+   (1024-2048 samples), hop 160-320 samples, log amplitude compression.
+6. Drone-to-noise ratio in training about -20 to +10 dB, never below -40 dB.
+
+**Question to the council.** Should the project (A) train a CRNN on fully
+synthetic data and use real data only to validate and test, (B) adopt a
+modified or partial version, or (C) keep the current approach (model 6:
+DS-CNN, 1 s of 64 log-mel bands, real recordings pooled across rigs with
+speed perturbation and mixing into real backgrounds)?
+
+**Facts checked in the repo before weighing.**
+- `REQUIREMENTS.md` has "Only real recordings, no synthetic training data"
+  as LOCKED (Mads, 2026-10-10). Option A, and any use of synthetic drones in
+  training, needs Mads to change it.
+- The Pd drone (`src/dad/pdsynth.py`) has its fundamental at
+  (150 + 180 u) x pscale Hz, about 150-330 Hz, from four detuned sawtooths,
+  so the ratio between harmonics is fixed. The supervisor's point 2 applies
+  to our test drone.
+- `comb` (`src/dad/gate.py`) searches fundamentals from 35 to 330 Hz and
+  scores only a drone band of 100-300 Hz. In the supervisor's plot both
+  `comb` traces drop at about 9.5 s, when the drone's dominant frequency
+  rises from about 240 Hz to about 320 Hz, just before impact. One drone
+  seed; the drop matches the band edge, but no other cause was ruled out.
+- The frontend's 25 ms frames give 40 Hz bins; `gate.py` itself notes that
+  a 100-300 Hz harmonic comb cannot be resolved at that resolution. The
+  supervisor's 64-128 ms window gives 8-16 Hz bins.
+- A CRNN already exists (`src/dad/models/zoo.py`, `Crnn`, 739,747
+  parameters) but has never been trained here: its GRU fails on DirectML
+  (entry 009's timing table), and the model screens of entries
+  016-019 ran it only conditionally and did not reach it.
+- Labelled confuser stems already exist: `scripts/build_stems.py` (75 stems
+  with source and licence, entry 052) and `scripts/distracters.py` /
+  `scripts/env_sim.py` (car, truck, motorcycle, scooter, helicopter, mower,
+  gunfire, explosions, shouting, wind). They are used only in the
+  synthetic test environments, not in training.
+- The dominant spectral peak (Welch, 4096 points, 80-4000 Hz, first 20 s)
+  of every drone recording in `data/processed`, by a scratch script, not a
+  repo script:
+
+  | Source | Recordings | Peak p10 / p50 / p90 (Hz) |
+  |---|---|---|
+  | DroneNoise | 164 | 87 / 160 / 543 |
+  | Halmstad | 30 | 109 / 270 / 932 |
+  | Nightjar | 24 | 87 / 111 / 925 |
+  | DDL | 36 | 82 / 107 / 953 |
+  | d3set | 21 | 94 / 246 / 270 |
+  | FPV campaigns | 124 | 82 / 109 / 219 |
+  | Lund | 13 | 82 / 82 / 82 |
+
+  Many peaks sit at the 80 Hz floor, which is likely wind or background,
+  not a rotor, so this is a weak check. It does show drone peaks up to
+  about 950 Hz, above the supervisor's 700 Hz, and it does not support the
+  Devil's Advocate's guess that FPV tones sit at 1-2 kHz.
+
+**Devil's Advocate.** Against A and most of B.
+- Decisive: (1) A breaks the LOCKED rule. **Stands**; only Mads can change
+  it. (2) If drones are synthetic and confusers real, "synthetic" becomes
+  the shortcut for "drone": iteration 1's confound by construction.
+  **Stands for A**; for a hybrid it is answered only by mixing real and
+  synthetic positives and by checking that a classifier cannot tell
+  synthetic from real positives. (3) The measured gap between the Pd drone
+  and real drones is large (model 6 finds 29-35% of the clean Pd drone,
+  entry 075). **Stands**; nothing measures the gap in the other direction
+  yet.
+- Serious: (4) The premise is partly contradicted: three FPV campaigns are
+  in the pool and FPV on an unseen campaign is the best result (0.66,
+  iteration 5); label inconsistency is asserted, not shown. **Partly
+  answered**: the label claim should be audited, not assumed. (5) Synthetic
+  knobs tuned against a few real validation rigs overfit them. **Answered
+  by design**: arms and success rules are fixed in advance, test rigs are
+  scored once. (6) 100-700 Hz may miss FPV tones. **Answered** by the peak
+  table above, which suggests widening to about 1 kHz, not to 2 kHz.
+  (7) Four changes at once. **Accepted**: one change per arm. (8) Score
+  smoothing is a cheaper answer to masked frames than a CRNN (iteration 4:
+  +0.07 from averaging 8 windows). **Accepted** as the baseline any CRNN
+  must beat.
+
+**Scholar** (no project context). The best-supported practice for UAV
+detection trains on real recordings, with general-audio pretraining as the
+largest lever and microphone transfer-function simulation as the largest
+augmentation lever, and scores at a fixed false-positive rate on held-out
+out-of-domain data (Reuter, Ohlenbusch and Rollwage, arXiv 2605.31329:
+out-of-domain TPR at 1% FPR 0.701 without and 0.783 with AudioSet
+pretraining, 0.816 with transfer-function simulation; no synthetic
+drones). Sound event detection (DCASE Task 4) mixes synthetic soundscapes
+with real data but never trains on synthetic alone; synthetic accuracy is
+a weak proxy for real (Wei et al., arXiv 2609.22830, abstract only).
+Placement: real only is standard but incomplete; synthetic only is against
+practice for a final model; a hybrid is defensible (Al-Emadi et al.,
+Sensors 2021: GAN drone clips added to real data raised recall on an
+unseen drone by 1-38%); CRNN is the DCASE standard for temporal detection,
+while a CNN on 1 s is standard for presence; a linear STFT at 64-128 ms is
+a defensible variation (DCASE baselines use a 128 ms window), at the cost
+of losing log-mel pretrained weights. Unsettled: whether synthetic drones
+help once pretraining is in place, and CNN versus CRNN under domain shift.
+Only the Reuter paper was read in full; the others from abstracts or
+excerpts.
+
+**Problem Solver.** Try a modified version (B). The measured failures are
+real ones (mower-only false positives 55%, Lund recall 0.50, Halmstad
+0.55, entry 043), and real confuser negatives are the lock-compliant lever.
+Proposed arms, all DS-CNN, 1 s, frozen log-mel, iteration-5 speed
+perturbation, three seeds, threshold frozen at 5% false alarms on
+validation, tested on Lund, Halmstad and the mower-only session, with
+`comb`, `lgbm` and model 6 alongside:
+
+| Arm | Drone positives | Negatives | Needs the lock changed |
+|---|---|---|---|
+| R0 | model 6's recipe | as model 6 | no |
+| R1 | real, drone-to-noise -20 to +10 dB | 30-50% real confusers, about 25% of examples without a drone | no |
+| S | randomised synth only | as R1 | yes |
+| R+S | real plus synth | as R1 | yes |
+
+Success rules proposed in advance: R1 is kept if mower and helicopter
+false positives drop by at least 15 points with Lund and Halmstad recall
+down by at most 0.03; R+S is kept if it adds at least 0.05 recall on both
+over R1 with no more false positives; S has failed if Lund recall is below
+0.25 or its test AUC is at most 0.6. Then, one at a time on the winner: a
+64 ms STFT frame, then a CRNN at a 2 s window against score smoothing.
+Confidence medium.
+
+**Where the members disagree.** The Scholar and the Problem Solver agree
+that synthetic-only training is the riskiest step and a hybrid the
+defensible one. The Scholar's two largest levers (general-audio
+pretraining, transfer-function simulation) are not in the Problem
+Solver's plan; pretraining was put off until after the field test in
+entry 054.
+
+**Decision (Claude).**
+1. Option A is not taken. It breaks a LOCKED requirement, which only Mads
+   can change, and it is against practice for a final model.
+2. The lock-compliant part of the feedback is adopted as the next
+   iteration: arm R1 against R0 (real confusers from the existing stems and
+   FSD50K classes, 30-50% of examples with a confuser, about 25% without a
+   drone, drone-to-noise -20 to +10 dB). It changes one thing, the training
+   mix, and targets the measured mower false alarms.
+3. Mads is asked whether to change the lock in a scoped way: "synthetic
+   drone audio allowed in training arms, judged only on real held-out
+   rigs". If yes, arms S and R+S run with a new randomised harmonic synth
+   (random fundamental about 80-1000 Hz, random falloff, rotor detuning and
+   amplitude modulation; not the Pd drone), and with a check that real and
+   synthetic positives cannot be told apart.
+4. After that, one at a time: a 64 ms frame, then a CRNN against score
+   smoothing. `comb`'s 100-300 Hz drone band is a separate finding that
+   needs widening for fast drones; a baseline change, logged when made.
+5. The supervisor's points about labels and slow DJI drones go into a label
+   audit (the worst validation errors, listened to) rather than being
+   assumed.
+
+**Next.** Report to Mads and ask about the lock. R1 can start without it.
+
+## 087 - Requirements: synthetic training allowed; the synthetic drone sampler
+- Date: 2026-11-03
+- Iteration: 9 (preparation)
+- Type: Requirements, Data
+- Commit: 3545b69, plus the uncommitted entries 083-086
+
+**What changed.**
+1. **Requirements, decided by Mads.** Mads's reply to entry 086: in spot
+   checks of the data uploaded to Edge Impulse they found drone-labelled
+   clips with almost no sound, so they want to train on synthetic data only
+   and test on the real FPV drone clips, which sounded good when they
+   listened. Synthetic fly-bys (a drone passing, not only flying at the
+   microphone) are also to be included. In `REQUIREMENTS.md` the LOCKED row
+   "Only real recordings, no synthetic training data" is now WITHDRAWN, and a
+   new row allows synthetic training with real drone recordings for
+   validation and test, the FPV clips as test. Entry 086's decision 1
+   (option A not taken) is overruled by this; the Devil's Advocate's
+   decisive objections 2 and 3 there (synthetic positives as a shortcut,
+   the measured synthetic-to-real gap) still stand and are what iteration 9
+   must test.
+2. **Mads's further instruction:** synthetic data is not to be generated,
+   and models not trained, on this PC; that runs on JupyterLab resources.
+   Nothing was generated or trained here beyond the smoke check below.
+3. **New `src/dad/dronesynth.py`.** `drone()` draws one synthetic drone
+   per window: fundamental log-uniform 80-900 Hz, harmonic falloff
+   k ** -alpha with alpha 0.3-2.5 and +-3 dB per harmonic, 1-4 detuned and
+   wandering rotors, 2-3 blades with amplitude modulation at the rotation
+   rate, band-passed turbulence -30 to -5 dB, approach or fly-by at
+   0-60 m/s (Doppler and 1/r from the geometry), an air low-pass at
+   2-8 kHz. `SynthSampler` mixes it into a soundscape: a bed (a real
+   no-drone window from given training rigs, or a background or wind stem),
+   with p = 0.4 one distracter or war stem at -10 to +15 dB against the
+   bed, then the drone at -20 to +10 dB in-band SNR; 75% of windows hold a
+   drone. It has the interface of `RangeSampler`, so `NetScorer` and
+   `LgbmScorer` train on it unchanged. The 80-900 Hz range widens the
+   supervisor's 100-700 Hz to the drone peaks measured in entry 086.
+
+**Data observation.** The supervisor's and Mads's point about near-empty
+drone clips: Nightjar, both drone and background, sits at about -84 dBFS
+RMS (manifest median -76.7 dBFS drone, -80.6 background; 10th percentile
+-84.2 and -86.4), close to digital silence before level normalisation. That
+is a likely source of the "empty" clips seen in Edge Impulse, which is not
+verified: the Edge Impulse upload was not traced clip by clip. Quiet is not
+the same as empty; iteration 3 found the drone at the edge of audibility
+at 100-200 m. Nightjar windows can be selected by range.
+
+**How.**
+```
+uv run pytest tests/test_dronesynth.py
+```
+Smoke check by a scratch script (not a repo script): 50 drones at 5.2 ms
+each; one batch of 64 windows from `SynthSampler([])` (stems only, no rig
+beds) in 0.37 s, shape (64, 64, 98), all finite, 49 of 64 with a drone.
+Spectrograms of eight drawn drones show the intended variety: fundamentals
+226-804 Hz, steep and flat falloffs, Doppler sweeps in fly-bys, slow
+wander.
+
+**Result.** No detection numbers: nothing trained.
+
+**Next.** Set up the JupyterLab run: what the server has (GPU, storage,
+network), how the repo and the data get there, and a notebook or script
+that trains on `SynthSampler` and scores real validation and the FPV test.
+Iteration 9's box (split, hypothesis, judging rule) is written when the
+runner is fixed.
+
+## 088 - Listening files: twelve synthetic drones from `dronesynth`
+
+**Why.** Mads asked to hear some of the new synthetic drones.
+
+**What.** Scratch scripts (not repo scripts) on top of entry 087's
+uncommitted `src/dad/dronesynth.py`. Twelve clips of 5 s at 16 kHz, each as
+`_drone_only.wav` and `_mix.wav`, in `artifacts/synth_listen/`
+(git-ignored), parameters in `clips.csv` for clips 1-8. The beds are stems
+only (no rig audio); clips 2, 4, 6 and 8 add one confuser stem; the SNR is
+drawn from -10 to +10 dB, the audible end of the training range. Clips 9-12
+were drawn until the fundamental was at least 400 Hz, because clips 1-8
+all landed at 94-248 Hz by chance (1000 draws: 10th, 50th and 90th
+percentile 101, 258 and 717 Hz, as intended).
+
+The synth has no physical calibration; its level is set only by the SNR
+against the bed (stems at -26 dBFS active RMS, entry 052). The files are
+written unscaled at exactly that level: the drone-only file holds the
+drone at the gain it has in the mix. Mix levels -27.5 to -13.7 dBFS RMS;
+clip 6 (confuser +10 dB) peaks at 1.30 and can clip in a player.
+
+**Next.** None. Listening files; nothing trained, and generation for
+training stays on JupyterLab (entry 087).
+
+## 089 - The training drone is the Pure Data drone, not a new harmonic synth
+- Date: 2026-11-03
+- Iteration: 9 (preparation)
+- Type: Data, Correction
+- Commit: 3545b69, plus the uncommitted entries 083-088
+
+**What changed.** Mads: the training drones are to come from the realistic
+drone generator already built in Pure Data. Entry 087's harmonic
+`drone()` is replaced (not kept as an option); `SynthSampler` is unchanged
+around it.
+- `src/dad/dronesynth.py`: `drone()` now renders `DroneSound.pd` through
+  its numpy port `dad.pdsynth.render` at 44.1 kHz (intended mapping,
+  `PATCH_DOUBLE_DIVIDE = False`, as entry 062's port), resamples to 16 kHz,
+  and propagates it with `dad.propagation`: 1/r, Doppler and ISO 9613-1
+  air absorption, straight at the microphone (approach, ending 10-400 m
+  away) or past it (`pass_by`, closest approach 5-200 m), 0-60 m/s. Two
+  seconds are emitted and the window is cut after the first emitted
+  sample has arrived, so it has no silent lead-in.
+- Randomised per window: the patch's `pscale` log-uniform 0.4-3.0
+  (`make_scene` used 0.85-1.25), so the motor fundamental
+  (150 + 180 u) x pscale spans about 80-900 Hz, the supervisor's point of
+  entry 086; the throttle by render.py's model, cruise 30-110 of 127,
+  wobble 2-10, a dive ramp in 30% of flights. The harmonic falloff is the
+  patch's own (sawtooth, `lop~`, `hip~`, noise wash, all following
+  throttle); it is not randomised separately, unlike the supervisor's
+  suggestion, because that would change the patch.
+- `make_throttle` moved into `dad.pdsynth`; `scripts/stress_test.py` now
+  uses it (`st.make_throttle` still works for `env_grid.py`, `scenes.py`,
+  `stress_gui.py`). `Pure-data+Script/EnviromentTest/render.py` keeps its
+  own copy, as before.
+
+**How.**
+```
+uv run pytest
+```
+**Result.** All tests pass, including `tests/test_dronesynth.py` (rewritten:
+finite, unit RMS, no silent lead-in). Cost on this PC, one core: 26 ms per
+drone, 2.8 s per batch of 64 windows (0.37 s with entry 087's synth), so
+200,000 training windows take about 2.4 h of one core for the data alone;
+`NetScorer.fit` prefetches with worker threads. Listening files (scratch
+script, as entry 088): ten 5 s clips in `artifacts/synth_listen_pd/`,
+`_drone_only` and `_mix`, unscaled, stems-only beds, confuser in the even
+clips, SNR -10 to +10 dB, parameters in `clips.csv`. Cruise fundamentals
+143-507 Hz, speeds 5-54 m/s, four with a dive. Clips 4 and 10 peak above
+1.0 (1.39, 1.84) and can clip in a player. The clips in
+`artifacts/synth_listen/` (entry 088) are from the replaced synth.
+
+**Next.** As entry 087: the JupyterLab runner.
+
+# Iteration 9 - MFE, MFCC or a linear spectrogram, on real data
+
+> **Changed from iteration 5 (the last iteration that trained the repo's
+> own models on held-out units):** only the frontend, what the CNN sees.
+> Three arms: `mfe`, 64 log-mel bands, 25 ms frames, 10 ms stride (model 6's
+> frontend, the reference); `mfcc`, the first 20 MFCC of that log-mel; and
+> `linear`, the log power of every STFT bin 50-8000 Hz from a 64 ms frame
+> (15.6 Hz bins, 509 rows), 10 ms stride. The linear arm changes both the
+> frequency scale and the frame length, as the supervisor proposed; a
+> linear arm at 25 ms would have 40 Hz bins and could not resolve the
+> harmonics, which is the reason to try it.
+> **Why:** the supervisor's feedback (entry 086) that a linear spectrogram
+> keeps the harmonic spacing and resolves it at 64-128 ms, the frontend
+> note in `gate.py` that 25 ms frames cannot resolve a 100-300 Hz comb, and
+> Mads's decision (2026-11-03) to drop synthetic training (entries 087-089)
+> and test the frontends on real data, trained on JupyterLab.
+> **Kept the same:** iteration 5's best recipe: pooled rigs, leave one unit
+> out (Nightjar, d3set, FPV `ariel_25.02`, `palmahim_10.02`,
+> `palmahim_27.05`), `simdist`, speed perturbation 0.8-1.25, DS-CNN, 1 s
+> window, 0.5 s evaluation hop, 200,000 training windows, seeds 0-2. One
+> known difference: Glasgow trained in iteration 5 but is not in this
+> machine's processed store, so the `mfe` arm, not iteration 5's figures,
+> is the reference. Baselines `comb` and `lgbm` (log-mel) run in the `mfe`
+> arm only. The deployment threshold is frozen at 5% false alarms on
+> validation (R3), as in iteration 6.
+> **Hypothesis:** the linear arm separates drone harmonics from other
+> motors better, so it raises recall on unseen FPV campaigns and lowers
+> mower false alarms; MFCC does no better than MFE, because the DCT spreads
+> a local harmonic pattern over all coefficients.
+> **Judged by** (seed means, decided before any run): the primary figure is
+> the FPV mean, recall on all drone windows at 10% false alarms on the
+> held-out campaign's own background (iteration 5: 0.655 for MFE with
+> Glasgow). A frontend beats `mfe` if its FPV mean is at least 5 points
+> higher, all three of its seeds lie above every `mfe` seed, no held-out
+> unit loses more than 5 points of recall (all windows, 10%), and its
+> mower-only false alarms at the deployment threshold are not more than 5
+> points higher. Also reported, without a rule: recall and false alarms at
+> the deployment threshold (R2, R3), d3set at 100-200 m, Lund recall,
+> `comb` and `lgbm`. Adopting a new frontend for the field model needs the
+> council (CLAUDE.md section 4) once the numbers are in.
+
+## 090 - A selectable frontend and the JupyterLab notebook
+- Date: 2026-11-03
+- Iteration: 9
+- Type: Preprocessing, Infrastructure
+- Commit: 3545b69, plus the uncommitted entries 083-089
+
+**What changed.**
+- Mads: "glem det syntetiske" (forget the synthetic). Train again on real
+  data, on JupyterLab, to test whether MFE, MFCC or a linear spectrogram is
+  best. Entries 087-089's synthetic plan is dropped. `src/dad/dronesynth.py`
+  and its test stay in the tree, unused (not committed, so deleting them
+  would lose them); `make_throttle` stays in `dad.pdsynth` (entry 089).
+  The requirements row allowing synthetic training (entry 087) is left as
+  it is: allowed, not used.
+- `FrontendConfig` has `kind` ("mfe", the default, "mfcc", "linear") and
+  `n_mfcc` (20), and `n_bands`, the rows the network gets. `features.py`:
+  `band_matrix` is the mel filterbank, or for "linear" the identity rows of
+  the bins in fmin-fmax; `LogMel` and `StreamingLogMel` use it.
+  `realrun.to_model` applies the orthonormal DCT-II for "mfcc" after level
+  normalisation and the training EQ (both act on log-mel bands); `featurise`
+  and `RangeSampler.batch` end with it. `NetScorer` builds the network for
+  `n_bands`, scales the SpecAugment frequency mask to the same share of
+  bands (8 of 64: 63 linear bins, 2 MFCC), and saves the frontend in the
+  checkpoint; `load` restores it, so `dad wav` scores a checkpoint with the
+  frontend it was trained on. Checkpoints without it (model 6) load as
+  log-mel, as before.
+- `scripts/run_range.py`: `--frontend`, `--n-fft` (default 400, or 1024 for
+  linear) and `--n-mfcc`.
+- New `notebooks/iteration9_frontends.ipynb`: install, data check, FSD50K
+  extraction and conversion on the server (7-Zip is not on this PC; FSD50K
+  is only here as the raw multi-part zip on Google Drive), tests, the nine
+  runs (3 frontends x 3 seeds, each over the 5 held-out units, resumable),
+  and the summary table (`artifacts/runs/it9_summary.csv`).
+
+**How.**
+```
+uv run pytest
+```
+New `tests/test_frontends.py`: the linear frontend keeps 509 bins and puts
+a 1 kHz tone in bin 64; MFCC coefficient 0 is the scaled sum of the
+level-normalised log-mel; a linear checkpoint loads back as linear and
+scores. All tests pass. The notebook's code cells compile; the notebook
+has not been run.
+
+The DS-CNN has 22,530 parameters for every frontend (global pooling). One
+CPU forward pass of 64 windows on this PC: MFE 64 x 98, 146 ms; MFCC
+20 x 98, 36 ms; linear 509 x 94, 1,250 ms. The linear arm costs about 8.5
+times the network compute of MFE.
+
+**Result.** Nothing trained (Mads: training runs on JupyterLab, not on
+this PC).
+
+**Next.** Mads to say how the repo and the data reach JupyterLab and
+what GPU it has; then run the notebook and log the results as entry 091.

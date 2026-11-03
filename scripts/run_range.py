@@ -61,6 +61,11 @@ def main() -> None:
     p.add_argument("--windows", type=int, default=200_000)
     p.add_argument("--lgbm-windows", type=int, default=40_000)
     p.add_argument("--window-seconds", type=float, default=1.0)
+    p.add_argument("--frontend", default="mfe", choices=["mfe", "mfcc", "linear"],
+                   help="what the network sees (entry 090); lgbm trains on the same features, comb ignores them")
+    p.add_argument("--n-fft", type=int, default=None,
+                   help="STFT frame in samples (default 400 = 25 ms; 1024 = 64 ms for --frontend linear)")
+    p.add_argument("--n-mfcc", type=int, default=20)
     p.add_argument("--eval-hop", type=float, default=0.5)
     p.add_argument("--deploy-fa", type=float, default=0.10)
     p.add_argument("--seed", type=int, default=0)
@@ -69,7 +74,9 @@ def main() -> None:
                    help="also score the average of k consecutive windows, for each k given")
     args = p.parse_args()
 
-    cfg = FrontendConfig(window_seconds=args.window_seconds)
+    n_fft = args.n_fft or (1024 if args.frontend == "linear" else 400)
+    cfg = FrontendConfig(window_seconds=args.window_seconds, kind=args.frontend, n_fft=n_fft, n_mfcc=args.n_mfcc)
+    print(f"frontend: {cfg.describe()}", flush=True)
     manifest = load_manifest()
     if args.pair:
         manifest = [dataclasses.replace(r, _file=r._file.replace(f"{r.source}.i16", f"{r.source}_pair.i16"))

@@ -336,7 +336,7 @@ class RangeSampler:
         L = np.stack([self.fe.frames(self._finish(self.positive(rng) if t else self.negative(rng), rng))
                       for t in y])
         L = L + np.stack([rr._eq_curve(rng, L.shape[1]) for _ in y])[:, :, None]
-        return rr.level_normalise(L), y
+        return rr.to_model(rr.level_normalise(L), self.cfg), y
 
 
 def speed_change(x: np.ndarray, factor: float) -> np.ndarray:
