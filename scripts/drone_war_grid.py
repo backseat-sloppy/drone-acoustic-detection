@@ -116,6 +116,22 @@ def hop_db(x, t_end, fs, window_s, band=(50.0, 8000.0)):
         return 10 * np.log10(np.maximum(cum[b] - cum[a], 0) / np.maximum(b - a, 1))
 
 
+def hop_peak_hz(x, t_end, fs, window_s, band=(50.0, 8000.0)):
+    """Per-hop dominant frequency in Hz: the peak of the Hann-windowed spectrum of x in each window
+    [t_end - window_s, t_end), searched within band. NaN where the window is silent."""
+    n = int(round(window_s * fs))
+    f = np.fft.rfftfreq(n, 1 / fs)
+    inband = (f >= band[0]) & (f <= band[1])
+    out = np.full(len(t_end), np.nan)
+    for i, t in enumerate(t_end):
+        b = min(int(round(t * fs)), len(x))
+        seg = x[max(b - n, 0):b]
+        if len(seg) and seg.any():
+            p = np.abs(np.fft.rfft(seg * np.hanning(len(seg)), n)) ** 2
+            out[i] = f[inband][np.argmax(p[inband])]
+    return out
+
+
 def squash(score, thr):
     """comb scores run 0 to hundreds; s/(s+thr) maps them onto 0-1 with the threshold at 0.5."""
     return score / (score + thr)
@@ -332,6 +348,8 @@ def run(a, progress=print, on_level=None, stop=lambda: False):
                         cell[k], cell["labels"] = d, lab
                         if "snr" not in cell:                 # SNR = drone over all noise (war + wind)
                             cell["drone_db"], cell["noise_db"] = (hop_db(z, d.t_end, es.FS, DEFAULT.window_seconds)
+                                                                  for z in (drone_part, noise))
+                            cell["drone_hz"], cell["noise_hz"] = (hop_peak_hz(z, d.t_end, es.FS, DEFAULT.window_seconds)
                                                                   for z in (drone_part, noise))
                             with np.errstate(invalid="ignore"):
                                 cell["snr"] = cell["drone_db"] - cell["noise_db"]

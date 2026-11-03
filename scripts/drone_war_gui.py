@@ -12,7 +12,8 @@ track at the same dB.
 Runs in the background, so the window stays live; Stop ends a run after the current clip.
 'Page 2: SNR' swaps the x axis from time to each window's SNR (drone over noise, 50-8000 Hz).
 Click a panel to open that case in its own window with four graphs: drone and noise (war + wind)
-level in dBFS over time, SNR over time, confidence over time, and confidence over SNR. Drag with
+level in dBFS over time, their dominant frequency over time, confidence over time, and confidence
+over SNR. Drag with
 the toolbar's zoom tool, or scroll to zoom the x axis around the mouse.
 Results (results.csv, hops.csv, grid_speed_x_war.png and grid_speed_x_war_snr.png) go to
 artifacts/drone_war/gui/.
@@ -64,7 +65,7 @@ for key, label, y in (("no_drone", "no drone (a row with war only)", 0.735),
 fig.text(0.015, 0.515, "count: min to max, evenly spaced; count 1 needs min = max.\n"
          "war: war-shaped noise, as loud as the war track's first 20 s.\n"
          "war 0 dB = the war track as rendered.\n"
-         "click a panel: levels, SNR and confidence; scroll there to zoom.", fontsize=8, color="#777777", va="top")
+         "click a panel: levels, frequency, confidence; scroll there to zoom.", fontsize=8, color="#777777", va="top")
 b_run = Button(fig.add_axes([0.015, 0.40, 0.08, 0.04]), "Run")
 b_stop = Button(fig.add_axes([0.10, 0.40, 0.08, 0.04]), "Stop")
 b_page = Button(fig.add_axes([0.185, 0.40, 0.08, 0.04]), "Page 2: SNR")
@@ -183,15 +184,15 @@ def on_click(event):
     name = f"{dwg.speed_label(v)}, " + ("no war" if g == dwg.OFF else f"war {g:+g} dB")
     big, axs = plt.subplots(2, 2, figsize=(13, 8))
     big.canvas.manager.set_window_title(name)
-    big.suptitle(f"{TITLE}  |  {name}  |  levels and SNR: 50-8000 Hz, per 1 s window", fontsize=10, color=TEXT)
-    a_db, a_snr, a_ct, a_cs = axs.flat
+    big.suptitle(f"{TITLE}  |  {name}  |  levels, frequency and SNR: 50-8000 Hz, per 1 s window", fontsize=10, color=TEXT)
+    a_db, a_hz, a_ct, a_cs = axs.flat
     t = cell[next(iter(dwg.DETECTORS))].t_end
     a_db.plot(t, finite(cell["drone_db"]), color="#c0392b", label="drone")
     a_db.plot(t, finite(cell["noise_db"]), color="#555555", label="noise (war + wind)")
     a_db.set(title="1. level over time", ylabel="level (dBFS)")
-    a_snr.plot(t, finite(cell["snr"]), color="#8e44ad")
-    a_snr.axhline(0, color="#999999", lw=0.7)
-    a_snr.set(title="2. SNR over time (drone over war + wind)", ylabel="SNR (dB)")
+    a_hz.plot(t, cell["drone_hz"], color="#c0392b", label="drone")
+    a_hz.plot(t, cell["noise_hz"], color="#555555", label="noise (war + wind)")
+    a_hz.set(title="2. dominant frequency over time (spectrum peak)", ylabel="frequency (Hz)")
     ok = np.isfinite(cell["snr"])
     for k in dwg.DETECTORS:
         d = cell[k]
@@ -203,13 +204,13 @@ def on_click(event):
             a.axhline(line, color=dwg.COLORS[k], lw=0.7, ls="--")
     a_ct.set(title="3. confidence over time", ylabel="confidence", ylim=(0, 1))
     a_cs.set(title="4. confidence over SNR", xlabel="SNR (dB)", ylabel="confidence", ylim=(0, 1))
-    for a in (a_snr, a_cs) if not ok.any() else ():
-        a.text(0.5, 0.5, "no SNR: " + ("no drone" if v == dwg.NO_DRONE else "no noise"), ha="center",
-               transform=a.transAxes, color="#999999")
-    for a in (a_db, a_snr, a_ct):
+    if not ok.any():
+        a_cs.text(0.5, 0.5, "no SNR: " + ("no drone" if v == dwg.NO_DRONE else "no noise"), ha="center",
+                  transform=a_cs.transAxes, color="#999999")
+    for a in (a_db, a_hz, a_ct):
         a.set_xlabel("time (s)")
     a_db.sharex(a_ct)
-    a_snr.sharex(a_ct)                                       # zooming one time graph zooms all three
+    a_hz.sharex(a_ct)                                        # zooming one time graph zooms all three
     for a in axs.flat:
         a.grid(color="#e5e5e5", lw=0.5)
         if a.get_legend_handles_labels()[0]:

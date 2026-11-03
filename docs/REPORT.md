@@ -4952,3 +4952,30 @@ time (noise = war + wind), confidence over time, and confidence over SNR.
 
 **Next.** None. A tool change. Synthetic scaffolding (section 5), not
 detection performance.
+
+## 079 - Drone-in-war detail window: frequency over time replaces SNR over time
+
+**Why.** Mads asked to swap graph 2 (SNR over time, entry 078) for
+frequency over time, with the drone and the war as separate lines like
+graph 1.
+
+**What.** On top of commit a6a359d, uncommitted.
+- `scripts/drone_war_grid.py`: new `hop_peak_hz`, each hop's dominant
+  frequency: the peak of the Hann-windowed spectrum of the 1 s window
+  (1 Hz bins), searched within 50-8000 Hz. NaN where the window is
+  silent. `run()` stores `drone_hz` and `noise_hz` per hop in each cell.
+  `hops.csv` is unchanged.
+- `scripts/drone_war_gui.py`: graph 2 is now "dominant frequency over
+  time", drone and noise (war + wind) lines, linear Hz axis. The SNR is
+  still computed and shown in graph 4.
+
+**Checks.**
+- `hop_peak_hz` on 1 s of silence then a 1 kHz sine gives [NaN, 1000,
+  1000] for windows ending at 1, 2 and 3 s (assert in a scratch script).
+- Headless run as in entry 078 (150 km/h plus no drone, war -10 dB): the
+  drone's peak runs from 221 to 315 Hz, rising in the last 2-3 s before
+  impact; the noise's peak jumps between 50 and 179 Hz.
+- `uv run pytest`: all pass.
+- Not checked in a live window: real mouse clicks.
+
+**Next.** None. A tool change. Synthetic scaffolding (section 5).
