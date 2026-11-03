@@ -4979,3 +4979,98 @@ graph 1.
 - Not checked in a live window: real mouse clicks.
 
 **Next.** None. A tool change. Synthetic scaffolding (section 5).
+
+## 080 - A window that looks for drones in chosen audio files
+
+**Why.** Mads asked for a GUI where you only open one or more audio files
+and the system tries to find drones in them: the files are the whole test,
+with nothing to set. (A first attempt that added a file button to
+`scripts/drone_war_gui.py`, mixing the files into war noise, was undone by
+Mads before it was logged; it is not part of the repo.)
+
+**What.** On top of commit 3545b69, uncommitted. New
+`scripts/detect_gui.py`:
+- "Open audio files..." (Tk multi-select dialog: WAV, FLAC, OGG, MP3).
+- Each file is read by `dad.wavio.read_wav` (channel 0, 16 kHz) and scored
+  by `dad.wavio.stream` with the CNN and comb at their frozen iteration 6
+  thresholds (`drone_war_grid._detectors()`, the same as the drone-in-war
+  window): 1 s window, 0.125 s hop. No noise is added and nothing is set.
+- A list gives each file's verdict per detector: DRONE if any window
+  alarmed, with the share of windows that alarmed. Clicking a file (or
+  Previous / Next) shows its spectrogram and each detector's confidence
+  over time, with thresholds, alarms shaded, first alarm and longest
+  unbroken alarm. Play / Stop sound plays the file as the detectors hear
+  it, normalised.
+- Unreadable files and files shorter than the 1 s window are listed with
+  the reason; the batch goes on. Scoring runs in a background thread.
+- `artifacts/detect_gui/results.csv`: one row per file and detector.
+- The docstring warns that the detectors assume 110 dB SPL full scale, so
+  a verdict on an uncalibrated recording is a hint, not a measurement.
+
+**Checks.**
+- Headless run (Agg backend, dialog stubbed) on five made-up files: an 8 s
+  WAV with a 180 Hz tone from 3 s, 8 s stereo noise, 25 s of 16 kHz noise
+  (FLAC), a 0.5 s file and a file that is not audio. comb alarmed on the
+  tone file (first alarm 3.12 s, longest 5.00 s, 70 % of windows) and on
+  nothing else; the CNN alarmed on none; the short and broken files were
+  listed with their reasons. Next, click-to-select and wrap-around worked;
+  the CSV held 10 rows. Made-up audio: these numbers say nothing about
+  detection performance (section 5).
+- `uv run pytest`: all pass.
+- Not checked in a live window: the real file dialog, mouse clicks,
+  sound.
+
+**Next.** None. A tool.
+
+## 081 - Detection window: stats per file (peaks and time above threshold)
+
+**Why.** Mads asked that clicking a red file in `scripts/detect_gui.py`
+(entry 080) opens stats for that track: the number of peaks above
+threshold and the time above threshold, for both the DSP detector (comb)
+and the CNN.
+
+**What.** On top of commit 3545b69, uncommitted.
+- A peak = an unbroken stretch of decisions at or above the threshold
+  (`peaks()`). Time above threshold = alarmed decisions x the 0.125 s hop,
+  since each decision holds until the next one. Both are stored per file
+  and detector, and added to `artifacts/detect_gui/results.csv`
+  (`peaks_above_threshold`, `time_above_threshold_s`).
+- Clicking a red file (any detector alarmed) still selects it, and also
+  opens a stats window. For each detector it shows confidence over time
+  with each peak shaded and numbered, plus peaks above threshold, time
+  above threshold (and its share of the scored time), longest peak, first
+  alarm, and a table of the peaks (start, end, duration, highest
+  confidence; the first 12). Clicking a file that is not red opens nothing.
+
+**Checks.**
+- Headless (Agg backend, dialog stubbed): a made-up 20 s file with a
+  180 Hz tone on at 2-5 s, 8-9.5 s and 13-18 s gave comb 3 peaks, 12.125 s
+  above threshold, longest 5.875 s, peaks at 2.12-6.00, 8.12-10.50 and
+  13.12-19.00 s. Each peak runs about 0.9 s past its burst, because a 1 s
+  window still holds tone after the tone stops. The CNN gave 0 peaks. A
+  noise file gave 0 for both. A click on the red file opened one window;
+  a click on the noise file opened none. Made-up audio: no detection
+  performance (section 5).
+- `uv run pytest`: all pass.
+- Not checked in a live window: real mouse clicks.
+
+**Next.** None. A tool change.
+
+## 082 - Detection window: play the file from its stats window
+
+**Why.** Mads asked to be able to play the audio file from the stats
+window (entry 081).
+
+**What.** On top of commit 3545b69, uncommitted. `scripts/detect_gui.py`:
+the stats window has Play and Stop sound buttons. Play plays that
+window's file, whichever file the main window shows; `play()` takes the
+file index. The buttons are kept on the window object so they keep
+working after `open_stats` returns.
+
+**Checks.** Headless (Agg backend, `winsound` stubbed to record what it
+is sent): after opening the stats window for file 1 of 2 and then selecting
+file 2 in the main window, Play sent 320000 samples at 16 kHz, the length
+of file 1 (20 s); Stop sent `PlaySound(None)`. Not checked: real sound
+output and real mouse clicks.
+
+**Next.** None. A tool change.
