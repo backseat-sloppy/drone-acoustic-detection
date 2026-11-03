@@ -104,17 +104,16 @@ def render_drones(speeds_kmh, a, cache):
     return out
 
 
-def hop_snr(drone, noise, t_end, fs, window_s, band=(50.0, 8000.0)):
-    """Per-hop SNR in dB: drone energy over noise energy in each window [t_end - window_s, t_end),
-    both band-passed to the frontend's mel range. -inf with no drone, +inf with no noise."""
+def hop_db(x, t_end, fs, window_s, band=(50.0, 8000.0)):
+    """Per-hop RMS level in dBFS of x in each window [t_end - window_s, t_end), band-passed to the
+    frontend's mel range (x in pascals, full scale es.FULL). -inf where x is silent."""
     from scipy.signal import butter, sosfilt
     sos = butter(4, band, btype="bandpass", fs=fs, output="sos")
-    cum = [np.concatenate([[0.0], np.cumsum(sosfilt(sos, z) ** 2)]) for z in (drone, noise)]
-    b = np.clip(np.round(np.asarray(t_end) * fs).astype(int), 0, len(drone))
+    cum = np.concatenate([[0.0], np.cumsum((sosfilt(sos, x) / es.FULL) ** 2)])
+    b = np.clip(np.round(np.asarray(t_end) * fs).astype(int), 0, len(x))
     a = np.clip(b - int(round(window_s * fs)), 0, None)
-    e_d, e_n = (c[b] - c[a] for c in cum)
     with np.errstate(divide="ignore", invalid="ignore"):
-        return 10 * np.log10(np.maximum(e_d, 0) / np.maximum(e_n, 0))
+        return 10 * np.log10(np.maximum(cum[b] - cum[a], 0) / np.maximum(b - a, 1))
 
 
 def squash(score, thr):
@@ -331,8 +330,11 @@ def run(a, progress=print, on_level=None, stop=lambda: False):
                         r = evaluate_file(wav, sc, DEFAULT, thr[k])
                         d, lab = r["decisions"], r["labels"]
                         cell[k], cell["labels"] = d, lab
-                        if "snr" not in cell:
-                            cell["snr"] = hop_snr(drone_part, noise, d.t_end, es.FS, DEFAULT.window_seconds)
+                        if "snr" not in cell:                 # SNR = drone over all noise (war + wind)
+                            cell["drone_db"], cell["noise_db"] = (hop_db(z, d.t_end, es.FS, DEFAULT.window_seconds)
+                                                                  for z in (drone_part, noise))
+                            with np.errstate(invalid="ignore"):
+                                cell["snr"] = cell["drone_db"] - cell["noise_db"]
                         q = rates(r["counts"], r["leads"])
                         lead = r["leads"][0] if r["leads"] else dict(first_alarm_s=None, lead_s=None)
                         rows.append(dict(war_source=a.war_source, war_gain_db=g, speed_kmh=round(v, 1), war_offset_s=off, detector=k,

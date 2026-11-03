@@ -4919,3 +4919,36 @@ does not follow SNR (see entry 075). `comb` stays near 0 below about
 100 km/h, from about -10 dB SNR up.
 
 **Next.** None. A tool change.
+
+## 078 - Drone-in-war window: a click opens four graphs for one case
+
+**Why.** Mads asked that a click on a grid panel open a window with four
+graphs for that case: drone and war levels in dB over time, SNR over
+time (noise = war + wind), confidence over time, and confidence over SNR.
+
+**What.** On top of commit 66d6b0a, uncommitted.
+- `scripts/drone_war_grid.py`: `hop_snr` is replaced by `hop_db`, the RMS
+  level in dBFS of one signal in each hop's 1 s window, with the same
+  causal 50-8000 Hz band-pass. `run()` stores `drone_db` and `noise_db`
+  per hop in each cell; `snr` is now their difference, so the SNR values
+  are the same as in entry 077. `hops.csv` is unchanged.
+- `scripts/drone_war_gui.py`: the click no longer opens the single big
+  panel (entry 077). It opens a 2 x 2 window: (1) drone and noise level in
+  dBFS over time, (2) SNR over time, (3) CNN and comb confidence over
+  time with thresholds, (4) confidence over SNR. The three time graphs
+  share the x axis; scroll zoom still works. The "noise" line is war plus
+  wind, since that is what the SNR divides by.
+
+**Checks.**
+- `hop_db` on a 1 kHz sine at half of full scale gives -9.03 dBFS, as
+  expected (assert in a scratch script, not in `tests/`).
+- A headless run: 150 km/h plus no drone, war -10 dB, one clip each, then
+  a simulated click on each panel. Both windows draw. At 150 km/h the
+  drone rises from about -107 to -41.5 dBFS before impact at about 11 s;
+  the noise sits at -37.5 to -36.9 dBFS. The no-drone window labels its
+  SNR graphs "no SNR: no drone".
+- `uv run pytest`: all pass.
+- Not checked in a live window: real mouse clicks.
+
+**Next.** None. A tool change. Synthetic scaffolding (section 5), not
+detection performance.
