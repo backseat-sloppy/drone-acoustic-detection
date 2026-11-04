@@ -5828,3 +5828,104 @@ other units they range from 0.1% to 41%.
 council is needed. Report to Mads. Not decided: whether the linear arm's
 gain near the rigs is worth a follow-up (for example on the mower false
 alarms) or whether the next iteration targets something else.
+
+## 095 - The no-drone audio exported as WAV for a second JupyterLab account
+
+- Date: 2026-11-04
+- Iteration: none (data handling)
+- Type: Data
+- Commit: uncommitted
+
+**What changed.** Every no-drone recording (manifest label 0) of
+`data/processed`, plus the no-drone stems, written as WAV with a CSV and
+copied to the JupyterLab account `jupyter-mariusq` (same server as entry
+091), at `~/nodrone/`:
+
+| Part | Files | Duration |
+|---|---|---|
+| `recordings/nightjar` (background) | 28 | 75.3 min |
+| `recordings/fpv` (background) | 121 | 109.6 min |
+| `recordings/d3set` (background) | 37 | 14.1 min |
+| `recordings/halmstad` (background and helicopter) | 59 | 9.8 min |
+| `stems/` background, distracter, war, wind (drone stems left out) | 97 | - |
+
+`recordings.csv` holds the manifest rows (source, group, licence and so on)
+with the WAV path; `stems.csv` the stems manifest rows; attribution in
+`stems_ATTRIBUTION.md`. 499 MB.
+
+**Why.** Mads asked for the no-drone data on the second account.
+
+**How.** `uv run python -I scripts/export_nodrone.py . data/extracted/nodrone`.
+Samples are written as stored: int16 stores as 16-bit WAV, 16 kHz mono,
+never rescaled. Checked on this PC: all 245 recordings read back
+bit-identical to `realdata.Recording.audio()`. Uploaded as a tar in 55
+parts through JupyterLab's own upload (the browser tool takes 10 MB per
+file), joined on the server; MD5 6da945827252f84e82ca8b6b415d69d3 on both
+sides; 342 WAV files after unpacking.
+
+**Result.** Not a result; data handling only.
+
+**Not done.** FSD50K: its processed store exists only on the `mads`
+account, which this browser can no longer open while it is logged in as
+`mariusq` (HTTP 403), and the raw FSD50K archives are not on this PC.
+
+**Next.** FSD50K once Mads is logged in as `mads` again (export there, copy
+through a folder both accounts can read), if still wanted.
+
+## 096 - Final CNN and CRNN trained on every rig, for the virtual tests
+
+- Date: 2026-11-04
+- Iteration: none (checkpoints, as iteration 6)
+- Type: Model
+- Commit: 87a7bdf plus the uncommitted `scripts/run_range.py` change below
+
+**What changed.** Two models trained once on every rig, with nothing held
+out, at Mads's request, so both can drive the virtual tests (the drone-in-war
+GUI and the other synthetic test benches) and go into the repo:
+- `final_dscnn`: the DS-CNN of model 6 (22,530 parameters).
+- `final_crnn`: the CRNN of `models/zoo.py` (739,747 parameters; three
+  conv blocks that pool frequency only, a bidirectional GRU, attention
+  pooling over time). It had never been trained before (entry 006's backend
+  had no GRU).
+- `scripts/run_range.py`: `crnn` added to `NETS`, so the runner trains it.
+
+Both use iteration 5/6's recipe and model 6's frontend: MFE, 64 log-mel
+bands, 25/10 ms, 1 s window, `simdist`, speed perturbation 0.8-1.25,
+200,000 training windows, seed 0, deployment threshold frozen at 5% false
+alarms on validation. Glasgow is not in the server's store, so these are
+model 6's recipe without Glasgow.
+
+**Why.** Mads asked for a final CNN and CRNN to compare in the virtual tests,
+without a frontend evaluation. No council was held for the CRNN: no model
+choice is made here, and no claim about its performance.
+
+**How.** On the JupyterLab server, one GPU each:
+```
+CUDA_VISIBLE_DEVICES=0 .venv/bin/python -u scripts/run_range.py --name final_dscnn --pool --arms none --recipes simdist --models dscnn --device cuda --windows 200000 --speed 0.8 1.25 --deploy-fa 0.05 --seed 0 --frontend mfe
+CUDA_VISIBLE_DEVICES=1 .venv/bin/python -u scripts/run_range.py --name final_crnn --pool --arms none --recipes simdist --models crnn --device cuda --windows 200000 --speed 0.8 1.25 --deploy-fa 0.05 --seed 0 --frontend mfe
+```
+258 s (DS-CNN) and 280 s (CRNN) in total, 760-1,070 windows/s. Outputs,
+copied to this PC with matching MD5:
+`artifacts/models/final_dscnn_none_simdist_dscnn.pt`,
+`artifacts/models/final_crnn_none_simdist_crnn.pt`, and
+`artifacts/runs/final_{dscnn,crnn}.json` and `.log`. Both load locally
+through `dad.wavio.load_scorer`; thresholds from the run files: DS-CNN
+0.380, CRNN 0.483. `artifacts/` is git-ignored, so pushing them needs
+`git add -f`.
+
+**Result.** Not a test result. The run files hold only validation figures
+(21 segments from the training rigs, in distribution) and Lund at the
+deployment threshold:
+
+| | DS-CNN | CRNN |
+|---|---|---|
+| Validation recall, all drone windows, at the deployment threshold (FA 5%) | 0.812 | 0.798 |
+| Validation recall 0-50 m at 10% FA | 0.840 | 0.828 |
+| Validation recall 100-200 m at 10% FA | 0.082 | 0.021 |
+| Lund recall at the deployment threshold (rig never trained on) | 0.561 | 0.454 |
+
+One seed and in-distribution validation: these numbers cannot rank the two
+models. The leave-one-unit-out runs of iteration 9 would be needed for that.
+
+**Next.** Mads runs the virtual tests with both. Synthetic numbers from
+them are not detection performance (CLAUDE.md section 5).
