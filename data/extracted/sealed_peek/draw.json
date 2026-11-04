@@ -1,0 +1,123 @@
+{
+ "seed": 20261104,
+ "eligible_intervals": 31,
+ "excerpts": [
+  {
+   "file": "aris_peek_01.wav",
+   "group": "drone_interval_10",
+   "first_segment": "audio/drone/drone_0712.wav",
+   "last_segment": "audio/drone/drone_0730.wav",
+   "offset_in_interval_s": 10.5,
+   "duration_s": 10.0,
+   "sr": 22050,
+   "continuity_max_abs_diff": 0.0
+  },
+  {
+   "file": "aris_peek_02.wav",
+   "group": "drone_interval_11",
+   "first_segment": "audio/drone/drone_0750.wav",
+   "last_segment": "audio/drone/drone_0768.wav",
+   "offset_in_interval_s": 6.0,
+   "duration_s": 10.0,
+   "sr": 22050,
+   "continuity_max_abs_diff": 0.0
+  },
+  {
+   "file": "aris_peek_03.wav",
+   "group": "drone_interval_18",
+   "first_segment": "audio/drone/drone_1311.wav",
+   "last_segment": "audio/drone/drone_1329.wav",
+   "offset_in_interval_s": 2.0,
+   "duration_s": 10.0,
+   "sr": 22050,
+   "continuity_max_abs_diff": 0.0
+  },
+  {
+   "file": "aris_peek_04.wav",
+   "group": "drone_interval_19",
+   "first_segment": "audio/drone/drone_1336.wav",
+   "last_segment": "audio/drone/drone_1354.wav",
+   "offset_in_interval_s": 0.0,
+   "duration_s": 10.0,
+   "sr": 22050,
+   "continuity_max_abs_diff": 0.0
+  },
+  {
+   "file": "aris_peek_05.wav",
+   "group": "drone_interval_25",
+   "first_segment": "audio/drone/drone_2546.wav",
+   "last_segment": "audio/drone/drone_2564.wav",
+   "offset_in_interval_s": 32.0,
+   "duration_s": 10.0,
+   "sr": 22050,
+   "continuity_max_abs_diff": 0.0
+  },
+  {
+   "file": "aris_peek_06.wav",
+   "group": "drone_interval_26",
+   "first_segment": "audio/drone/drone_2586.wav",
+   "last_segment": "audio/drone/drone_2604.wav",
+   "offset_in_interval_s": 6.5,
+   "duration_s": 10.0,
+   "sr": 22050,
+   "continuity_max_abs_diff": 0.0
+  },
+  {
+   "file": "aris_peek_07.wav",
+   "group": "drone_interval_27",
+   "first_segment": "audio/drone/drone_2930.wav",
+   "last_segment": "audio/drone/drone_2948.wav",
+   "offset_in_interval_s": 1.0,
+   "duration_s": 10.0,
+   "sr": 22050,
+   "continuity_max_abs_diff": 0.0
+  },
+  {
+   "file": "aris_peek_08.wav",
+   "group": "drone_interval_28",
+   "first_segment": "audio/drone/drone_3021.wav",
+   "last_segment": "audio/drone/drone_3039.wav",
+   "offset_in_interval_s": 28.0,
+   "duration_s": 10.0,
+   "sr": 22050,
+   "continuity_max_abs_diff": 0.0
+  },
+  {
+   "file": "aris_peek_09.wav",
+   "group": "drone_interval_32",
+   "first_segment": "audio/drone/drone_4185.wav",
+   "last_segment": "audio/drone/drone_4203.wav",
+   "offset_in_interval_s": 0.0,
+   "duration_s": 10.0,
+   "sr": 22050,
+   "continuity_max_abs_diff": 0.0
+  },
+  {
+   "file": "aris_peek_10.wav",
+   "group": "drone_interval_34",
+   "first_segment": "audio/drone/drone_4454.wav",
+   "last_segment": "audio/drone/drone_4472.wav",
+   "offset_in_interval_s": 17.5,
+   "duration_s": 10.0,
+   "sr": 22050,
+   "continuity_max_abs_diff": 0.0
+  }
+ ],
+ "background": [
+  {
+   "file": "aris_peek_background_01.wav",
+   "label": "background",
+   "group": "background_block_15",
+   "first_segment": "audio/background/background_0782.wav",
+   "last_segment": "audio/background/background_0791.wav",
+   "segment_index_in_group": 31,
+   "duration_s": 10.0,
+   "sr": 22050,
+   "joints": 9,
+   "fade_s": 0.005,
+   "note": "segments do not overlap; joined end to end with fades, not continuous audio",
+   "seed": 20261105,
+   "eligible_groups": 20
+  }
+ ]
+}
