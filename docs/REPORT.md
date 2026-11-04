@@ -5929,3 +5929,32 @@ models. The leave-one-unit-out runs of iteration 9 would be needed for that.
 
 **Next.** Mads runs the virtual tests with both. Synthetic numbers from
 them are not detection performance (CLAUDE.md section 5).
+
+## 097 - REPORT.md merges by union
+
+- Date: 2026-11-04
+- Iteration: none (repo tooling)
+- Type: Infrastructure
+- Commit: uncommitted
+
+**What changed.** New `.gitattributes`: `docs/REPORT.md merge=union`. When
+two branches both append entries, git keeps both instead of stopping with a
+conflict.
+
+**Why.** Several people now append to this report on their own branches
+(for example iteration 10 on `it10-SynthDrone`), and every merge conflicted
+at the end of the file.
+
+**How.** Tested on a throwaway repo: two branches each appending an entry
+merged without a conflict and with both entries kept.
+
+**Result.** Known limits, seen in that test:
+- Two branches can pick the same entry number; both are kept. Check the
+  numbers after a merge and renumber in a correcting entry if needed.
+- The blank line between the two appended blocks can be lost.
+- A line both sides changed (a row of the glance table) ends up twice,
+  without warning. Check the table after a merge.
+- Applies to merges made with local git. Not verified for GitHub's web
+  merge button.
+
+**Next.** None. A tool change.
