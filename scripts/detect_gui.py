@@ -6,7 +6,17 @@
 dad.wavio reads it (channel 0, resampled to 16 kHz) and every detector scores it hop by hop as it
 would run live: a 1 s window every 0.125 s, a decision stamped at the window's end, drone when the
 score reaches the frozen iteration 6 threshold (the same detectors and thresholds as
-scripts/drone_war_gui.py). Nothing else is set: no sliders, no added noise.
+scripts/drone_war_gui.py). Nothing else is set: no sliders.
+
+War-shaped noise (optional): tick "add war-shaped noise" before opening files and type one or
+more SNRs in dB, separated by spaces, commas or semicolons (each -20 to +30, at most 6, default
+"0 10 30"; lower = more noise; decimals with a point). Each file then gets steady noise with the
+war's long-term spectrum (scripts/war_shaped_noise.py, seed 1000 + the file's place in the batch,
+the same noise at every SNR), scaled so the file's broadband RMS is SNR dB above the noise's
+(docs/war_shaped_noise.md). Every SNR is its own row in the list; the detectors score the mix, Play
+plays the mix, and the mix is saved as a 16 kHz float WAV in artifacts/detect_gui/mixes/. Below the
+spectrogram the file gets one confidence graph per SNR, the selected one in bold; click a graph to
+select that SNR (and hear it with Play). The setting applies to the next batch opened.
 
 The list on the left gives each file's verdict per detector: DRONE if any window alarmed, with the
 share of windows that alarmed, the first alarm and the longest unbroken alarm. Click a file in the
@@ -29,7 +39,6 @@ The table is written to artifacts/detect_gui/results.csv after every batch.
 from __future__ import annotations
 
 import csv
-import io
 import queue
 import subprocess
 import sys
@@ -43,12 +52,17 @@ import drone_war_grid as dwg  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import soundfile as sf  # noqa: E402
-from matplotlib.widgets import Button  # noqa: E402
+from matplotlib.widgets import Button, CheckButtons, TextBox  # noqa: E402
+from scipy.signal import resample_poly  # noqa: E402
 
 from dad.config import DEFAULT  # noqa: E402
 from dad.wavio import read_wav, stream  # noqa: E402
 
 OUT = dwg.ROOT / "artifacts/detect_gui/results.csv"
+MIXES = OUT.parent / "mixes"
+SNR_MIN, SNR_MAX, SNR_DEFAULT = -20.0, 30.0, "0 10 30"      # dB, file RMS over noise RMS
+SNR_MAX_COUNT = 6                                            # graphs under the spectrogram
+NOISE_LOOP_S = 60.0                                          # longer files repeat it (the noise is periodic)
 AUDIO_TYPES = [("Audio files", "*.wav *.flac *.ogg *.mp3"), ("All files", "*.*")]
 HOP_S = DEFAULT.samples_per_hop / DEFAULT.sample_rate
 TEXT, GREY, RED = "#333333", "#777777", "#c0392b"
@@ -58,18 +72,26 @@ LIST_ROWS = 22                                               # files shown in th
 fig = plt.figure(figsize=(15, 9))
 fig.canvas.manager.set_window_title("Find drones in audio files")
 fig.text(0.015, 0.975, "Find drones in audio files", fontsize=13, weight="bold", color=TEXT, va="top")
-b_open = Button(fig.add_axes([0.015, 0.875, 0.25, 0.045]), "Open audio files...")
-b_prev = Button(fig.add_axes([0.015, 0.82, 0.12, 0.04]), "< Previous")
-b_next = Button(fig.add_axes([0.145, 0.82, 0.12, 0.04]), "Next >")
-b_play = Button(fig.add_axes([0.015, 0.77, 0.12, 0.04]), "Play")
-b_hush = Button(fig.add_axes([0.145, 0.77, 0.12, 0.04]), "Stop sound")
-status = fig.text(0.015, 0.75, "Open one or more audio files.", fontsize=8, color=TEXT, va="top", wrap=True)
-ax_list = fig.add_axes([0.015, 0.03, 0.26, 0.68])
+ax_noise = fig.add_axes([0.015, 0.905, 0.15, 0.04], frameon=False)
+c_noise = CheckButtons(ax_noise, ["add war-shaped noise"], [False])
+for lbl in c_noise.labels:
+    lbl.set_fontsize(8)
+t_snr = TextBox(fig.add_axes([0.2, 0.91, 0.065, 0.03]), "SNR dB ", initial=SNR_DEFAULT)
+t_snr.label.set_fontsize(8)
+fig.text(0.135, 0.9, f"one or more, {SNR_MIN:+g} to {SNR_MAX:+g}, lower = more noise", fontsize=6.5, color=GREY,
+         va="top")
+b_open = Button(fig.add_axes([0.015, 0.84, 0.25, 0.045]), "Open audio files...")
+b_prev = Button(fig.add_axes([0.015, 0.79, 0.12, 0.04]), "< Previous")
+b_next = Button(fig.add_axes([0.145, 0.79, 0.12, 0.04]), "Next >")
+b_play = Button(fig.add_axes([0.015, 0.745, 0.12, 0.04]), "Play")
+b_hush = Button(fig.add_axes([0.145, 0.745, 0.12, 0.04]), "Stop sound")
+status = fig.text(0.015, 0.73, "Open one or more audio files.", fontsize=8, color=TEXT, va="top", wrap=True)
+ax_list = fig.add_axes([0.015, 0.03, 0.26, 0.66])
 ax_list.axis("off")
-ax_spec = fig.add_axes([0.33, 0.56, 0.65, 0.36])
-ax_conf = fig.add_axes([0.33, 0.08, 0.65, 0.40], sharex=ax_spec)
+ax_spec = fig.add_axes([0.33, 0.62, 0.65, 0.30])
+CONF_BOX = (0.33, 0.07, 0.65, 0.50)                          # left, bottom, width, height of the graphs
 
-state = dict(thread=None, files=[], cur=0, top=0, detectors=None)
+state = dict(thread=None, files=[], cur=0, top=0, detectors=None, conf_axes=[])
 events: queue.Queue = queue.Queue()
 
 
@@ -87,10 +109,27 @@ def peaks(drone: np.ndarray) -> list[tuple[int, int]]:
     return list(zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1) - 1))
 
 
-def detect(path: str) -> dict:
-    """Every detector over one file. A file that cannot be read, or is shorter than a window,
-    gets an 'error' instead of results."""
-    f = dict(path=path, name=Path(path).name)
+def war_noise(n: int, seed: int) -> np.ndarray:
+    """n samples of war-shaped noise at the frontend's rate. Made at 44.1 kHz, the rate of the
+    gain table, then resampled; at most NOISE_LOOP_S long, repeated for longer files."""
+    sr = dwg.es.FS
+    m = min(n, int(NOISE_LOOP_S * DEFAULT.sample_rate))
+    x = dwg.wsn.shaped_noise(np.loadtxt(dwg.WSN_GAIN), sr, m / DEFAULT.sample_rate + 0.1, seed)
+    return np.resize(resample_poly(x, DEFAULT.sample_rate, sr)[:m], n)
+
+
+def add_noise(audio: np.ndarray, snr_db: float, seed: int) -> np.ndarray:
+    """audio plus war-shaped noise, the noise scaled so audio's broadband RMS is snr_db above it."""
+    noise = war_noise(len(audio), seed)
+    rms = lambda v: np.sqrt(np.mean(v ** 2))                  # noqa: E731
+    return (audio + noise * rms(audio) / rms(noise) / 10 ** (snr_db / 20)).astype(audio.dtype)
+
+
+def detect(path: str, noise: tuple[float, int] | None = None, group: int = 0) -> dict:
+    """Every detector over one file, with war-shaped noise added first when noise = (SNR dB, seed).
+    group = the file's place in the batch, shared by its rows at every SNR. A file that cannot be
+    read, or is shorter than a window, gets an 'error' instead of results."""
+    f = dict(path=path, name=Path(path).name, group=group)
     try:
         clip = read_wav(path, DEFAULT)
     except Exception as e:                                   # noqa: BLE001  (shown in the list, the batch goes on)
@@ -98,6 +137,15 @@ def detect(path: str) -> dict:
     f.update(audio=clip.audio, seconds=len(clip.audio) / DEFAULT.sample_rate)
     if len(clip.audio) < DEFAULT.samples_per_window:
         return {**f, "error": f"shorter than the {DEFAULT.window_seconds:g} s window"}
+    if noise is not None:
+        snr, seed = noise
+        if not np.any(clip.audio):
+            return {**f, "error": "silent: no level to set the noise against"}
+        clip.audio = add_noise(clip.audio, snr, seed)
+        f.update(audio=clip.audio, snr_db=snr, noise_seed=seed)
+        MIXES.mkdir(parents=True, exist_ok=True)
+        f["mix_path"] = str(MIXES / f"{Path(path).stem}_wsn_snr{snr:+g}dB_seed{seed}.wav")
+        sf.write(f["mix_path"], clip.audio, DEFAULT.sample_rate, subtype="FLOAT")
     thr, scorers = detectors()
     f["dec"], f["summary"] = {}, {}
     for k, sc in scorers.items():
@@ -112,13 +160,17 @@ def detect(path: str) -> dict:
     return f
 
 
-def worker(paths):
+def worker(paths, snrs=None):
+    """Every file, at every SNR in snrs (None: no noise). One row per file and SNR."""
     try:
         for i, p in enumerate(paths):
-            events.put(("status", f"listening to file {i + 1} of {len(paths)}: {Path(p).name}"
-                                  + (" (the first file also loads the detectors)" if state["detectors"] is None else "")))
-            events.put(("file", detect(p)))
-        events.put(("status", f"done: {len(paths)} file(s). Table in {OUT.relative_to(dwg.ROOT).as_posix()}"))
+            for snr in snrs or [None]:
+                events.put(("status", f"listening to file {i + 1} of {len(paths)}: {Path(p).name}"
+                                      + ("" if snr is None else f" at SNR {snr:+g} dB")
+                                      + (" (the first file also loads the detectors)" if state["detectors"] is None else "")))
+                events.put(("file", detect(p, None if snr is None else (snr, dwg.WSN_SEED + i), group=i)))
+        events.put(("status", f"done: {len(paths)} file(s). " + (f"Table in {OUT.relative_to(dwg.ROOT).as_posix()}"
+                              if snrs is None else f"Table, mixes in {OUT.parent.relative_to(dwg.ROOT).as_posix()}")))
     except Exception as e:                                   # shown in the window, not lost in a thread
         events.put(("status", f"error: {e}"))
     events.put(("done", None))
@@ -145,7 +197,9 @@ def draw_list():
     ax_list.cell_rows = {}
     for row, i in enumerate(range(state["top"], min(state["top"] + LIST_ROWS, len(files)))):
         f = files[i]
-        name = f["name"] if len(f["name"]) <= 15 else f["name"][:14] + "~"
+        tag = f" {f['snr_db']:+g}" if "snr_db" in f else ""      # the SNR stays visible, the name is cut
+        name = f["name"] if len(f["name"]) + len(tag) <= 15 else f["name"][:14 - len(tag)] + "~"
+        name += tag
         if "error" in f:
             cols = f"  {f['error']}"
         else:
@@ -163,39 +217,96 @@ def draw_list():
     ax_list.text(0, 1 - (LIST_ROWS + 2) / (LIST_ROWS + 3), note, fontsize=7, color=GREY, va="top", wrap=True)
 
 
+def siblings(i: int) -> list[int]:
+    """Rows of the same file as row i (one per SNR), in list order."""
+    g = state["files"][i]["group"]
+    return [j for j, f in enumerate(state["files"]) if f["group"] == g]
+
+
+def conf_axes(n: int) -> list:
+    """n confidence graphs stacked in CONF_BOX, sharing the spectrogram's time axis."""
+    for ax in state["conf_axes"]:
+        fig.delaxes(ax)
+    state["conf_axes"] = []
+    if not n:
+        return []
+    left, bottom, width, height = CONF_BOX
+    gap = 0.035 if n > 1 else 0.0
+    h = (height - gap * (n - 1)) / n
+    state["conf_axes"] = [fig.add_axes([left, bottom + (n - 1 - r) * (h + gap), width, h], sharex=ax_spec)
+                          for r in range(n)]
+    return state["conf_axes"]
+
+
+def plot_score(ax, d, y, k):
+    """Confidence over time with alarms shaded. A short file has few decisions (a 1 s file has
+    one, at 1.00 s), and a line through one point draws nothing, so few decisions get dots and
+    each alarmed one shades the 1 s window it heard."""
+    few = len(d.t_end) < 20
+    ax.plot(d.t_end, y, color=dwg.COLORS[k], lw=1.2, label=k, marker="o" if few else None, ms=5,
+            clip_on=not few)                                 # the last dot sits on the right edge
+    if few:
+        for t in d.t_end[d.drone]:
+            ax.axvspan(max(t - DEFAULT.window_seconds, 0), t, color=dwg.COLORS[k], alpha=0.10, lw=0)
+    else:
+        ax.fill_between(d.t_end, 0, 1, where=d.drone, color=dwg.COLORS[k], alpha=0.10, step="pre", lw=0)
+
+
+def draw_conf(ax, f, thr, selected, legend):
+    """One row's confidence over time: both detectors, thresholds dashed, alarms shaded."""
+    head = f"SNR {f['snr_db']:+g} dB:  " if "snr_db" in f else ""
+    if "error" in f:
+        ax.text(0.5, 0.5, f["error"], ha="center", va="center", color=GREY, transform=ax.transAxes)
+        ax.set_title(head, fontsize=9, color=TEXT, loc="left", weight="bold" if selected else "normal")
+        return
+    lines = []
+    for k, d in f["dec"].items():
+        y = dwg.squash(d.score, thr[k]) if k == "comb" else d.score
+        plot_score(ax, d, y, k)
+        ax.axhline(0.5 if k == "comb" else thr[k], color=dwg.COLORS[k], lw=0.8, ls="--")
+        s = f["summary"][k]
+        lines.append(f"{k}: " + (f"DRONE  first alarm {s['first_alarm_s']:.2f} s, longest alarm {s['longest_s']:.2f} s, "
+                                 f"{100 * s['flagged']:.0f}% of windows" if s["drone"] else "no drone heard"))
+    ax.set(ylim=(0, 1), xlim=(0, f["seconds"]), ylabel="confidence")
+    ax.set_title(head + "   |   ".join(lines), fontsize=9, color=TEXT, loc="left",
+                 weight="bold" if selected else "normal")
+    if legend:
+        ax.legend(loc="upper right", fontsize=8, frameon=False)
+    ax.grid(color="#e5e5e5", lw=0.5)
+    if selected and "snr_db" in f:
+        for side in ax.spines.values():
+            side.set(linewidth=1.6, color=TEXT)
+
+
 def draw_file():
-    """Spectrogram and confidence over time of the current file."""
+    """Spectrogram of the current row, and one confidence graph per row of the same file
+    (one per SNR; just one without noise)."""
     ax_spec.clear()
-    ax_conf.clear()
     files = state["files"]
     if not files:
+        conf_axes(0)
         return
     f = files[state["cur"]]
     if "audio" in f:
         ax_spec.specgram(f["audio"], NFFT=1024, Fs=DEFAULT.sample_rate, noverlap=768, cmap="magma", vmin=-160)
     ax_spec.set_ylabel("Hz")
-    ax_spec.set_title(f"{state['cur'] + 1}/{len(files)}  {f['name']}" + (f"  ({f['seconds']:.1f} s)" if "seconds" in f else ""),
+    ax_spec.set_title(f"{state['cur'] + 1}/{len(files)}  {f['name']}" + (f"  ({f['seconds']:.1f} s)" if "seconds" in f else "")
+                      + (f"  + war-shaped noise, SNR {f['snr_db']:+g} dB (seed {f['noise_seed']})" if "snr_db" in f else ""),
                       fontsize=10, color=TEXT, loc="left")
-    if "error" in f:
-        ax_conf.text(0.5, 0.5, f["error"], ha="center", va="center", color=GREY, transform=ax_conf.transAxes)
-        return
-    thr = detectors()[0]
-    lines = []
-    for k, d in f["dec"].items():
-        y = dwg.squash(d.score, thr[k]) if k == "comb" else d.score
-        ax_conf.plot(d.t_end, y, color=dwg.COLORS[k], lw=1.2, label=k)
-        ax_conf.axhline(0.5 if k == "comb" else thr[k], color=dwg.COLORS[k], lw=0.8, ls="--")
-        ax_conf.fill_between(d.t_end, 0, 1, where=d.drone, color=dwg.COLORS[k], alpha=0.10, step="pre", lw=0)
-        s = f["summary"][k]
-        lines.append(f"{k}: " + (f"DRONE  first alarm {s['first_alarm_s']:.2f} s, longest alarm {s['longest_s']:.2f} s, "
-                                 f"{100 * s['flagged']:.0f}% of windows" if s["drone"] else "no drone heard"))
-    ax_conf.set(ylim=(0, 1), xlim=(0, f["seconds"]), ylabel="confidence",
-                xlabel="time (s), each decision stamped at the end of its 1 s window")
-    ax_conf.set_title("   |   ".join(lines), fontsize=9, color=TEXT, loc="left")
-    ax_conf.text(0.005, 0.02, f"dashed = threshold, shaded = alarm, comb shown as s/(s+{thr['comb']:.2f})",
-                 fontsize=7, color=GREY, transform=ax_conf.transAxes)
-    ax_conf.legend(loc="upper right", fontsize=8, frameon=False)
-    ax_conf.grid(color="#e5e5e5", lw=0.5)
+    rows = siblings(state["cur"])
+    axes = conf_axes(len(rows))
+    thr = detectors()[0] if any("error" not in files[j] for j in rows) else {}
+    for r, (ax, j) in enumerate(zip(axes, rows)):
+        ax.row_index = j                                     # a click on the graph selects this row
+        draw_conf(ax, files[j], thr, selected=j == state["cur"], legend=r == 0)
+        if r < len(rows) - 1:
+            ax.tick_params(labelbottom=False)
+    axes[-1].set_xlabel("time (s), each decision stamped at the end of its 1 s window")
+    if thr:
+        note = f"dashed = threshold, shaded = alarm, comb shown as s/(s+{thr['comb']:.2f})"
+        if len(rows) > 1:
+            note += "; bold = the row shown above and played; click a graph to select it"
+        axes[-1].text(0.005, 0.03, note, fontsize=7, color=GREY, transform=axes[-1].transAxes)
 
 
 def redraw():
@@ -209,14 +320,16 @@ def write_csv():
     with OUT.open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["file", "seconds", "detector", "threshold", "verdict", "flagged_share", "first_alarm_s",
-                    "longest_alarm_s", "peaks_above_threshold", "time_above_threshold_s", "error"])
+                    "longest_alarm_s", "peaks_above_threshold", "time_above_threshold_s", "noise_snr_db",
+                    "noise_seed", "mix_file", "error"])
         thr = state["detectors"][0] if state["detectors"] else {}
         for f in state["files"]:
             for k in dwg.DETECTORS:
                 s = f.get("summary", {}).get(k, {})
                 w.writerow([f["path"], round(f["seconds"], 3) if "seconds" in f else "", k, thr.get(k, ""),
                             verdict(f, k), s.get("flagged", ""), s.get("first_alarm_s", ""), s.get("longest_s", ""),
-                            len(s["peaks"]) if s else "", s.get("above_s", ""), f.get("error", "")])
+                            len(s["peaks"]) if s else "", s.get("above_s", ""), f.get("snr_db", ""),
+                            f.get("noise_seed", ""), f.get("mix_path", ""), f.get("error", "")])
 
 
 def poll():
@@ -230,7 +343,7 @@ def poll():
             if len(state["files"]) == 1:
                 state["cur"] = 0
             draw_list()
-            if len(state["files"]) - 1 == state["cur"]:
+            if x["group"] == state["files"][state["cur"]]["group"]:   # the shown file got another SNR graph
                 draw_file()
         elif kind == "done":
             state["thread"] = None
@@ -257,17 +370,45 @@ def pick_files():
             root.destroy()
 
 
+def noise_snrs(text: str) -> list[float]:
+    """The SNRs typed in the box, in the order typed, repeats dropped; ValueError says what is wrong."""
+    parts = text.replace(",", " ").replace(";", " ").split()
+    if not parts:
+        raise ValueError(f"SNR: type one or more numbers of dB from {SNR_MIN:+g} to {SNR_MAX:+g}")
+    snrs = []
+    for p in parts:
+        try:
+            snr = float(p)
+        except ValueError:
+            raise ValueError(f"SNR: '{p}' is not a number (decimals with a point, values apart with spaces)") from None
+        if not SNR_MIN <= snr <= SNR_MAX:
+            raise ValueError(f"SNR: {snr:g} dB is outside {SNR_MIN:+g} to {SNR_MAX:+g}")
+        if snr not in snrs:
+            snrs.append(snr)
+    if len(snrs) > SNR_MAX_COUNT:
+        raise ValueError(f"SNR: at most {SNR_MAX_COUNT} values, got {len(snrs)}")
+    return snrs
+
+
 def on_open(_):
     if state["thread"]:
         status.set_text("still listening: wait for this batch to finish")
         fig.canvas.draw_idle()
         return
+    snr = None
+    if c_noise.get_status()[0]:
+        try:
+            snr = noise_snrs(t_snr.text)
+        except ValueError as e:
+            status.set_text(str(e))
+            fig.canvas.draw_idle()
+            return
     paths = pick_files()
     if not paths:
         return
     state.update(files=[], cur=0, top=0)
     redraw()
-    state["thread"] = threading.Thread(target=worker, args=(paths,), daemon=True)
+    state["thread"] = threading.Thread(target=worker, args=(paths, snr), daemon=True)
     state["thread"].start()
 
 
@@ -300,7 +441,8 @@ def open_stats(i):
     for ax, (k, d) in zip(axs[:, 0], f["dec"].items()):
         s, line = f["summary"][k], (0.5 if k == "comb" else thr[k])
         y = dwg.squash(d.score, thr[k]) if k == "comb" else d.score
-        ax.plot(d.t_end, y, color=dwg.COLORS[k], lw=1.2)
+        few = len(d.t_end) < 20                              # see plot_score
+        ax.plot(d.t_end, y, color=dwg.COLORS[k], lw=1.2, marker="o" if few else None, ms=5, clip_on=not few)
         ax.axhline(line, color=dwg.COLORS[k], lw=0.8, ls="--")
         rows = []
         for n, (a, b) in enumerate(s["peaks"], 1):
@@ -341,6 +483,13 @@ def on_pick(event):
             open_stats(i)
 
 
+def on_click(event):
+    """A click on one of the SNR graphs selects that row: its spectrogram, and Play plays it."""
+    j = getattr(event.inaxes, "row_index", None)
+    if j is not None and j != state["cur"] and event.inaxes in state["conf_axes"]:
+        show(j)
+
+
 def on_scroll(event):
     if event.inaxes is not ax_list or len(state["files"]) <= LIST_ROWS:
         return
@@ -360,10 +509,17 @@ def play(_=None, i=None):
     a = state["files"][i]["audio"]
     x = np.clip(a / max(np.percentile(np.abs(a), 99.9), 1e-9) * 0.9, -1, 1)
     if sys.platform == "win32":
+        # winsound cannot play from memory asynchronously (RuntimeError), so play a temp file;
+        # the previous one is stopped first and deleted
         import winsound
-        buf = io.BytesIO()
-        sf.write(buf, x, DEFAULT.sample_rate, format="WAV", subtype="PCM_16")
-        winsound.PlaySound(buf.getvalue(), winsound.SND_MEMORY | winsound.SND_ASYNC)
+        winsound.PlaySound(None, 0)
+        old, f = state.get("wav"), tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        f.close()
+        sf.write(f.name, x, DEFAULT.sample_rate, subtype="PCM_16")
+        state["wav"] = f.name
+        if old:
+            Path(old).unlink(missing_ok=True)
+        winsound.PlaySound(f.name, winsound.SND_FILENAME | winsound.SND_ASYNC)
         return
     f = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     sf.write(f.name, x, DEFAULT.sample_rate, subtype="PCM_16")
@@ -387,6 +543,7 @@ b_play.on_clicked(play)
 b_hush.on_clicked(hush)
 fig.canvas.mpl_connect("pick_event", on_pick)
 fig.canvas.mpl_connect("scroll_event", on_scroll)
+fig.canvas.mpl_connect("button_press_event", on_click)
 timer = fig.canvas.new_timer(interval=300)
 timer.add_callback(poll)
 timer.start()
