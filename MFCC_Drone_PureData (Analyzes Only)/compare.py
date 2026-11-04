@@ -3,9 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 
-REAL_FILE, REAL_START = "fpv_drone.wav", 0      # stable stretch of the real drone
-PD_FILE,   PD_START   = "pd_drone_3.wav", 2   # skip the first 2 s of the patch
-DURATION = 1.8
+REAL_FILE, REAL_START = "glasgow_d12.wav", 0      # stable stretch of the real drone
+PD_FILE,   PD_START   = "pd_drone.wav", 0   # skip the first 2 s of the patch
+DURATION = 10
 SR = 44100
 N_FFT = 8192
 HOP = 512

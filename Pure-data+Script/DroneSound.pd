@@ -86,7 +86,7 @@
 #X obj 1473 382 * 2;
 #X obj 1473 413 + 0.8;
 #X obj 858 1112 clip~ -1 1;
-#X obj 1677 346 loadbang;
+#X obj 1707 379 loadbang;
 #X connect 0 0 1 0;
 #X connect 0 1 2 0;
 #X connect 0 2 3 0;
