@@ -26,7 +26,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 6 | 043 | Iteration 5's best recipe trained once on every rig, threshold frozen at 5% false alarms on validation; CNN, LightGBM and comb saved for the real test | Mads asked for a final model for the real test | **Checkpoints, not evidence.** Validation (in-distribution): CNN recall 0.83 at 5% false alarms. Unseen Lund rig: CNN 0.50, baselines near 0. CNN alarms on 55% of mower-only audio. R2 and R3 not met. |
 | Iteration 7 | 055 to 058 | Edge Impulse model (MFE + small CNN) on upload-licensed data, scored locally next to model 6 | Mads asked to try Edge Impulse; deployment hardware still open | **Negative result.** On the shared windows the EI model detects nothing off its training rig (Halmstad recall 0 at the frozen threshold, test AUC 0.36); model 6 0.55 at 4.8% false positives on Halmstad. Small on Cortex-M4F (12 ms, 20 KB RAM), but its MFE is too slow at FFT 1024. Model 6 stays the candidate. |
 | Iteration 8 | 059 to 061 | Edge Impulse on the pool, d3set held out, clips scaled to -30 dBFS | Mads asked for leave-one-dataset-out in Edge Impulse; iteration 7 failed on a 50 dB level gap between rigs | **Hypothesis rejected.** In-distribution AUC rose to 0.92, but on unseen d3set AUC 0.12 (background ranked above drones), worse than the untrained comb (0.53). Microcontroller out of scope (entry 060); Edge Impulse stopped. |
-| Iteration 9 | 090 to | Iteration 5's recipe on real data, with the frontend as the only change: MFE (log-mel), MFCC, linear spectrogram | The supervisor's feedback (entry 086) and Mads's choice to compare frontends on real data, after dropping synthetic training (entries 087-089) | In progress: code and notebook ready, runs on JupyterLab not started. |
+| Iteration 9 | 090 to 094 | Iteration 5's recipe on real data, with the frontend as the only change: MFE (log-mel), MFCC, linear spectrogram | The supervisor's feedback (entry 086) and Mads's choice to compare frontends on real data, after dropping synthetic training (entries 087-089) | **Hypothesis rejected for both.** FPV mean at 10% own false alarms: MFE 0.669, MFCC 0.485, linear 0.692 (+2.3 against +5 required). Linear gains near the rigs (+23-26 points within 50 m) but loses on d3set at 100-200 m (-6.7), on Lund (-18) and alarms 12 points more on mower audio. MFE stays. |
 
 ## Templates
 
@@ -5583,3 +5583,248 @@ this PC).
 
 **Next.** Mads to say how the repo and the data reach JupyterLab and
 what GPU it has; then run the notebook and log the results as entry 091.
+
+## 091 - The JupyterLab server: Pascal GPUs need a CUDA 12.6 torch
+
+**Type.** Setup. **Date.** 2026-11-03. **Commit.** 242b3b4 plus the
+uncommitted notebook change below.
+
+**What.** The training server for iteration 9 (JupyterLab at the
+university): 3 NVIDIA TITAN X (Pascal, sm_61, 12 GB), driver 580, 24
+cores, 125 GB RAM, Python 3.12.6.
+- `uv sync --group dev --extra dl` installs torch 2.14.1+cu130 from
+  `uv.lock`. Its kernels start at sm_75, so it cannot run on these GPUs
+  (`cudaErrorNoKernelImageForDevice`). On the server only, torch was
+  replaced by the CUDA 12.6 build of the same version (2.14.1+cu126,
+  kernels sm_50-sm_90), which runs on all three GPUs. `uv.lock` is
+  unchanged; on the server the runs call `.venv/bin/python` directly,
+  because `uv run` would re-sync torch back to the lock.
+- The notebook runs every step with `.venv/bin/python` when it exists,
+  instead of `pip install` into the kernel's Python, and runs the three
+  frontends at the same time, one per GPU (`CUDA_VISIBLE_DEVICES`), with
+  the seeds of each one after another. Nothing in the runs themselves
+  changed.
+- FSD50K is downloaded raw from Zenodo (record 4060432) to
+  `data/FSD50K/` on the server; the other processed stores are uploaded
+  from this PC.
+
+**How.**
+```
+uv pip install --python .venv/bin/python --reinstall-package torch torch --index-url https://download.pytorch.org/whl/cu126
+.venv/bin/python -c "import torch; ..."   # torch 2.14.1+cu126, sm_50..sm_90, 3 x TITAN X, a CUDA op runs
+.venv/bin/python -m pytest -q -p no:cacheprovider   # all pass on the server
+```
+
+**Result.** The server environment works. Nothing trained yet.
+
+**Next.** The processed stores uploaded, FSD50K extracted and converted,
+then the nine runs; results go in entry 092.
+
+## 092 - The frontend runs batched on the GPU; the iteration 9 runs restarted
+
+**Type.** Engineering (speed only; what the models see is unchanged).
+**Date.** 2026-11-03. **Commit.** 242b3b4 plus the uncommitted changes
+below.
+
+**Why.** The first iteration 9 runs on the server (entry 091) trained at
+102-145 windows/s (MFE, MFCC) and under 17 windows/s (linear, which had not
+reached 50,000 windows after about 55 minutes), against 571 windows/s for
+model 6 on this PC (entry `it6_final`, 350.6 s for 200,000 windows). The
+GPUs sat at 0-5%. The server's CPUs are two Xeon E5-2620 v3 (12 cores at
+2.4 GHz, 2014), and the training windows were built one at a time in numpy
+on three Python threads per run. Mads asked for the window building to use
+the GPU instead of overloading the CPU.
+
+Profile of `RangeSampler.batch` (MFE, simdist, speed 0.8-1.25, 10 batches
+of 64, one thread, server under load; cProfile):
+
+| Step | Share of the time |
+|---|---|
+| speed change (`resample_poly`) | 46% (of which the filter design, redone for every window, about half) |
+| in-band power (`sosfilt` high-pass) | 22% |
+| STFT and bands (`LogMel.frames`) | 17% |
+| level normalisation and the rest | 15% |
+
+**What.**
+- `rangerun.speed_filter`: the low-pass filter `resample_poly` designs
+  for itself, designed once per speed factor and passed in. The output is
+  bit-identical (`tests/test_gpufront.py`).
+- `RangeSampler.raw_batch`: the CPU part of a batch (drawing, mixing at the
+  drawn SNR, the speed factor, the EQ curve), with the random numbers drawn
+  in the same order as before; `batch` now calls it and does the rest in
+  numpy as before.
+- New `dad/gpufront.py`, `GpuFrontend`: the speed change (scipy's
+  polyphase filter, the same design and offset, as a gather), the STFT
+  (windowed in float32, FFT in float64, as numpy), bands, log, EQ, level
+  normalisation and the MFCC DCT for a whole batch on the GPU.
+- `NetScorer` uses it on CUDA for training, the warm-up statistics and
+  scoring; on CPU and DirectML the numpy path is used as before.
+- `train.spec_augment` builds its masks for the whole batch at once, with
+  the same random draws.
+
+**How.**
+```
+uv run pytest                               # this PC: all pass, 10 new in tests/test_gpufront.py
+uv run python <scratch>/diff.py             # GPU frontend on CPU torch vs numpy
+.venv/bin/python it9_golden.py ...          # server, old code: batches 3-4 of seed 0, hold out Nightjar, per frontend
+.venv/bin/python it9_check.py ... 3         # server, new code: same batches, speed, NetScorer.fit 25,600 windows
+```
+The scratch scripts are not in the repo.
+
+**Result.** Same features:
+- GPU frontend vs numpy on this PC (CPU torch): speed change max
+  difference 0.0; features max 1e-6 (MFE, linear) and 1.1e-5 (MFCC) in
+  log units.
+- On the server against the old code's own output (real batches): the new
+  numpy path is bit-identical for linear and differs in the last bits for
+  MFE and MFCC (the reference was made with 2 BLAS threads, so the mel
+  matrix product summed in another order); the GPU path is within 8.4e-5
+  of the old training features and 6.5e-5 of the old evaluation features
+  (log units; 1e-4 is 0.0004 dB). The labels are identical. The GPU
+  numbers for linear were measured before the float32 windowing fix
+  above, which brought linear from 3e-5 to 1e-6 on this PC.
+
+Speed on the server, measured while the three old runs still loaded it:
+
+| Frontend | One batch of 64, one thread: old numpy path | New: CPU part + GPU part | `NetScorer.fit`, 3 threads | Old runs |
+|---|---|---|---|---|
+| MFE | 644 ms | 74 + 13 ms | 571 windows/s | 102-145 windows/s |
+| MFCC | 642 ms | 87 + 24 ms | 659 windows/s | 112-145 windows/s |
+| linear | 9,389 ms | 60 + 15 ms | 191 windows/s | under 17 windows/s |
+
+The linear network itself has 509 input rows, so its GPU part stays the
+largest.
+
+**Decision.** The partial runs with the old code were stopped (seed 0
+only; nothing finished) and moved to `artifacts/runs/it9_old_code/` and
+`artifacts/models/it9_old_code/` on the server, not deleted. All nine runs
+were restarted with the new code, so every iteration 9 number comes from
+one code version. The recipe, data, seeds and judging rule of iteration 9
+are unchanged.
+
+**Next.** The results of the nine runs, entry 093.
+
+## 093 - The iteration 9 runs share the GPUs through a queue
+
+**Type.** Infrastructure (scheduling only).
+**Date.** 2026-11-03. **Commit.** 242b3b4 plus the uncommitted changes of
+entry 092.
+
+**Why.** After entry 092 the linear runs are GPU-bound (about 190
+windows/s, the GPU at 99%) and MFE and MFCC CPU-bound (about 1,000
+windows/s or more). The notebook gave each frontend its own GPU and ran
+its three seeds one after another, so GPUs 0 and 1 would sit idle once MFE
+and MFCC finished while GPU 2 still had about four hours of linear runs
+left.
+
+**What.** `notebooks/iteration9_frontends.ipynb`, run cell: the nine runs
+(three frontends, three seeds) go into one queue, linear first, and each
+GPU takes the next run when it finishes one. The command of each run,
+its log and its `.done` marker are unchanged. The partial runs started
+under entry 092 (seed 0, nothing finished) were stopped and deleted; all
+nine start from the beginning with the new scheduling.
+
+**How.** On the server, `artifacts/runs/it9_runs.py` is generated from
+notebook cells 1 and 10 and started with
+`nohup .venv/bin/python -u artifacts/runs/it9_runs.py > artifacts/runs/it9_go.log`.
+
+**Result.** `it9_linear_s0`, `s1` and `s2` started on GPUs 0, 1 and 2; one
+minute later the GPUs were at 90-99% and about 4.4 GB each. The total run
+time is not yet measured; the expectation is about 2-2.5 hours.
+
+**Next.** The results of the nine runs, entry 094.
+
+## 094 - Iteration 9 results: neither MFCC nor linear beats MFE
+
+- Date: 2026-11-04
+- Iteration: 9
+- Type: Evaluation
+- Commit: 242b3b4 plus the uncommitted changes of entries 092-093
+
+**What changed.** Nothing; the nine runs of entry 093 finished and were
+scored against the rule fixed in the iteration 9 box.
+
+**Why.** The iteration's verdict.
+
+**How.** On the JupyterLab server: the nine runs started 2026-11-03 17:14
+and finished at 19:21 (linear 18:27, MFE 19:04, MFCC 19:21); no error in
+any log. Summary and rule check:
+```
+python3 artifacts/runs/it9_judge.py > artifacts/runs/it9_judge.txt
+```
+`python3` is the server's Jupyter Python (pandas 3.0.1; the project venv
+has no pandas). The script is notebook cell 12 plus the rule check; it is
+not in the repo. Outputs on the server: `artifacts/runs/it9_summary.csv`
+(75 rows: 5 scorers x 5 held-out units x 3 seeds), `it9_judge.txt`, and
+the run files `it9_<frontend>_s<seed>.json`; not copied to this PC.
+
+**Result.** Pooled rigs, leave one unit out, `simdist`, speed 0.8-1.25,
+DS-CNN, 1 s window, 0.5 s evaluation hop, 200,000 training windows. Recall
+on all drone windows of the held-out unit at 10% false alarms on that
+unit's own no-drone audio, seeds 0 / 1 / 2 and mean. `comb` and `lgbm` are
+log-mel baselines, trained in the MFE runs.
+
+| Held out | comb | lgbm | MFE | MFCC | linear |
+|---|---|---|---|---|---|
+| FPV `ariel_25.02` | 0.198 | 0.373 | 0.686 | 0.377 | 0.714 |
+| FPV `palmahim_10.02` | 0.078 | 0.763 | 0.809 | 0.708 | 0.807 |
+| FPV `palmahim_27.05` | 0.083 | 0.436 | 0.512 | 0.369 | 0.555 |
+| d3set | 0.153 | 0.206 | 0.550 | 0.256 | 0.748 |
+| Nightjar | 0.201 | 0.132 | 0.242 | 0.132 | 0.407 |
+| **FPV mean** | 0.120 | 0.524 | **0.669** (0.672 / 0.667 / 0.669) | 0.485 (0.500 / 0.483 / 0.471) | **0.692** (0.702 / 0.688 / 0.686) |
+
+By range, same figure (FPV has no range):
+
+| Held out | Range | comb | lgbm | MFE | MFCC | linear |
+|---|---|---|---|---|---|---|
+| d3set | 0-50 m | 0.204 | 0.212 | 0.612 | 0.268 | 0.845 |
+| d3set | 100-200 m | 0.002 | 0.097 | **0.252** | 0.156 | 0.185 |
+| Nightjar | 0-50 m | 0.209 | 0.197 | 0.389 | 0.211 | 0.644 |
+| Nightjar | 100-200 m | 0.108 | 0.029 | 0.024 | 0.067 | 0.038 |
+
+At the deployment threshold (frozen at 5% false alarms on validation),
+mean over the five held-out units and three seeds:
+
+| | comb | lgbm | MFE | MFCC | linear |
+|---|---|---|---|---|---|
+| Recall (R2, target 0.95) | 0.200 | 0.478 | 0.668 | 0.461 | 0.692 |
+| False alarms on the held-out unit (R3, target 0.05) | 0.164 | 0.274 | 0.292 | 0.245 | 0.260 |
+| False alarms on mower-only audio | 0.226 | 0.363 | 0.352 | 0.291 | 0.475 |
+| Recall on Lund (never trained on) | 0.020 | 0.063 | 0.430 | 0.095 | 0.251 |
+
+The held-out false alarms are dominated by Nightjar, where every learned scorer
+alarms on 76-86% of the no-drone windows at the frozen threshold (comb 3%); on the
+other units they range from 0.1% to 41%.
+
+**Assessment against the rule** (iteration 9 box):
+
+| Condition | MFCC | linear |
+|---|---|---|
+| FPV mean at least +5 points over MFE | -18.4: no | +2.3: no |
+| All three seeds above every MFE seed | no | yes (0.686 > 0.672) |
+| No held-out unit loses more than 5 points | no (`ariel_25.02` -30.9, d3set -29.4) | yes (worst `palmahim_10.02` -0.1) |
+| Mower false alarms not more than 5 points higher | yes (-6.1) | no (+12.3) |
+| **Verdict** | **does not beat MFE** | **does not beat MFE** |
+
+- **MFE stays the frontend.** Its FPV mean, 0.669, is at iteration 5's
+  0.655 without Glasgow, so the reference reproduces.
+- **MFCC is worse everywhere** except the mower, where it alarms less
+  because it detects less. The hypothesis that it does no better than MFE
+  is confirmed, more strongly than stated.
+- **Linear is a mixed result, and the opposite of its hypothesis on the
+  confusers.** It gains a little on FPV (+2.3, consistent over seeds) and
+  much near the rigs (+23 on d3set and +26 on Nightjar within 50 m), but
+  loses 6.7 points on d3set at 100-200 m, 18 points of recall on Lund, and
+  alarms 12 points more on the mower. The finer frequency resolution helps
+  where the drone is loud, and it does not separate a drone from another
+  motor better; it does so worse.
+- Against REQUIREMENTS.md: no scorer is near R2 (0.95 recall) and R3 (5%
+  false alarms) at one threshold; the best, linear and MFE, reach about
+  0.67-0.69 recall at 26-29% false alarms on unseen units. Not met.
+- The held-out units are development folds (entry 025's council), so
+  these are development figures; no sealed test was scored.
+
+**Next.** Iteration 9 is closed: MFE stays; no frontend change, so no
+council is needed. Report to Mads. Not decided: whether the linear arm's
+gain near the rigs is worth a follow-up (for example on the mower false
+alarms) or whether the next iteration targets something else.

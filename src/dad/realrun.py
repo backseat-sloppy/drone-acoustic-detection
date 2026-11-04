@@ -23,6 +23,7 @@ import math
 import queue
 import threading
 import time
+import types
 from dataclasses import dataclass
 from typing import Callable, Iterator
 
@@ -483,9 +484,18 @@ class NetScorer:
             self.device = torch_directml.device()
         else:
             self.device = torch.device(device)
+        # On CUDA the frontend runs batched on the GPU (gpufront, entry 092); elsewhere numpy, as before.
+        self.torch_frontend = getattr(self.device, "type", None) == "cuda"
+        self._gpufe = None
         self.model = None
         self.mu = self.sigma = None
         self.history: list[dict] = []
+
+    def _frontend(self):
+        if self._gpufe is None:
+            from .gpufront import GpuFrontend
+            self._gpufe = GpuFrontend(self.cfg, self.device)
+        return self._gpufe
 
     def fit(self, sampler: WindowSampler, n_windows: int = 200_000, batch_size: int = 64,
             lr: float = 2e-3, weight_decay: float = 1e-2, workers: int = 3,
@@ -499,11 +509,19 @@ class NetScorer:
         torch.manual_seed(sampler.seed)
         rng = np.random.default_rng(sampler.seed)
         steps = n_windows // batch_size
+        if self.torch_frontend and hasattr(sampler, "raw_batch"):
+            # Threads only draw and mix the audio; the rest of the frontend runs on the device.
+            fe = self._frontend()
+            source = types.SimpleNamespace(batch=sampler.raw_batch)
+            features = lambda b: fe.train_features(*b[:3])
+        else:
+            source, features = sampler, lambda b: torch.from_numpy(b[0])
 
         # Per-band statistics from the first 64 training batches, then fixed.
-        warm = np.concatenate([sampler.batch(i, batch_size)[0] for i in range(64)])
+        warm = np.concatenate([features(source.batch(i, batch_size)).cpu().numpy() for i in range(64)])
         self.mu = warm.mean(axis=(0, 2))[:, None].astype(np.float32)
         self.sigma = (warm.std(axis=(0, 2))[:, None] + 1e-5).astype(np.float32)
+        del warm
 
         self.model = build(self.arch, self.cfg.n_bands).to(self.device)
         max_freq = max(1, round(8 * self.cfg.n_bands / 64))   # the frequency mask covers the same share of bands
@@ -511,10 +529,12 @@ class NetScorer:
         sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=lr, total_steps=steps)
         self.model.train()
         t0, running, mark = time.time(), 0.0, 0
-        for step, (L, y) in enumerate(prefetch(sampler, steps, batch_size, workers), start=1):
-            xb = spec_augment(torch.from_numpy((L - self.mu) / self.sigma), rng, max_freq=max_freq)
+        for step, b in enumerate(prefetch(source, steps, batch_size, workers), start=1):
+            L = features(b)
+            mu, sigma = torch.from_numpy(self.mu).to(L.device), torch.from_numpy(self.sigma).to(L.device)
+            xb = spec_augment((L - mu) / sigma, rng, max_freq=max_freq)
             loss = F.cross_entropy(self.model(xb[:, None].to(self.device)),
-                                   torch.from_numpy(y).to(self.device))
+                                   torch.from_numpy(b[-1]).to(self.device))
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
@@ -541,8 +561,12 @@ class NetScorer:
         out = []
         with torch.no_grad():
             for i in range(0, len(audio), batch_size):
-                L = featurise(audio[i:i + batch_size], self.variant, self.fe)
-                x = torch.from_numpy((L - self.mu) / self.sigma)[:, None].to(self.device)
+                if self.torch_frontend:
+                    L = self._frontend().features(audio[i:i + batch_size], self.variant.level_norm)
+                else:
+                    L = torch.from_numpy(featurise(audio[i:i + batch_size], self.variant, self.fe))
+                mu, sigma = torch.from_numpy(self.mu).to(L.device), torch.from_numpy(self.sigma).to(L.device)
+                x = ((L - mu) / sigma)[:, None].to(self.device)
                 out.append(torch.softmax(self.model(x), dim=1)[:, 1].cpu().numpy())
         return np.concatenate(out)
 

@@ -51,17 +51,19 @@ def spec_augment(x: torch.Tensor, rng: np.random.Generator,
     is exactly the brittleness that fails on real drones whose harmonics sit a
     little off where the training set put them.
     """
-    x = x.clone()
     b, m, t = x.shape
     max_time = max(1, int(t * max_time_frac))
-    for i in range(b):
-        fw = int(rng.integers(0, max_freq + 1))
-        f0 = int(rng.integers(0, max(1, m - fw)))
-        x[i, f0:f0 + fw, :] = 0.0
-        tw = int(rng.integers(0, max_time + 1))
-        t0 = int(rng.integers(0, max(1, t - tw)))
-        x[i, :, t0:t0 + tw] = 0.0
-    return x
+    f0, fw, t0, tw = (np.zeros(b, np.int64) for _ in range(4))
+    for i in range(b):   # draws in the order of the per-example loop this replaced (entry 092)
+        fw[i] = int(rng.integers(0, max_freq + 1))
+        f0[i] = int(rng.integers(0, max(1, m - fw[i])))
+        tw[i] = int(rng.integers(0, max_time + 1))
+        t0[i] = int(rng.integers(0, max(1, t - tw[i])))
+    f, tt = np.arange(m), np.arange(t)
+    fmask = (f >= f0[:, None]) & (f < (f0 + fw)[:, None])
+    tmask = (tt >= t0[:, None]) & (tt < (t0 + tw)[:, None])
+    keep = ~(fmask[:, :, None] | tmask[:, None, :])
+    return x * torch.from_numpy(keep).to(device=x.device, dtype=x.dtype)
 
 
 class TorchDetector:

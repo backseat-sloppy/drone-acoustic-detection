@@ -26,6 +26,7 @@ Recipes (`RECIPES`):
 from __future__ import annotations
 
 import collections
+import functools
 import math
 from dataclasses import dataclass, field
 
@@ -325,18 +326,49 @@ class RangeSampler:
             a = a + b * math.sqrt(pa * 10.0 ** (rel / 10.0) / pb)
         return a
 
-    def _finish(self, x: np.ndarray, rng: np.random.Generator) -> np.ndarray:
-        if self.speed is None:
-            return x[: self.n_out]
-        return speed_change(x, rng.uniform(*self.speed))[: self.n_out]
-
-    def batch(self, index: int, batch_size: int) -> tuple[np.ndarray, np.ndarray]:
+    def raw_batch(self, index: int, batch_size: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """The CPU part of batch `index`: waveforms before the speed change (batch, self.n), the speed
+        as resample_down's `down` (SPEED_UP = unchanged), the EQ curves (batch, bands) and the labels.
+        The rest is gpufront.GpuFrontend.train_features, or `batch` here."""
         rng = np.random.default_rng([self.seed, index])
         y = (np.arange(batch_size) % 2).astype(np.int64)
-        L = np.stack([self.fe.frames(self._finish(self.positive(rng) if t else self.negative(rng), rng))
-                      for t in y])
-        L = L + np.stack([rr._eq_curve(rng, L.shape[1]) for _ in y])[:, :, None]
-        return rr.to_model(rr.level_normalise(L), self.cfg), y
+        audio, down = [], []
+        for t in y:
+            audio.append(self.positive(rng) if t else self.negative(rng))
+            down.append(SPEED_UP if self.speed is None else speed_down(rng.uniform(*self.speed)))
+        eq = np.stack([rr._eq_curve(rng, self.fe._fb.shape[0]) for _ in y])
+        return np.stack(audio), np.array(down), eq, y
+
+    def batch(self, index: int, batch_size: int) -> tuple[np.ndarray, np.ndarray]:
+        audio, down, eq, y = self.raw_batch(index, batch_size)
+        L = np.stack([self.fe.frames(resample_down(x, d)[: self.n_out]) for x, d in zip(audio, down)])
+        return rr.to_model(rr.level_normalise(L + eq[:, :, None]), self.cfg), y
+
+
+SPEED_UP = 100   # speed factors are rounded to 1/SPEED_UP
+
+
+@functools.lru_cache(maxsize=None)
+def speed_filter(down: int) -> np.ndarray:
+    """The low-pass filter resample_poly(x, SPEED_UP, down) designs for itself, designed once per factor
+    instead of once per window (entry 092: it was a quarter of a training batch's CPU time)."""
+    from scipy.signal import firwin
+    g = math.gcd(SPEED_UP, down)
+    m = max(SPEED_UP // g, down // g)
+    return firwin(20 * m + 1, 1.0 / m, window=("kaiser", 5.0))
+
+
+def speed_down(factor: float) -> int:
+    return int(round(SPEED_UP * factor))
+
+
+def resample_down(x: np.ndarray, down: int) -> np.ndarray:
+    """Play `x` SPEED_UP/down times faster: polyphase resampling to len(x) * SPEED_UP / down samples."""
+    from scipy.signal import resample_poly
+    if down == SPEED_UP:
+        return np.asarray(x, dtype=np.float32)
+    return resample_poly(np.asarray(x, dtype=np.float64), SPEED_UP, down,
+                         window=speed_filter(down)).astype(np.float32)
 
 
 def speed_change(x: np.ndarray, factor: float) -> np.ndarray:
@@ -345,11 +377,7 @@ def speed_change(x: np.ndarray, factor: float) -> np.ndarray:
     Polyphase resampling to len(x) / factor samples at the same rate, with the
     factor rounded to 1/100.
     """
-    from scipy.signal import resample_poly
-    down = int(round(100 * factor))
-    if down == 100:
-        return np.asarray(x, dtype=np.float32)
-    return resample_poly(np.asarray(x, dtype=np.float64), 100, down).astype(np.float32)
+    return resample_down(x, speed_down(factor))
 
 
 # -------------------------------------------------------------- evaluation
