@@ -27,7 +27,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 7 | 055 to 058 | Edge Impulse model (MFE + small CNN) on upload-licensed data, scored locally next to model 6 | Mads asked to try Edge Impulse; deployment hardware still open | **Negative result.** On the shared windows the EI model detects nothing off its training rig (Halmstad recall 0 at the frozen threshold, test AUC 0.36); model 6 0.55 at 4.8% false positives on Halmstad. Small on Cortex-M4F (12 ms, 20 KB RAM), but its MFE is too slow at FFT 1024. Model 6 stays the candidate. |
 | Iteration 8 | 059 to 061 | Edge Impulse on the pool, d3set held out, clips scaled to -30 dBFS | Mads asked for leave-one-dataset-out in Edge Impulse; iteration 7 failed on a 50 dB level gap between rigs | **Hypothesis rejected.** In-distribution AUC rose to 0.92, but on unseen d3set AUC 0.12 (background ranked above drones), worse than the untrained comb (0.53). Microcontroller out of scope (entry 060); Edge Impulse stopped. |
 | Iteration 9 | 090 to 094 | Iteration 5's recipe on real data, with the frontend as the only change: MFE (log-mel), MFCC, linear spectrogram | The supervisor's feedback (entry 086) and Mads's choice to compare frontends on real data, after dropping synthetic training (entries 087-089) | **Hypothesis rejected for both.** FPV mean at 10% own false alarms: MFE 0.669, MFCC 0.485, linear 0.692 (+2.3 against +5 required). Linear gains near the rigs (+23-26 points within 50 m) but loses on d3set at 100-200 m (-6.7), on Lund (-18) and alarms 12 points more on mower audio. MFE stays. |
-| Iteration 11 | 097 to 099 | Synthetic Pd drones in full random soundscapes (beds, quiet events, loud transients, engine and tonal confusers), DS-CNN on MFE unchanged | The supervisor's notes (entry 086) ask for random labelled soundscapes; iteration 10 trained on clean drones only. Mads chose soundscapes before a CRNN or linear frontend (2026-11-04) | **In preparation.** 814 training stems from FSD50K dev built (entry 099); scenes not yet generated, nothing trained. |
+| Iteration 11 | 100 to | Steady-noise family (random slopes, random-phase copies of rig no-drone windows) as negatives and maskers; no war audio in training. Judged on unseen real noise stems and the mower session, with recall guards | All networks alarm on 99-100% of war-shaped noise and on pink/brown noise, but on 0% of the war track: the failure is steady noise, not war (entry 100) | In progress. Council held (entry 100); step 0 next. |
 
 ## Templates
 
@@ -5830,340 +5830,373 @@ council is needed. Report to Mads. Not decided: whether the linear arm's
 gain near the rigs is worth a follow-up (for example on the mower false
 alarms) or whether the next iteration targets something else.
 
-## 095 - Scene generator: random Pd drones in random war-shaped noise
+## 095 - The no-drone audio exported as WAV for a second JupyterLab account
+
 - Date: 2026-11-04
-- Iteration: 10
+- Iteration: none (data handling)
 - Type: Data
-- Commit: uncommitted (on top of c83c810)
+- Commit: uncommitted
 
-**What changed.** `scripts/make_scenes.py --war`: the only noise in a scene
-is war-shaped noise (`scripts/war_shaped_noise.py`, `war_gain.txt`). Each
-scene gets its own random-phase draw (noise seed 1 000 000 + scene seed,
-clear of the test seeds from 1000 used by `drone_war_grid.py`), made at
-44.1 kHz and resampled to 16 kHz. A random Pd drone (the same `render_drone`
-as before: random flight, f0 and harmonic falloff) is added with probability
-`--p-drone`, at a uniform `--snr` against the noise. No wind, bugs or
-helicopter. `scripts/train_clean.py` now takes the scenes that have no drone
-and adds them to the no-drone clips, split by the same `--val-seed`.
-**Why.** Mads asked for drone-in-war-noise training data for iteration 10.
-If war noise appeared only with a drone, the model could learn "war noise
-means drone". The war-only scenes rule that shortcut out without needing
-new recordings.
-**How.**
-`uv run python scripts/make_scenes.py --war --p-drone 0.5 --n 2000 --out data/processed/scenes/war1`,
-then `train_clean.py --drones <that folder> --nodrone ~/nodrone ...` on the
-JupyterLab server. Test: `tests/test_make_scenes.py::test_war_noise_is_seeded_and_war_shaped`.
-**Result.** `uv run pytest tests/test_make_scenes.py`: 3 passed. Smoke run
-with `--war --p-drone 0 --n 2`: two 10 s war-only scenes, labelled
-correctly. Not run: scenes with a drone (Pd was not run here), and no
-training.
-**Assessment.** Data tooling only, so no numbers to judge against
-REQUIREMENTS.md. These are synthetic drones in synthetic noise (CLAUDE.md
-section 5), so anything trained on them is scaffolding, not detection
-performance. The war-shaped noise is steady and has none of the transients
-of real war audio.
-**Next.** Generate the scenes and train on the GPU server when Mads says so.
+**What changed.** Every no-drone recording (manifest label 0) of
+`data/processed`, plus the no-drone stems, written as WAV with a CSV and
+copied to the JupyterLab account `jupyter-mariusq` (same server as entry
+091), at `~/nodrone/`:
 
-## 096 - Listening files: one war-only scene and one drone-in-war scene
+| Part | Files | Duration |
+|---|---|---|
+| `recordings/nightjar` (background) | 28 | 75.3 min |
+| `recordings/fpv` (background) | 121 | 109.6 min |
+| `recordings/d3set` (background) | 37 | 14.1 min |
+| `recordings/halmstad` (background and helicopter) | 59 | 9.8 min |
+| `stems/` background, distracter, war, wind (drone stems left out) | 97 | - |
+
+`recordings.csv` holds the manifest rows (source, group, licence and so on)
+with the WAV path; `stems.csv` the stems manifest rows; attribution in
+`stems_ATTRIBUTION.md`. 499 MB.
+
+**Why.** Mads asked for the no-drone data on the second account.
+
+**How.** `uv run python -I scripts/export_nodrone.py . data/extracted/nodrone`.
+Samples are written as stored: int16 stores as 16-bit WAV, 16 kHz mono,
+never rescaled. Checked on this PC: all 245 recordings read back
+bit-identical to `realdata.Recording.audio()`. Uploaded as a tar in 55
+parts through JupyterLab's own upload (the browser tool takes 10 MB per
+file), joined on the server; MD5 6da945827252f84e82ca8b6b415d69d3 on both
+sides; 342 WAV files after unpacking.
+
+**Result.** Not a result; data handling only.
+
+**Not done.** FSD50K: its processed store exists only on the `mads`
+account, which this browser can no longer open while it is logged in as
+`mariusq` (HTTP 403), and the raw FSD50K archives are not on this PC.
+
+**Next.** FSD50K once Mads is logged in as `mads` again (export there, copy
+through a folder both accounts can read), if still wanted.
+
+## 096 - Final CNN and CRNN trained on every rig, for the virtual tests
+
 - Date: 2026-11-04
-- Iteration: 10
-- Type: Data
-- Commit: uncommitted (on top of c83c810)
+- Iteration: none (checkpoints, as iteration 6)
+- Type: Model
+- Commit: 87a7bdf plus the uncommitted `scripts/run_range.py` change below
 
-**What changed.** Two 10 s, 16 kHz scenes from entry 095's `--war` mode,
-made for Mads to listen to: `data/processed/scenes/war_listen/war_nodrone.wav`
-(seed 0, war-shaped noise only) and `war_drone.wav` (seed 1, Pd drone over
-the whole 10 s, cruise f0 186.5 Hz, falloff 2.374, SNR +8.5 dB). Each one's
-labels are in `nodrone/labels/` or `drone/labels/` next to it.
-**How.** `uv run python scripts/make_scenes.py --war --p-drone 0 --n 1 --seed 0 --out data/processed/scenes/war_listen/nodrone`,
-and the same with `--p-drone 1 --seed 1 --out .../drone`.
-**Result.** Both rendered, and Pd ran. No scoring.
-**Assessment.** Listening material only. Synthetic data, not a result.
-**Next.** Mads listens. Generate the training set when he says so.
+**What changed.** Two models trained once on every rig, with nothing held
+out, at Mads's request, so both can drive the virtual tests (the drone-in-war
+GUI and the other synthetic test benches) and go into the repo:
+- `final_dscnn`: the DS-CNN of model 6 (22,530 parameters).
+- `final_crnn`: the CRNN of `models/zoo.py` (739,747 parameters; three
+  conv blocks that pool frequency only, a bidirectional GRU, attention
+  pooling over time). It had never been trained before (entry 006's backend
+  had no GRU).
+- `scripts/run_range.py`: `crnn` added to `NETS`, so the runner trains it.
 
-## 097 - Correction: the war-shaped-noise training mode is removed
+Both use iteration 5/6's recipe and model 6's frontend: MFE, 64 log-mel
+bands, 25/10 ms, 1 s window, `simdist`, speed perturbation 0.8-1.25,
+200,000 training windows, seed 0, deployment threshold frozen at 5% false
+alarms on validation. Glasgow is not in the server's store, so these are
+model 6's recipe without Glasgow.
+
+**Why.** Mads asked for a final CNN and CRNN to compare in the virtual tests,
+without a frontend evaluation. No council was held for the CRNN: no model
+choice is made here, and no claim about its performance.
+
+**How.** On the JupyterLab server, one GPU each:
+```
+CUDA_VISIBLE_DEVICES=0 .venv/bin/python -u scripts/run_range.py --name final_dscnn --pool --arms none --recipes simdist --models dscnn --device cuda --windows 200000 --speed 0.8 1.25 --deploy-fa 0.05 --seed 0 --frontend mfe
+CUDA_VISIBLE_DEVICES=1 .venv/bin/python -u scripts/run_range.py --name final_crnn --pool --arms none --recipes simdist --models crnn --device cuda --windows 200000 --speed 0.8 1.25 --deploy-fa 0.05 --seed 0 --frontend mfe
+```
+258 s (DS-CNN) and 280 s (CRNN) in total, 760-1,070 windows/s. Outputs,
+copied to this PC with matching MD5:
+`artifacts/models/final_dscnn_none_simdist_dscnn.pt`,
+`artifacts/models/final_crnn_none_simdist_crnn.pt`, and
+`artifacts/runs/final_{dscnn,crnn}.json` and `.log`. Both load locally
+through `dad.wavio.load_scorer`; thresholds from the run files: DS-CNN
+0.380, CRNN 0.483. `artifacts/` is git-ignored, so pushing them needs
+`git add -f`.
+
+**Result.** Not a test result. The run files hold only validation figures
+(21 segments from the training rigs, in distribution) and Lund at the
+deployment threshold:
+
+| | DS-CNN | CRNN |
+|---|---|---|
+| Validation recall, all drone windows, at the deployment threshold (FA 5%) | 0.812 | 0.798 |
+| Validation recall 0-50 m at 10% FA | 0.840 | 0.828 |
+| Validation recall 100-200 m at 10% FA | 0.082 | 0.021 |
+| Lund recall at the deployment threshold (rig never trained on) | 0.561 | 0.454 |
+
+One seed and in-distribution validation: these numbers cannot rank the two
+models. The leave-one-unit-out runs of iteration 9 would be needed for that.
+
+**Next.** Mads runs the virtual tests with both. Synthetic numbers from
+them are not detection performance (CLAUDE.md section 5).
+
+## 097 - REPORT.md merges by union
+
 - Date: 2026-11-04
-- Iteration: 10
-- Type: Correction
-- Commit: uncommitted (on top of c83c810)
-
-**What changed.** The `--war` mode from entry 095 has been removed from
-`scripts/make_scenes.py`, along with its test. Entry 096's listening files
-stay on disk. `train_clean.py` keeps the part of entry 095 that is still
-useful: scenes without a drone become no-drone clips. It now labels them
-"scene" instead of "war", and it skips scenes marked heldout.
-**Why.** Reviewed against the supervisor's notes (entry 086, re-sent by
-Mads on 2026-11-04), training on war-shaped noise has four problems:
-- The noise is one steady spectrum, the same one the drone-in-war tests
-  (`drone_war_grid.py`, `drone_war_gui.py`) use, so a test would measure
-  the training noise.
-- `war_gain.txt` averages 5 `fsd50k_eval` clips (a test source) with 18
-  dev clips.
-- It has none of the transients the supervisor wants the model to handle.
-- The supervisor asks for random labelled soundscapes instead.
-
-War-shaped noise remains a controlled test background, which is what
-`docs/war_shaped_noise.md` built it for.
-**Result.** Nothing was trained on it.
-**Next.** Iteration 11.
-
-# Iteration 11 - Synthetic drones in random soundscapes
-
-> **Changed from iteration 10:** the training audio. Iteration 10
-> (`scripts/train_clean.py`, checkpoints in `artifacts/it10_clean/`, commit
-> 32142e1; not logged as entries before this one) trained on clean Pd
-> drones, with nothing mixed in, against real no-drone audio. Iteration 11
-> trains on the scenes of `scripts/make_scenes.py` in full mode:
-> - every drone sits in a soundscape: a bed, quiet events, loud transients
->   and, in 40% of scenes, an engine or tonal confuser;
-> - drone-to-noise ratio -20 to +10 dB;
-> - 25% of scenes have no drone, and those scenes are negatives next to the
->   real no-drone clips.
->
-> **Why:** the supervisor's notes (entry 086): train on random labelled
-> soundscapes with 30-50% confusers and 20-30% without a drone. A clean
-> drone teaches nothing about masking or about engines that are not drones.
-> Mads chose this as the first step, before a CRNN or the linear frontend.
->
-> **Kept the same:** the Pd drone (`DroneSoundHarm.pd`, cruise f0
-> U(100, 700) Hz, falloff log-U(1, 16)), the MFE DS-CNN and the `lgbm` and
-> `comb` baselines, the "level" variant, a 1 s window, the real no-drone
-> clips, the validation rig (nightjar) and the scene validation split
-> (seed >= 1800).
->
-> **Hypothesis:** on real drones and real confusers the model raises fewer
-> false alarms and loses less recall than iteration 10's clean model, because
-> it has seen engines and masking during training.
->
-> **Judged by:** three seeds each of iteration 10 and iteration 11, scored
-> once on the real FPV test clips at each model's threshold of 5% false
-> alarms on validation. Iteration 11 must gain at least 5 points of recall
-> over iteration 10 without a higher false-alarm rate on the real no-drone
-> validation rig. The `comb` and `lgbm` baselines are reported alongside.
-> (Proposed by Claude; Mads may change it before the test is scored.)
-
-## 098 - Scene generator: the supervisor's confuser list, transients outside the SNR
-- Date: 2026-11-04
-- Iteration: 11
-- Type: Data
-- Commit: uncommitted (on top of c83c810)
-
-**What changed.** In `scripts/make_scenes.py`, the roles now draw on every
-stem class in `data/processed/stems/`:
-- **bed:** wind, rain, stream or traffic.
-- **events:** insects, buzzing insect, mosquito, birds.
-- **transients** (new role, Poisson `--mean-transients`, default 1, at -6
-  to +12 dB): gunfire, machine gun, small arms, mortar and artillery,
-  explosions near and far, thunder, shouting, dog.
-- **confuser:** helicopter, truck, car, motorcycle, scooter, aircraft,
-  prop plane, jet, tank, generator, idling engine, mower, chainsaw, power
-  tool, siren, air-raid siren.
-
-The drone's SNR is now set against the bed, events and confuser only.
-Transients are added afterwards, so a loud transient masks the drone's
-frames without turning the drone down for the whole scene. `train_clean.py`
-takes no-drone scenes as negatives and skips heldout scenes.
-**How.** `uv run pytest tests/test_make_scenes.py`: 3 passed (new:
-`test_transients_are_outside_the_snr_reference`).
-`uv run python scripts/make_scenes.py --n 4 --seed 7 --mean-transients 2 --out <scratch>`:
-4 scenes rendered with Pd (3 with a drone, SNR -12.3 to +9.1 dB). All 4
-are marked heldout because they use FSD50K eval stems.
-**Result.** No training and no scoring.
-**Assessment.** A blocker against CLAUDE.md section 5. Most of these
-classes exist only as `fsd50k_eval` stems, and FSD50K eval is a held-out
-test source (`docs/datasets.md`). These classes have no dev stem at all:
-wind, rain, stream, traffic, birds, insects, truck, car, motorcycle,
-aircraft, idling, power tool, siren, gunfire, explosion, small arms,
-thunder, dog. With `--sources fsd50k_dev` there is no bed, so
-`make_scenes.py` stops. There are also only 1-5 stems per class, too few
-for training without memorising them. Not verified: whether iteration 10's
-`~/nodrone/stems` on the server includes eval stems.
-**Next.** Training stems are needed from FSD50K dev, many per class (for
-example 20-50), fetched by range request the way `fetch_env_clips.py`
-already reads the dev parts. This is a download of new data, so it waits
-for Mads.
-
-## 099 - Training stems from FSD50K dev, up to 30 per class
-- Date: 2026-11-04
-- Iteration: 11
-- Type: Data
-- Commit: uncommitted (on top of c83c810)
-
-**What changed.** `scripts/build_stems.py --split dev` builds the
-non-drone classes from FSD50K dev, the split that may be trained on.
-- Classes with an FSD50K label use the same rules as before: CC0 or CC BY,
-  labels within the class's branch, no drone words.
-- Classes without an FSD50K label (helicopter, scooter, mower, chainsaw,
-  generator, mosquito, buzzing insect, prop plane, jet, tank, machine gun,
-  small arms, mortar and artillery, far explosions, air-raid siren) are
-  picked by a keyword in the title or tags plus a fitting label. Music and
-  speech labels are excluded.
-- A clip goes to the first class that takes it, so no stem is in two
-  classes.
-
-The manifest now merges by stem file instead of by class, so the earlier
-hand-picked stems keep their rows. `fetch_env_clips.get` waits and retries
-on HTTP 429 and 503. `--resume` keeps stems already on disk.
-**Why.** Entry 098: most classes existed only as `fsd50k_eval` stems, which
-are a held-out test source, and with 1-5 stems per class a model would
-memorise the clips. Mads approved 30 per class (2026-11-04).
-**How.**
-`uv run python scripts/build_stems.py --split dev --per-class 30 --skip-drones`
-stopped at 756 of 795 stems on Zenodo's HTTP 429. The same command with
-`--resume` built the remaining 39. Check:
-`make_scenes.py --n 4 --seed 20 --sources fsd50k_dev --out <scratch>`.
-**Result.**
-- `data/processed/stems/manifest.csv`: 899 stems (814 `fsd50k_dev`, 61
-  `fsd50k_eval`, 24 Glasgow).
-- Dev stems per role:
-  - bed 120 (30 each of wind, rain, stream, traffic);
-  - events 102 (mosquito 10);
-  - transients 240 (machine gun 14, shout 10);
-  - confusers 322 (helicopter 23, scooter 20, chainsaw 15, siren 19,
-    generator 9, tank 4, prop plane 3, air-raid siren 3).
-- The 756 resumed stems have `denoise = resumed` and blank gate figures,
-  because the first run died before writing its manifest.
-- The 4 check scenes use only dev stems and the Pd drone (heldout 0).
-- `throttle.txt`, which Pd rewrites on every render, was restored to the
-  committed version.
-**Assessment.** Training scenes can now be made without the test source.
-Classes with fewer than 10 stems will be memorised more easily. Keyword
-picks have not been listened to, and some may not fit their class.
-**Next.** Not done here: generating the training set
-(`make_scenes.py --sources fsd50k_dev`) and training on JupyterLab. Both
-wait for Mads. A listening pass over a sample of keyword stems would catch
-the worst picks.
-
-## 100 - Listening files: five dev-only soundscape scenes
-- Date: 2026-11-04
-- Iteration: 11
-- Type: Data
-- Commit: uncommitted (on top of c83c810)
-
-**What changed.** Five 10 s scenes for Mads to listen to, in
-`data/processed/scenes/listen_it11/`, each with a descriptive name:
-- seed 100: no drone; wind, birds, artillery, explosion, thunder.
-- seed 101: drone at 313 Hz cruise, SNR -8.3 dB; stream, insects, explosion.
-- seed 102: drone at 697 Hz, SNR +7.7 dB; stream, birds, insects.
-- seed 103: no drone; traffic, birds, insects, gunfire.
-- seed 104: drone at 554 Hz, SNR -3.9 dB; traffic, mosquito, dog.
-**How.** `uv run python scripts/make_scenes.py --n 5 --seed 100 --sources fsd50k_dev --out data/processed/scenes/listen_it11`.
-`throttle.txt` was restored afterwards.
-**Result.** All five use only dev stems (heldout 0). None of the five
-happens to have a confuser, a 0.6^5 = 8% chance at p = 0.4.
-**Observation.** A transient's label runs over the whole stem, and dev
-stems are up to 10 s long. An "explosion" stem can therefore cover most of
-a scene (seed 100: 0.10-9.42 s), and its label marks where the stem lies,
-not when the boom happens. This does not matter for the window labels,
-which come only from the drone event, but it is not the event timing the
-supervisor's label list implies.
-**Next.** Mads listens.
-
-## 101 - The iteration 11 training set: 6 h drone and 6 h no-drone scenes (command only)
-- Date: 2026-11-04
-- Iteration: 11
-- Type: Data
-- Commit: uncommitted (on top of c83c810)
-
-**What changed.** `train_clean.py --drones` now takes several scene
-folders. The set, as Mads asked: 2160 scenes of 10 s with a drone and 2160
-without (6 h each), FSD50K dev stems only, rendered on the Mac (Pd is not
-on the server) and uploaded. Both runs use seeds 0-2159, so no-drone scene
-k has the same background as drone scene k without the drone, and each
-pair falls on the same side of the validation split (seed >= 1800, 360
-scenes of each).
-**How.** Mads runs:
-`uv run python scripts/make_scenes.py --n 2160 --seed 0 --p-drone 0 --sources fsd50k_dev --out data/processed/scenes/it11/nodrone`
-and the same with `--p-drone 1 --out data/processed/scenes/it11/drone`.
-Rendering takes about 0.4 s per drone scene on the Mac, measured on 5
-scenes. Claude started the same runs, then stopped them at 2324 scenes
-when Mads chose to run them himself, and deleted that partial output.
-**Result.** Not run yet. Drone-labelled time will be under 6 h, because a
-drone event starts at its first arriving sound; the actual figure is to
-be measured on the finished set.
-**Next.** Mads renders, then uploads `data/processed/scenes/it11/`, and trains on JupyterLab.
-
-## 102 - The iteration 11 training set, checked
-- Date: 2026-11-04
-- Iteration: 11
-- Type: Data
-- Commit: uncommitted (on top of c83c810)
-
-**What changed.** Mads rendered entry 101's two runs on the Mac:
-`data/processed/scenes/it11/drone` and `.../nodrone`, 675 MB each.
-**How.** Checked with a short script over the label files (not a repo
-script). `throttle.txt` was restored afterwards.
-**Result.**
-- Both sets: 2160 scenes and 2160 WAVs, 6.00 h, seeds 0-2159 (360 validation
-  scenes each at seed >= 1800), none heldout. Every non-drone stem is
-  `fsd50k_dev`: 9561 stem uses per set.
-- Drone set: 2160 drone events, 5.37 h drone-labelled (the rest is before
-  the first arriving sound), every event at least 1 s long, SNR -20.0 to
-  +10.0 dB.
-- Confuser in 838 scenes (39%), at least one transient in 1384 (64%), the
-  same in both sets.
-- The pairing holds: a spot check of seed 5 shows the same stems in the
-  drone scene and in the no-drone scene.
-
-**Assessment.** It matches the supervisor's mix: 39% of scenes have a
-confuser (asked: 30-50%), and the SNR runs -20 to +10 dB. The drone-free
-share depends on how the sets are combined. In training, batches are half
-drone and half no-drone (`CleanSampler`), whatever the folder sizes.
-Synthetic data: no numbers from it are detection performance.
-**Next.** Commit and push the code, upload `data/processed/scenes/it11/`,
-and train on JupyterLab. All of these wait for Mads.
-
-## 103 - The iteration 11 scenes uploaded to JupyterLab
-- Date: 2026-11-04
-- Iteration: 11
+- Iteration: none (repo tooling)
 - Type: Infrastructure
-- Commit: 95a395c (branch it11-soundscapes)
+- Commit: uncommitted
 
-**What changed.** `data/processed/scenes/it11/` (entry 102) is on the
-server at `~/drone-acoustic-detection/data/processed/scenes/it11/`.
-**How.** The folder was zipped without compression (1 391 359 704 bytes,
-MD5 8cbb0f645fd9f3fa5f0c2802de040003). The JupyterLab page in the browser
-read it in 166 chunks of 8 MB from a temporary localhost server on the Mac
-and wrote it with the Jupyter contents API's chunked upload (112 s).
-`md5sum`, `unzip` and a file count ran in a JupyterLab terminal. The zip
-and the local server were then removed.
-**Result.** The MD5 on the server matches. 4320 WAVs and 4320 label files;
-676 MB each in `drone/` and `nodrone/`.
-**Next.** Training on JupyterLab with `train_clean.py` (entry 101) when
-Mads starts it. The server repo still has to be on branch it11-soundscapes
-for the new `train_clean.py`. Its current branch was not checked.
+**What changed.** New `.gitattributes`: `docs/REPORT.md merge=union`. When
+two branches both append entries, git keeps both instead of stopping with a
+conflict.
 
-## 104 - The server repo is on branch it11-soundscapes
+**Why.** Several people now append to this report on their own branches
+(for example iteration 10 on `it10-SynthDrone`), and every merge conflicted
+at the end of the file.
+
+**How.** Tested on a throwaway repo: two branches each appending an entry
+merged without a conflict and with both entries kept.
+
+**Result.** Known limits, seen in that test:
+- Two branches can pick the same entry number; both are kept. Check the
+  numbers after a merge and renumber in a correcting entry if needed.
+- The blank line between the two appended blocks can be lost.
+- A line both sides changed (a row of the glance table) ends up twice,
+  without warning. Check the table after a merge.
+- Applies to merges made with local git. Not verified for GitHub's web
+  merge button.
+
+**Next.** None. A tool change.
+
+## 098 - Detect GUI: pick the network per batch
+
+- Date: 2026-11-04
+- Iteration: none (tooling)
+- Type: Infrastructure
+- Commit: 791d95e plus the uncommitted `scripts/detect_gui.py` change below
+
+**What changed.** `scripts/detect_gui.py` gets radio buttons at the bottom
+left that pick the network run next to comb, for the next batch opened:
+
+| Name in the GUI | Checkpoint | Threshold (from its run file) |
+|---|---|---|
+| it6 CNN | `artifacts/models/it6_final_none_simdist_dscnn.pt` (model 6, the old default) | 0.297 |
+| it9 CNN | `artifacts/models/final_dscnn_none_simdist_dscnn.pt` (entry 096) | 0.380 |
+| it9 CRNN | `artifacts/models/final_crnn_none_simdist_crnn.pt` (entry 096) | 0.483 |
+| it10 CNN | `artifacts/it10_clean/clean_s0_dscnn.pt` (seed 0 of commit 32142e1) | 5.7e-06 |
+
+"it9" is Mads's name for the entry 096 checkpoints (MFE frontend, after
+iteration 9); the report files them under no iteration. comb keeps model 6's
+frozen threshold whatever is picked. The model's name replaces "CNN" in the
+list, the graphs, the stats window and the `detector` column of
+`artifacts/detect_gui/results.csv`. The list shows 18 files at a time
+instead of 22, to make room.
+
+**Why.** Mads asked to run his own files through each of the three new
+models in the GUI.
+
+**How.** Loaded headless (`MPLBACKEND=Agg`), set each model, and ran
+`detect`, `redraw`, `write_csv` and `open_stats` on
+`data/extracted/sealed_peek/Drone_01.wav`. All four load and score.
+
+**Result.** A smoke test, not a detection result: one file, no sidecar.
+it6 CNN alarmed on 97% of windows, it9 CNN 74%, it9 CRNN 71%, it10 CNN 0%
+(its threshold of 5.7e-06 comes from a validation set it separated
+perfectly, AUC 1.0, so it says little about real audio); comb 14%.
+
+**Next.** None. A tool change.
+
+## 099 - Drone-in-war GUI: pick the network per run
+
+- Date: 2026-11-04
+- Iteration: none (tooling)
+- Type: Infrastructure
+- Commit: 791d95e plus the uncommitted changes below and in entry 098
+
+**What changed.**
+- `scripts/drone_war_grid.py`: the model list of entry 098 moves here as
+  `MODELS` (it6 CNN, it9 CNN, it9 CRNN, it10 CNN; same checkpoints and
+  thresholds). `_detectors(model)` loads one of them next to comb, cached
+  per model. New `--model` option (default `it6 CNN`, the old behaviour).
+  `results.csv` and `hops.csv` get a first column `model`. The folder
+  constant `MODELS` is renamed `MODEL_DIR` to free the name.
+- `scripts/drone_war_gui.py`: horizontal radio buttons under "Flush plots"
+  pick the network for the next Run. Its name heads the table column and
+  appears in the grid's title ("CNN = ..."), the detail window's title and
+  legend, and the saved PNGs' titles.
+- `scripts/detect_gui.py`: uses `drone_war_grid.MODELS` instead of its own
+  copy. No change in behaviour.
+
+**Why.** Mads asked for the same model choice in the drone-in-war GUI as
+in entry 098.
+
+**How.**
+```
+uv run python scripts/drone_war_grid.py --model "<each of the four>" --speeds 1 --speed-min 100 --speed-max 100 --levels 1 --war-min-db -10 --war-max-db -10 --wars 1 --no-drone --out <scratch>
+```
+and the GUI loaded headless (`MPLBACKEND=Agg`): it9 CRNN picked, Run,
+table, grid and detail window drawn. `detect_gui.py` rerun on
+`Drone_01.wav` with all four models: same window shares as entry 098.
+
+**Result.** All four models run in both GUIs and on the command line.
+Synthetic scaffolding, not detection performance (CLAUDE.md section 5):
+in this one 100 km/h, war -10 dB case every network alarmed on 99-100% of
+war-only windows, and comb on 3.3%.
+
+**Next.** None. A tool change.
+
+# Iteration 11 - Steady noise as negatives, without war audio in training
+
+> **Changed from iteration 9 / entry 096:** only the training negatives
+> and maskers. A family of steady noises is added to training: (a) Gaussian
+> noise with a random spectral slope (-12 to +3 dB/octave) and a random
+> smooth EQ, (b) random-phase copies of the training rigs' own no-drone
+> windows (same spectrum, no texture), each with a slow level wobble
+> (0.2-2 Hz, +-3 dB). About 15% of negative windows are such noise alone,
+> and about 30% of positive windows get one under the drone at -5 to +15 dB
+> in-band SNR (the existing `buried` range). Whether random-phase copies of
+> drone windows are added as hard negatives (c) is decided by step 0. No
+> war audio (the 23 FSD50K war clips, the war track or war-shaped noise)
+> and no noise stem goes into training.
+> **Why:** entries 075-076 and 100: with no drone present, model 6 and both
+> entry 096 networks alarm on 99-100% of windows of war-shaped noise at
+> every level from -40 to -10 dB, and on 0% of the war track at the same
+> levels. Pink noise gives 54-100%, brown 9-89%, white 0-3%. The mower
+> session gave 55% for model 6. The failure is steady noise with
+> low-frequency emphasis, not war. The council (entry 100) rejected
+> training on war-shaped noise made from the war clips.
+> **Kept the same:** MFE (64 log-mel, 25/10 ms), per-window level
+> normalisation, DS-CNN, iteration 5's `simdist` recipe with speed
+> perturbation 0.8-1.25, 200,000 windows, 1 s window, deployment threshold
+> frozen at 5% false alarms on validation, the validation set itself.
+> **Hypothesis:** the networks alarm on steady noise because no training
+> negative is steady and broadband after level normalisation. Steady
+> negatives remove that, and false alarms fall on steady noise the model
+> never saw, at a small cost in recall.
+> **Judged by** (seed means of 3 seeds per arm, the treated arm against the
+> same recipe without steady noise on the same seeds; decided before any
+> run). All at the deployment threshold frozen on validation; the steady
+> suite is never used to choose between variants.
+> - Success needs all of these:
+>   - Real unseen no-drone audio: the FSD50K distracter, background and
+>     wind stems (none trained on), pooled false alarms, with the aircraft
+>     classes (helicopter, prop plane, aircraft) reported apart. They fall
+>     by at least half.
+>   - The mower session: at most 20% false alarms.
+>   - Synthetic tripwires, never reported as performance: war-shaped noise
+>     from all 23 clips, white, pink and brown noise, each at most 5%. The
+>     war track stays at most 1%.
+>   - Recall guards: validation recall at the deployment threshold drops at
+>     most 2 points. Lund recall drops at most 3 points. FPV mean recall at
+>     10% own false alarms on the iteration 9 leave-one-unit-out arms drops
+>     at most 3 points, and no unit more than 5.
+> - Failure: any held-out colour above 20%, or a recall guard broken. That
+>   would be the evidence that MFE with per-window level removal cannot
+>   separate a steady drone from steady noise, and the next council would
+>   weigh PCEN with these numbers.
+> - `comb` and `lgbm` are reported next to both arms. This iteration targets
+>   R3 robustness. R2 (Lund recall 0.56 against 0.95) stays the larger gap.
+> - Iteration 10 (`it10-SynthDrone`) is not logged in this file yet; its
+>   number is left to it.
+
+## 100 - Council: what to do about false alarms on steady noise
+
 - Date: 2026-11-04
 - Iteration: 11
-- Type: Infrastructure
-- Commit: 95a395c
+- Type: Council
+- Commit: 791d95e plus the uncommitted entries 096-099
 
-**What changed.** Nothing. Mads confirmed that the server repo is on
-it11-soundscapes, which answers the open point in entry 103.
-**Next.** Training (entry 101's command), when Mads starts it.
+**Question.** Iteration 11: (A) train on war-shaped noise (under drones
+and alone) and test false alarms on held-out real war clips (the 23 FSD50K
+war clips split by uploader), (B) a PCEN frontend, (C) back to MFCC,
+(D) wait for real war recordings, or (E) keep the current approach?
 
-## 105 - Correction: iteration 10 trained on FSD50K eval stems; train_clean now skips them
-- Date: 2026-11-04
-- Iteration: 11 (correction to iteration 10)
-- Type: Correction
-- Commit: uncommitted (on top of 95a395c)
+**Evidence gathered for the brief** (synthetic diagnostics, not detection
+performance). `drone_war_grid.py`, no drone, one 20 s clip, war-shaped
+noise seed 1000 against the war track's first 20 s (calm phase):
+```
+uv run python scripts/drone_war_grid.py --model "<m>" --war-source shaped|track --speeds 0 --no-drone --levels 4 --war-min-db -40 --war-max-db -10 --wars 1 --out <scratch>
+```
 
-**What changed.** `load_nodrone` in `scripts/train_clean.py` skips stems.csv
-rows with source `fsd50k_eval`.
-**Why.** Checked on the server: `~/nodrone/stems.csv` lists 61
-`fsd50k_eval` stems. That is the stem set from before entry 099, and every
-one of its non-drone FSD50K stems is from eval. Iteration 10
-(`artifacts/it10_clean/`) took its no-drone clips from `~/nodrone`, so it
-trained on a held-out test source (CLAUDE.md section 5, `docs/datasets.md`).
-Any score of an iteration 10 model on FSD50K eval audio is therefore not a
-clean held-out figure. The real recordings in `~/nodrone/recordings` are
-not affected.
-**Also found.** The server's Python environment is `~/dad/.venv`. `~/dad`
-is an older copy of the repo without git. The current code is in
-`~/drone-acoustic-detection` (branch it11-soundscapes), which has no
-`.venv`, so the training command uses `~/dad/.venv/bin/python` with the
-repo's scripts. `train_clean.py` puts the repo's own `src/` first on the
-path.
-**Result.** No run. `py_compile` passes.
-**Next.** Commit and push, `git pull` on the server, then train.
+| Model | War-shaped noise, -40/-30/-20/-10 dB | War track, same levels | `comb`, shaped / track |
+|---|---|---|---|
+| it6 CNN (model 6) | 100 / 100 / 100 / 100% | 0% at all | 3.3% / 10.5% |
+| it9 CNN (entry 096 DS-CNN) | 98.7 / 99.3 / 99.3 / 99.3% | 0% at all | same |
+| it9 CRNN (entry 096) | 100% at all | 0% at all | same |
+
+Plain noise, 20 s, -30 dBFS RMS, seed 0, scored with `dad.wavio.stream` at
+each model's frozen threshold (alarm share, median score):
+
+| Model | White | Pink | Brown |
+|---|---|---|---|
+| it6 CNN | 0.0% (0.05) | 94.8% (0.43) | 88.9% (0.42) |
+| it9 CNN | 2.6% (0.25) | 100% (0.59) | 9.2% (0.27) |
+| it9 CRNN | 0.0% (0.16) | 53.6% (0.48) | 37.3% (0.45) |
+
+Entry 075's guess (steady 600-750 Hz energy from the shout and siren clips)
+does not explain pink and brown noise; the broader reading is steady noise
+with low-frequency emphasis.
+
+**Devil's Advocate.** Decisive and serious objections, and how each was
+answered:
+- *Decisive: the proposed test is at the floor before the change.* Real
+  war audio already gives under 1% (entry 065) and 0% (above), so held-out
+  war clips can only show a regression; the only number that moves is
+  synthetic. **Accepted.** The test is replaced by real unseen steady noise
+  (the FSD50K distracter, background and wind stems, which no it6 or it9
+  model trained on; checked: `rangerun.py`, `realrun.py` and `run_range.py`
+  do not read the stems) and the mower session. The synthetic noises stay
+  as tripwires only.
+- *Decisive: the failure is stationarity and spectral tilt, not war; A
+  fixes one spectrum.* **Accepted.** Training gets a family of steady
+  noises, not the war spectrum.
+- *Serious: the generator becomes a "no drone" fingerprint.* **Answered in
+  the design.** Two different generators (random slopes, random-phase
+  copies of real windows), a slow level wobble, and a test made of noise
+  from neither: real stems, the mower, war-shaped noise, exact colours.
+- *Serious: low-SNR positives are label noise and cost recall.* **Partly
+  answered.** Maskers go under only 30% of positives, in the existing
+  `buried` range (-5 to +15 dB in-band), and recall guards are part of the
+  verdict. It stands as a risk.
+- *Serious: 23 clips, 201.6 s, one siren: too few to split, and an invite
+  to tune on test.* **Accepted.** No war clip is split or trained on; all
+  stay test-only, and the steady suite is never used for selection.
+- *Serious: a one-seed guard cannot detect a regression.* **Accepted.**
+  Three seeds per arm, both arms on the same seeds.
+- *Serious: opportunity cost against Lund recall.* **Stands, noted.** One
+  iteration of about 30-60 GPU minutes; R2 remains the main gap.
+
+**Scholar** (given the problem without our context). Best practice is
+multi-condition training: real or realistic noise mixed under positives at
+random SNR plus noise-only negatives, with false alarms reported on real
+background from sources never seen, seen and unseen noise reported apart
+(the Aurora-2 set A / set B idea; checked via secondary sources only).
+Pitfalls: a long-term spectrum computed from the test recordings is a
+statistic of the test set (leakage); steady noise as negatives can teach
+"stationary = no target" and hurt steady targets (Salamon & Bello 2017 saw
+augmentation hurt the steady air-conditioner class; checked); augmentation
+gains are often modest (Reuter, Ohlenbusch & Rollwage, arXiv:2605.31329,
+2026, acoustic drone detection: little gain out of domain; checked).
+Placement: A is standard if noise and test are disjoint by source; B (PCEN)
+a defensible variation, with the caveat that it suppresses what is
+stationary and could attenuate a hovering drone (Lostanlen et al. 2019;
+checked); C against practice for a CNN; D against practice as a blanket
+rule; E against practice.
+**Departure:** the Scholar prefers real noise recordings in training; we
+train on synthetic steady noise and keep the real noise stems for the
+test. Reason: the stems are the only real, unseen steady noise we have;
+training on them would leave no unseen-noise test. When real field noise
+arrives, it can be split by source between the two.
+
+**Problem Solver.** Verdict: try a modified version. Train on a
+steady-noise family, not war audio; keep all war material for testing;
+score a steady false-alarm suite; three seeds per arm; step 0 first:
+score the existing models on random-phase copies of drone and no-drone
+windows and on a slope sweep, to see whether they use the spectral
+envelope rather than the harmonics, before any GPU time. Confidence
+medium. One factual error, checked against entry 094: it says MFCC "lost
+18 points on Lund"; that was the linear spectrogram. MFCC lost on the FPV
+mean (0.485 against 0.669), which is enough to rule C out.
+
+**Decision.** Iteration 11 as boxed above: the Problem Solver's modified
+A, with the Devil's Advocate's two decisive objections built in and the
+Scholar's leakage rule kept by putting no war or stem audio in training.
+B (PCEN) is held back for a later council if iteration 11 fails. C, D and
+E are rejected. Real war recordings are still wanted, as test data.
+
+**Next.** Step 0 (no training): score it6, it9 CNN and CRNN on
+random-phase copies of real drone and no-drone windows and on a
+noise-slope sweep from -12 to +6 dB/octave, and score the steady suite as
+the baseline.

@@ -29,7 +29,7 @@ from dad import realrun as rr  # noqa: E402
 from dad.config import FrontendConfig  # noqa: E402
 from dad.realdata import load_manifest  # noqa: E402
 
-NETS = ("dscnn", "resnet", "transformer")
+NETS = ("dscnn", "resnet", "crnn", "transformer")
 HOP_S = {"glasgow": 2.0}   # 8.7 h of near-range hover; a coarser grid is plenty
 
 

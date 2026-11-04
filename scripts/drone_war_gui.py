@@ -1,7 +1,9 @@
 """A window for the drone-in-war test (scripts/drone_war_grid.py): type the drone speeds and the
 war levels as min, max and count (count values from min to max, both included, evenly spaced;
 count 1 needs min = max), press Run, and watch one grid fill in: rows = drone speeds, columns =
-war noise levels, CNN and comb in every panel, with a table of totals per war level.
+war noise levels, a network and comb in every panel, with a table of totals per war level.
+The radio buttons under 'Flush plots' pick the network for the next Run (drone_war_grid.MODELS:
+model 6, the entry 096 CNN and CRNN, or the iteration 10 CNN), each at its own frozen threshold.
 Tick 'no drone' for an extra row with war only (false alarms) and 'no war' for an extra
 column with the drone only; counts may then be 0. War level 0 dB = the war track as rendered. The war is
 war-shaped noise (scripts/war_shaped_noise.py, seed 1000), as loud as the first 20 s of the war
@@ -32,7 +34,7 @@ import drone_war_grid as dwg  # noqa: E402
 
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
-from matplotlib.widgets import Button, CheckButtons, TextBox  # noqa: E402
+from matplotlib.widgets import Button, CheckButtons, RadioButtons, TextBox  # noqa: E402
 
 OUT = dwg.ROOT / "artifacts/drone_war/gui"
 D = dwg.defaults()
@@ -74,10 +76,18 @@ b_flush = Button(fig.add_axes([0.015, 0.06, 0.08, 0.04]), "Flush plots")
 ax_confirm = fig.add_axes([0.10, 0.06, 0.08, 0.04])
 b_confirm = Button(ax_confirm, "Confirm", color="#f4c7c3", hovercolor="#ee9a93")
 ax_confirm.set_visible(False)                                 # only shown after Flush plots
+fig.text(0.015, 0.035, "model", fontsize=8, color=TEXT, va="center")
+r_model = RadioButtons(fig.add_axes([0.045, 0.015, 0.22, 0.04], frameon=False), list(dwg.MODELS), active=0,
+                       layout="horizontal", label_props=dict(fontsize=[8] * len(dwg.MODELS)))
 status = fig.text(0.015, 0.38, "Type the values and press Run.", fontsize=8, color=TEXT, va="top", wrap=True)
 table = fig.text(0.015, 0.34, "", fontsize=7, family="monospace", color=TEXT, va="top")
 
-state = dict(thread=None, stop=threading.Event(), levels={}, rows=[], meta=None, grid=[], page="time")
+state = dict(thread=None, stop=threading.Event(), levels={}, rows=[], meta=None, grid=[], page="time",
+             model=next(iter(dwg.MODELS)))
+
+
+def title():
+    return f"{TITLE}  |  CNN = {state['model']}"
 events: queue.Queue = queue.Queue()
 
 
@@ -107,7 +117,7 @@ def worker(a):
                     stop=state["stop"].is_set)
         for x, name in (("time", "grid_speed_x_war.png"), ("snr", "grid_speed_x_war_snr.png")):
             dwg.plot_speed_war(r["res"], r["speeds"], r["gains"], r["offsets"][0], r["thr"], OUT / name,
-                               title=TITLE, x=x)
+                               title=title(), x=x)
         events.put(("status", f"done: {len(r['rows']) // len(dwg.DETECTORS)} mixes, "
                               f"saved in {OUT.relative_to(dwg.ROOT).as_posix()}"))
     except InterruptedError:
@@ -129,12 +139,12 @@ def draw():
     clear()
     speeds, gains, offset, thr = state["meta"]
     state["grid"] = dwg.draw_speed_war(fig, state["levels"], speeds, gains, offset, thr, rect=(0.27, 0.0, 1.0, 0.95),
-                                       title=TITLE, x=state["page"])
+                                       title=title(), x=state["page"])
     s = dwg.summarise(state["rows"])
     pct = lambda v: "    -" if v is None else f"{100 * v:5.1f}"  # noqa: E731
     n = sum(v != dwg.NO_DRONE for v in speeds)
     lines = [f"{n} speeds" + (" + no drone" if dwg.NO_DRONE in speeds else "") + ", war-shaped noise", "",
-             f"{'':8s}{'CNN':>17s}{'comb':>19s}",
+             f"{'':8s}{state['model']:>17s}{'comb':>19s}",
              f"{'war':8s}" + f"{'recall':>7s}{'false+':>7s}{'>=3s':>5s} " * 2]
     for g in [g for g in gains if g in state["levels"]]:
         row = f"{'no war' if g == dwg.OFF else dwg.war_tag(g):8s}"
@@ -184,7 +194,7 @@ def on_click(event):
     name = f"{dwg.speed_label(v)}, " + ("no war" if g == dwg.OFF else f"war {g:+g} dB")
     big, axs = plt.subplots(2, 2, figsize=(13, 8))
     big.canvas.manager.set_window_title(name)
-    big.suptitle(f"{TITLE}  |  {name}  |  levels, frequency and SNR: 50-8000 Hz, per 1 s window", fontsize=10, color=TEXT)
+    big.suptitle(f"{title()}  |  {name}  |  levels, frequency and SNR: 50-8000 Hz, per 1 s window", fontsize=10, color=TEXT)
     a_db, a_hz, a_ct, a_cs = axs.flat
     t = cell[next(iter(dwg.DETECTORS))].t_end
     a_db.plot(t, finite(cell["drone_db"]), color="#c0392b", label="drone")
@@ -198,8 +208,9 @@ def on_click(event):
         d = cell[k]
         y = dwg.squash(d.score, thr[k]) if k == "comb" else d.score
         line = 0.5 if k == "comb" else thr[k]
-        a_ct.plot(d.t_end, y, color=dwg.COLORS[k], label=k)
-        a_cs.plot(cell["snr"][ok], y[ok], color=dwg.COLORS[k], ls="", marker=".", ms=4, label=k)
+        label = state["model"] if k == "CNN" else k
+        a_ct.plot(d.t_end, y, color=dwg.COLORS[k], label=label)
+        a_cs.plot(cell["snr"][ok], y[ok], color=dwg.COLORS[k], ls="", marker=".", ms=4, label=label)
         for a in (a_ct, a_cs):
             a.axhline(line, color=dwg.COLORS[k], lw=0.7, ls="--")
     a_ct.set(title="3. confidence over time", ylabel="confidence", ylim=(0, 1))
@@ -250,11 +261,12 @@ def on_run(_):
         status.set_text(str(e))
         fig.canvas.draw_idle()
         return
+    a.model = state["model"] = r_model.value_selected
     speeds, gains = dwg.speeds_and_gains(a)
     offset = dwg.war_offsets(a, len(dwg._sources()["war"]) / dwg.es.FS)[0]
     clear()
     table.set_text("")
-    state.update(levels={}, rows=[], meta=(speeds, gains, offset, dwg._detectors()[0]))
+    state.update(levels={}, rows=[], meta=(speeds, gains, offset, dwg._detectors(a.model)[0]))
     state["stop"].clear()
     status.set_text("starting (the first run loads the models and the war track)")
     fig.canvas.draw_idle()

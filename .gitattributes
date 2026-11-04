@@ -1,0 +1,3 @@
+# Several people append to the report; keep both sides instead of a conflict.
+# Lines both sides changed (the glance table) end up twice: check after a merge.
+docs/REPORT.md merge=union
