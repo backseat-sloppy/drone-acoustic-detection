@@ -15,15 +15,33 @@ batch opened. Each uses the threshold its own run froze at 5% false alarms on va
   it10 CNN  artifacts/it10_clean/clean_s0_dscnn.pt (seed 0, trained on synthetic drones only)
 comb keeps model 6's frozen threshold whichever model is picked.
 
-War-shaped noise (optional): tick "add war-shaped noise" before opening files and type one or
+War noise (optional): tick "add war noise" before opening files, pick its source and type one or
 more SNRs in dB, separated by spaces, commas or semicolons (each -20 to +30, at most 6, default
-"0 10 30"; lower = more noise; decimals with a point). Each file then gets steady noise with the
-war's long-term spectrum (scripts/war_shaped_noise.py, seed 1000 + the file's place in the batch,
-the same noise at every SNR), scaled so the file's broadband RMS is SNR dB above the noise's
-(docs/war_shaped_noise.md). Every SNR is its own row in the list; the detectors score the mix, Play
+"0 10 30"; lower = more noise; decimals with a point). The seed is 1000 for the whole batch, so
+every file, at every SNR, gets the same noise from the same start. Sources:
+
+    war-shaped noise  steady noise with the war's long-term spectrum (scripts/war_shaped_noise.py)
+    war track         a window of the 600 s war soundscape (data/processed/war/war_track.wav,
+                      scripts/war_track.py): real FSD50K war sounds coming and going, its calm,
+                      normal and intense phases included. One start per batch, drawn from the seed
+                      so that the longest file fits, shown in the title; a window that runs past
+                      the end wraps to 0.
+
+The noise is scaled so the file's broadband RMS is SNR dB above the noise's RMS over the same
+stretch (docs/war_shaped_noise.md). Every SNR is its own row in the list; the detectors score the mix, Play
 plays the mix, and the mix is saved as a 16 kHz float WAV in artifacts/detect_gui/mixes/. Below the
 spectrogram the file gets one confidence graph per SNR, the selected one in bold; click a graph to
 select that SNR (and hear it with Play). The setting applies to the next batch opened.
+
+"dummy": one extra row at the top of the list, "DUMMY war track": a stretch of the war track
+alone, no file and no drone, as long as the first file (10 s if none can be read), at the track's
+own level, from the batch's war-track start (the same stretch the files get). Every alarm on it is
+a false alarm; compare it with the files to see what a drone adds. It does not need "add war
+noise", and does not depend on the SNR.
+
+"Slide show" (top right) shows one SNR graph at a time over the whole right side, in the same
+window; "< SNR" / "SNR >" or the Left / Right keys step through the file's SNRs (Play plays the
+slide shown), Previous / Next and the list still change file, and Escape or the button goes back.
 
 The list on the left gives each file's verdict per detector: DRONE if any window alarmed, with the
 share of windows that alarmed, the first alarm and the longest unbroken alarm. Click a file in the
@@ -63,38 +81,46 @@ from matplotlib.widgets import Button, CheckButtons, RadioButtons, TextBox  # no
 from scipy.signal import resample_poly  # noqa: E402
 
 from dad.config import DEFAULT  # noqa: E402
-from dad.wavio import read_wav, stream  # noqa: E402
+from dad.wavio import Clip, read_wav, stream  # noqa: E402
 
 OUT = dwg.ROOT / "artifacts/detect_gui/results.csv"
 MIXES = OUT.parent / "mixes"
 SNR_MIN, SNR_MAX, SNR_DEFAULT = -20.0, 30.0, "0 10 30"      # dB, file RMS over noise RMS
 SNR_MAX_COUNT = 6                                            # graphs under the spectrogram
 NOISE_LOOP_S = 60.0                                          # longer files repeat it (the noise is periodic)
+WAR_TRACK = dwg.es.WAR / "war_track.wav"                     # 600 s, 44.1 kHz (scripts/war_track.py)
+SOURCES = {"war-shaped noise": "wsn", "war track (600 s)": "track"}   # radio label -> source
 AUDIO_TYPES = [("Audio files", "*.wav *.flac *.ogg *.mp3"), ("All files", "*.*")]
 HOP_S = DEFAULT.samples_per_hop / DEFAULT.sample_rate
 TEXT, GREY, RED = "#333333", "#777777", "#c0392b"
 NAMES = {"CNN": "CNN", "comb": "DSP (comb)"}                 # detector -> name in the stats window
-LIST_ROWS = 18                                               # files shown in the list at once
+LIST_ROWS = 16                                               # files shown in the list at once
 MODELS = dwg.MODELS
 
 fig = plt.figure(figsize=(15, 9))
 fig.canvas.manager.set_window_title("Find drones in audio files")
 fig.text(0.015, 0.975, "Find drones in audio files", fontsize=13, weight="bold", color=TEXT, va="top")
 ax_noise = fig.add_axes([0.015, 0.905, 0.15, 0.04], frameon=False)
-c_noise = CheckButtons(ax_noise, ["add war-shaped noise"], [False])
+c_noise = CheckButtons(ax_noise, ["add war noise"], [False])
 for lbl in c_noise.labels:
     lbl.set_fontsize(8)
 t_snr = TextBox(fig.add_axes([0.2, 0.91, 0.065, 0.03]), "SNR dB ", initial=SNR_DEFAULT)
 t_snr.label.set_fontsize(8)
 fig.text(0.135, 0.9, f"one or more, {SNR_MIN:+g} to {SNR_MAX:+g}, lower = more noise", fontsize=6.5, color=GREY,
          va="top")
-b_open = Button(fig.add_axes([0.015, 0.84, 0.25, 0.045]), "Open audio files...")
-b_prev = Button(fig.add_axes([0.015, 0.79, 0.12, 0.04]), "< Previous")
-b_next = Button(fig.add_axes([0.145, 0.79, 0.12, 0.04]), "Next >")
-b_play = Button(fig.add_axes([0.015, 0.745, 0.12, 0.04]), "Play")
-b_hush = Button(fig.add_axes([0.145, 0.745, 0.12, 0.04]), "Stop sound")
-status = fig.text(0.015, 0.73, "Open one or more audio files.", fontsize=8, color=TEXT, va="top", wrap=True)
-ax_list = fig.add_axes([0.015, 0.15, 0.26, 0.54])
+r_source = RadioButtons(fig.add_axes([0.015, 0.835, 0.2, 0.055], frameon=False), list(SOURCES), active=0)
+for lbl in r_source.labels:
+    lbl.set_fontsize(8)
+c_dummy = CheckButtons(fig.add_axes([0.17, 0.85, 0.1, 0.03], frameon=False), ["dummy"], [False])
+c_dummy.labels[0].set_fontsize(8)
+fig.text(0.172, 0.85, "+1 row: war track, no drone", fontsize=6.5, color=GREY, va="top")
+b_open = Button(fig.add_axes([0.015, 0.785, 0.25, 0.045]), "Open audio files...")
+b_prev = Button(fig.add_axes([0.015, 0.737, 0.12, 0.04]), "< Previous")
+b_next = Button(fig.add_axes([0.145, 0.737, 0.12, 0.04]), "Next >")
+b_play = Button(fig.add_axes([0.015, 0.692, 0.12, 0.04]), "Play")
+b_hush = Button(fig.add_axes([0.145, 0.692, 0.12, 0.04]), "Stop sound")
+status = fig.text(0.015, 0.677, "Open one or more audio files.", fontsize=8, color=TEXT, va="top", wrap=True)
+ax_list = fig.add_axes([0.015, 0.15, 0.26, 0.49])
 ax_model = fig.add_axes([0.015, 0.01, 0.25, 0.12], frameon=False)
 ax_model.set_title("model, for the next batch opened", fontsize=8, color=TEXT, loc="left")
 r_model = RadioButtons(ax_model, list(MODELS), active=0)
@@ -104,7 +130,16 @@ ax_list.axis("off")
 ax_spec = fig.add_axes([0.33, 0.62, 0.65, 0.30])
 CONF_BOX = (0.33, 0.07, 0.65, 0.50)                          # left, bottom, width, height of the graphs
 
-state = dict(thread=None, files=[], cur=0, top=0, model=next(iter(MODELS)), loaded={}, conf_axes=[])
+SLIDE_BOX = (0.33, 0.08, 0.65, 0.73)                         # one graph over the whole right side
+b_slides = Button(fig.add_axes([0.855, 0.945, 0.125, 0.035]), "Slide show")
+ax_sprev = fig.add_axes([0.69, 0.945, 0.075, 0.035])
+ax_snext = fig.add_axes([0.77, 0.945, 0.075, 0.035])
+b_sprev, b_snext = Button(ax_sprev, "< SNR"), Button(ax_snext, "SNR >")
+ax_sprev.set_visible(False)
+ax_snext.set_visible(False)
+slide_head = fig.text(0.33, 0.905, "", fontsize=11, weight="bold", color=TEXT, va="bottom")
+
+state = dict(thread=None, files=[], cur=0, top=0, model=next(iter(MODELS)), loaded={}, conf_axes=[], slides=False)
 events: queue.Queue = queue.Queue()
 
 
@@ -137,15 +172,58 @@ def war_noise(n: int, seed: int) -> np.ndarray:
     return np.resize(resample_poly(x, DEFAULT.sample_rate, sr)[:m], n)
 
 
-def add_noise(audio: np.ndarray, snr_db: float, seed: int) -> np.ndarray:
-    """audio plus war-shaped noise, the noise scaled so audio's broadband RMS is snr_db above it."""
-    noise = war_noise(len(audio), seed)
+def war_track() -> np.ndarray:
+    """The 600 s war soundscape at the frontend's rate, read and resampled once."""
+    if "war_track" not in state:
+        x, sr = sf.read(WAR_TRACK, dtype="float64")
+        state["war_track"] = resample_poly(x, DEFAULT.sample_rate, sr)
+    return state["war_track"]
+
+
+def track_start(seconds: float, seed: int = dwg.WSN_SEED) -> float:
+    """A start in the war track, drawn from seed, where a window of `seconds` fits (0 if none does).
+    One start per batch, for the longest file, so every file and the dummy share it."""
+    x, n = war_track(), int(seconds * DEFAULT.sample_rate)
+    return int(np.random.default_rng(seed).integers(0, max(len(x) - n, 0) + 1)) / DEFAULT.sample_rate
+
+
+def track_window(n: int, start_s: float) -> tuple[np.ndarray, float]:
+    """n samples of the war track from start_s, and start_s; past the end it wraps to 0."""
+    i = int(round(start_s * DEFAULT.sample_rate))
+    return np.take(war_track(), np.arange(i, i + n), mode="wrap"), start_s
+
+
+def add_noise(audio: np.ndarray, snr_db: float, seed: int, source: str = "wsn",
+              start_s: float = 0.0) -> tuple[np.ndarray, float | None, np.ndarray]:
+    """audio plus war noise from source ("wsn" or "track", from start_s), scaled so audio's
+    broadband RMS is snr_db above the noise's; the track window's start in s (None for war-shaped
+    noise); and the scaled noise on its own (the layer that was added)."""
+    noise, offset = (war_noise(len(audio), seed), None) if source == "wsn" else track_window(len(audio), start_s)
     rms = lambda v: np.sqrt(np.mean(v ** 2))                  # noqa: E731
-    return (audio + noise * rms(audio) / rms(noise) / 10 ** (snr_db / 20)).astype(audio.dtype)
+    if not np.any(noise):
+        raise ValueError("the war track is silent in this window")
+    layer = (noise * rms(audio) / rms(noise) / 10 ** (snr_db / 20)).astype(audio.dtype)
+    return audio + layer, offset, layer
 
 
-def detect(path: str, noise: tuple[float, int] | None = None, group: int = 0) -> dict:
-    """Every detector over one file, with war-shaped noise added first when noise = (SNR dB, seed).
+def score(clip, thr, scorers) -> tuple[dict, dict]:
+    """Every detector over clip: decisions and a summary per detector."""
+    dec, summary = {}, {}
+    for k, sc in scorers.items():
+        d = stream(clip, sc, DEFAULT, thr[k])
+        first = d.t_end[d.drone]
+        p = peaks(d.drone)
+        dec[k] = d
+        summary[k] = dict(drone=bool(d.drone.any()), flagged=float(d.drone.mean()),
+                          first_alarm_s=float(first[0]) if len(first) else None,
+                          longest_s=max((b - a + 1 for a, b in p), default=0) * HOP_S,
+                          peaks=p, above_s=int(d.drone.sum()) * HOP_S)
+    return dec, summary
+
+
+def detect(path: str, noise: tuple[float, int, str, float] | None = None, group: int = 0) -> dict:
+    """Every detector over one file, with war noise added first when
+    noise = (SNR dB, seed, source, war-track start in s).
     group = the file's place in the batch, shared by its rows at every SNR. A file that cannot be
     read, or is shorter than a window, gets an 'error' instead of results."""
     f = dict(path=path, name=Path(path).name, group=group)
@@ -157,37 +235,65 @@ def detect(path: str, noise: tuple[float, int] | None = None, group: int = 0) ->
     if len(clip.audio) < DEFAULT.samples_per_window:
         return {**f, "error": f"shorter than the {DEFAULT.window_seconds:g} s window"}
     if noise is not None:
-        snr, seed = noise
+        snr, seed, source, start = noise
         if not np.any(clip.audio):
             return {**f, "error": "silent: no level to set the noise against"}
-        clip.audio = add_noise(clip.audio, snr, seed)
-        f.update(audio=clip.audio, snr_db=snr, noise_seed=seed)
+        try:
+            clip.audio, offset, layer = add_noise(clip.audio, snr, seed, source, start)
+        except ValueError as e:
+            return {**f, "error": str(e)}
+        f.update(audio=clip.audio, snr_db=snr, noise_seed=seed, noise_source=source, noise_offset_s=offset)
         MIXES.mkdir(parents=True, exist_ok=True)
-        f["mix_path"] = str(MIXES / f"{Path(path).stem}_wsn_snr{snr:+g}dB_seed{seed}.wav")
+        tag = "wsn" if source == "wsn" else f"wartrack{offset:.1f}s"
+        f["mix_path"] = str(MIXES / f"{Path(path).stem}_{tag}_snr{snr:+g}dB_seed{seed}.wav")
         sf.write(f["mix_path"], clip.audio, DEFAULT.sample_rate, subtype="FLOAT")
     thr, scorers = detectors()
-    f["dec"], f["summary"] = {}, {}
-    for k, sc in scorers.items():
-        d = stream(clip, sc, DEFAULT, thr[k])
-        first = d.t_end[d.drone]
-        p = peaks(d.drone)
-        f["dec"][k] = d
-        f["summary"][k] = dict(drone=bool(d.drone.any()), flagged=float(d.drone.mean()),
-                               first_alarm_s=float(first[0]) if len(first) else None,
-                               longest_s=max((b - a + 1 for a, b in p), default=0) * HOP_S,
-                               peaks=p, above_s=int(d.drone.sum()) * HOP_S)
+    f["dec"], f["summary"] = score(clip, thr, scorers)
     return f
 
 
-def worker(paths, snrs=None):
-    """Every file, at every SNR in snrs (None: no noise). One row per file and SNR."""
+def dummy_row(seconds: float, start_s: float) -> dict:
+    """The dummy: the war track alone from start_s, no file and no drone, at the track's own level
+    (as rendered, full scale 110 dB SPL like the detectors' input), scored like a file."""
+    audio, offset = track_window(int(seconds * DEFAULT.sample_rate), start_s)
+    f = dict(path=str(WAR_TRACK), name="DUMMY war track", group="dummy", dummy=True, audio=audio.astype(np.float32),
+             seconds=len(audio) / DEFAULT.sample_rate, noise_seed=dwg.WSN_SEED, noise_source="track",
+             noise_offset_s=offset)
+    thr, scorers = detectors()
+    f["dec"], f["summary"] = score(Clip(str(WAR_TRACK), f["audio"], DEFAULT.sample_rate, 1, "FLOAT"), thr, scorers)
+    return f
+
+
+def durations(paths) -> list[float]:
+    """The length of every file that can be read and holds a window (detect() reports the others)."""
+    out = []
+    for p in paths:
+        try:
+            s = sf.info(p).duration
+        except Exception:                                    # noqa: BLE001
+            continue
+        if s >= DEFAULT.window_seconds:
+            out.append(s)
+    return out
+
+
+def worker(paths, snrs=None, source="wsn", dummy=False):
+    """With dummy, first one row of the war track alone; then every file, at every SNR in snrs
+    (None: no noise) of noise from source. One seed (1000) and one war-track start for the whole
+    batch, so every file and the dummy get the same stretch of soundscape. One row per file and SNR."""
     try:
+        lengths = durations(paths) or [10.0]
+        start = track_start(max(lengths)) if (dummy or (snrs and source == "track")) else 0.0
+        if dummy:
+            events.put(("status", "listening to the dummy (war track alone)"
+                                  + (" (this also loads the detectors)" if state["model"] not in state["loaded"] else "")))
+            events.put(("file", dummy_row(lengths[0], start)))
         for i, p in enumerate(paths):
             for snr in snrs or [None]:
                 events.put(("status", f"listening to file {i + 1} of {len(paths)}: {Path(p).name}"
                                       + ("" if snr is None else f" at SNR {snr:+g} dB")
                                       + (" (the first file also loads the detectors)" if state["model"] not in state["loaded"] else "")))
-                events.put(("file", detect(p, None if snr is None else (snr, dwg.WSN_SEED + i), group=i)))
+                events.put(("file", detect(p, None if snr is None else (snr, dwg.WSN_SEED, source, start), group=i)))
         events.put(("status", f"done: {len(paths)} file(s). " + (f"Table in {OUT.relative_to(dwg.ROOT).as_posix()}"
                               if snrs is None else f"Table, mixes in {OUT.parent.relative_to(dwg.ROOT).as_posix()}")))
     except Exception as e:                                   # shown in the window, not lost in a thread
@@ -236,20 +342,35 @@ def draw_list():
     ax_list.text(0, 1 - (LIST_ROWS + 2) / (LIST_ROWS + 3), note, fontsize=7, color=GREY, va="top", wrap=True)
 
 
+def describe(f) -> str:
+    """A row's file and noise, for the spectrogram title and the slide head."""
+    if f.get("dummy"):
+        return (f"DUMMY: {noise_name(f)} alone, no drone, at the track's own level  ({f['seconds']:.1f} s, "
+                f"seed {f['noise_seed']})")
+    return (f"{f['name']}" + (f"  ({f['seconds']:.1f} s)" if "seconds" in f else "")
+            + (f"  + {noise_name(f)}, SNR {f['snr_db']:+g} dB (seed {f['noise_seed']})" if "snr_db" in f else ""))
+
+
+def noise_name(f) -> str:
+    if f.get("noise_source") == "track":
+        return f"war track from {f['noise_offset_s']:.1f} s"
+    return "war-shaped noise"
+
+
 def siblings(i: int) -> list[int]:
     """Rows of the same file as row i (one per SNR), in list order."""
     g = state["files"][i]["group"]
     return [j for j, f in enumerate(state["files"]) if f["group"] == g]
 
 
-def conf_axes(n: int) -> list:
-    """n confidence graphs stacked in CONF_BOX, sharing the spectrogram's time axis."""
+def conf_axes(n: int, box=CONF_BOX) -> list:
+    """n confidence graphs stacked in box, sharing the spectrogram's time axis."""
     for ax in state["conf_axes"]:
         fig.delaxes(ax)
     state["conf_axes"] = []
     if not n:
         return []
-    left, bottom, width, height = CONF_BOX
+    left, bottom, width, height = box
     gap = 0.035 if n > 1 else 0.0
     h = (height - gap * (n - 1)) / n
     state["conf_axes"] = [fig.add_axes([left, bottom + (n - 1 - r) * (h + gap), width, h], sharex=ax_spec)
@@ -264,19 +385,26 @@ def plot_score(ax, d, y, k):
     few = len(d.t_end) < 20
     ax.plot(d.t_end, y, color=dwg.COLORS[k], lw=1.2, label=shown_as(k), marker="o" if few else None, ms=5,
             clip_on=not few)                                 # the last dot sits on the right edge
-    if few:
+    if few:                                                  # overlapping windows merged, shaded once
+        spans = []
         for t in d.t_end[d.drone]:
-            ax.axvspan(max(t - DEFAULT.window_seconds, 0), t, color=dwg.COLORS[k], alpha=0.10, lw=0)
+            a = max(t - DEFAULT.window_seconds, 0)
+            if spans and a <= spans[-1][1]:
+                spans[-1][1] = t
+            else:
+                spans.append([a, t])
+        for a, b in spans:
+            ax.axvspan(a, b, color=dwg.COLORS[k], alpha=0.10, lw=0)
     else:
         ax.fill_between(d.t_end, 0, 1, where=d.drone, color=dwg.COLORS[k], alpha=0.10, step="pre", lw=0)
 
 
-def draw_conf(ax, f, thr, selected, legend):
+def draw_conf(ax, f, thr, selected, legend, size=9, sep="   |   "):
     """One row's confidence over time: both detectors, thresholds dashed, alarms shaded."""
-    head = f"SNR {f['snr_db']:+g} dB:  " if "snr_db" in f else ""
+    head = "DUMMY, war track alone:  " if f.get("dummy") else f"SNR {f['snr_db']:+g} dB:  " if "snr_db" in f else ""
     if "error" in f:
         ax.text(0.5, 0.5, f["error"], ha="center", va="center", color=GREY, transform=ax.transAxes)
-        ax.set_title(head, fontsize=9, color=TEXT, loc="left", weight="bold" if selected else "normal")
+        ax.set_title(head, fontsize=size, color=TEXT, loc="left", weight="bold" if selected else "normal")
         return
     lines = []
     for k, d in f["dec"].items():
@@ -287,31 +415,68 @@ def draw_conf(ax, f, thr, selected, legend):
         lines.append(f"{shown_as(k)}: " + (f"DRONE  first alarm {s['first_alarm_s']:.2f} s, longest alarm {s['longest_s']:.2f} s, "
                                  f"{100 * s['flagged']:.0f}% of windows" if s["drone"] else "no drone heard"))
     ax.set(ylim=(0, 1), xlim=(0, f["seconds"]), ylabel="confidence")
-    ax.set_title(head + "   |   ".join(lines), fontsize=9, color=TEXT, loc="left",
+    ax.set_title(head + sep.join(lines), fontsize=size, color=TEXT, loc="left",
                  weight="bold" if selected else "normal")
     if legend:
-        ax.legend(loc="upper right", fontsize=8, frameon=False)
+        ax.legend(loc="upper right", fontsize=size - 1, frameon=False)
     ax.grid(color="#e5e5e5", lw=0.5)
-    if selected and "snr_db" in f:
+    if selected and "snr_db" in f and not state["slides"]:
         for side in ax.spines.values():
             side.set(linewidth=1.6, color=TEXT)
 
 
+def draw_slide():
+    """Slide show: the current row's confidence graph alone, filling the right side, with the
+    file and its place among the file's SNRs above it."""
+    files = state["files"]
+    f, rows = files[state["cur"]], siblings(state["cur"])
+    ax = conf_axes(1, SLIDE_BOX)[0]
+    ax.row_index = state["cur"]
+    thr = detectors()[0] if "error" not in f else {}
+    draw_conf(ax, f, thr, selected=True, legend=True, size=12, sep="\n")
+    ax.set_xlabel("time (s), each decision stamped at the end of its 1 s window", fontsize=11)
+    ax.tick_params(labelsize=10)
+    slide_head.set_text(f"slide {rows.index(state['cur']) + 1} of {len(rows)}:  {describe(f)}")
+    if thr:
+        ax.text(0.005, 0.015, f"dashed = threshold, shaded = alarm, comb shown as s/(s+{thr['comb']:.2f}); "
+                              "< SNR / SNR > or Left / Right keys step; Play plays this slide; Esc goes back",
+                fontsize=8, color=GREY, transform=ax.transAxes)
+
+
+def step_slide(step: int):
+    """The previous or next SNR of the shown file, wrapping around."""
+    if not state["files"]:
+        return
+    rows = siblings(state["cur"])
+    show(rows[(rows.index(state["cur"]) + step) % len(rows)])
+
+
+def toggle_slides(_=None):
+    state["slides"] = not state["slides"]
+    for ax in (ax_sprev, ax_snext):
+        ax.set_visible(state["slides"])
+    b_slides.label.set_text("Back to all graphs" if state["slides"] else "Slide show")
+    redraw()
+
+
 def draw_file():
     """Spectrogram of the current row, and one confidence graph per row of the same file
-    (one per SNR; just one without noise)."""
+    (one per SNR; just one without noise). In the slide show, draw_slide instead."""
     ax_spec.clear()
+    slide_head.set_text("")
     files = state["files"]
+    ax_spec.set_visible(not (state["slides"] and files))
     if not files:
         conf_axes(0)
+        return
+    if state["slides"]:
+        draw_slide()
         return
     f = files[state["cur"]]
     if "audio" in f:
         ax_spec.specgram(f["audio"], NFFT=1024, Fs=DEFAULT.sample_rate, noverlap=768, cmap="magma", vmin=-160)
     ax_spec.set_ylabel("Hz")
-    ax_spec.set_title(f"{state['cur'] + 1}/{len(files)}  {f['name']}" + (f"  ({f['seconds']:.1f} s)" if "seconds" in f else "")
-                      + (f"  + war-shaped noise, SNR {f['snr_db']:+g} dB (seed {f['noise_seed']})" if "snr_db" in f else ""),
-                      fontsize=10, color=TEXT, loc="left")
+    ax_spec.set_title(f"{state['cur'] + 1}/{len(files)}  {describe(f)}", fontsize=10, color=TEXT, loc="left")
     rows = siblings(state["cur"])
     axes = conf_axes(len(rows))
     thr = detectors()[0] if any("error" not in files[j] for j in rows) else {}
@@ -340,7 +505,7 @@ def write_csv():
         w = csv.writer(fh)
         w.writerow(["file", "seconds", "detector", "threshold", "verdict", "flagged_share", "first_alarm_s",
                     "longest_alarm_s", "peaks_above_threshold", "time_above_threshold_s", "noise_snr_db",
-                    "noise_seed", "mix_file", "error"])
+                    "noise_seed", "noise_source", "noise_offset_s", "mix_file", "dummy", "error"])
         thr = state["loaded"].get(state["model"], ({},))[0]
         for f in state["files"]:
             for k in dwg.DETECTORS:
@@ -348,7 +513,9 @@ def write_csv():
                 w.writerow([f["path"], round(f["seconds"], 3) if "seconds" in f else "", shown_as(k), thr.get(k, ""),
                             verdict(f, k), s.get("flagged", ""), s.get("first_alarm_s", ""), s.get("longest_s", ""),
                             len(s["peaks"]) if s else "", s.get("above_s", ""), f.get("snr_db", ""),
-                            f.get("noise_seed", ""), f.get("mix_path", ""), f.get("error", "")])
+                            f.get("noise_seed", ""), f.get("noise_source", ""),
+                            "" if f.get("noise_offset_s") is None else f["noise_offset_s"],
+                            f.get("mix_path", ""), "yes" if f.get("dummy") else "", f.get("error", "")])
 
 
 def poll():
@@ -427,7 +594,8 @@ def on_open(_):
         return
     state.update(files=[], cur=0, top=0, model=r_model.value_selected)
     redraw()
-    state["thread"] = threading.Thread(target=worker, args=(paths, snr), daemon=True)
+    state["thread"] = threading.Thread(target=worker, args=(paths, snr, SOURCES[r_source.value_selected],
+                                                            c_dummy.get_status()[0]), daemon=True)
     state["thread"].start()
 
 
@@ -509,6 +677,16 @@ def on_click(event):
         show(j)
 
 
+def on_key(event):
+    """Slide show keys: Left / Right step through the file's SNRs, Escape goes back."""
+    if not state["slides"]:
+        return
+    if event.key in ("left", "right"):
+        step_slide(-1 if event.key == "left" else 1)
+    elif event.key == "escape":
+        toggle_slides()
+
+
 def on_scroll(event):
     if event.inaxes is not ax_list or len(state["files"]) <= LIST_ROWS:
         return
@@ -563,6 +741,10 @@ b_hush.on_clicked(hush)
 fig.canvas.mpl_connect("pick_event", on_pick)
 fig.canvas.mpl_connect("scroll_event", on_scroll)
 fig.canvas.mpl_connect("button_press_event", on_click)
+b_slides.on_clicked(toggle_slides)
+b_sprev.on_clicked(lambda _: step_slide(-1) if state["slides"] else None)
+b_snext.on_clicked(lambda _: step_slide(+1) if state["slides"] else None)
+fig.canvas.mpl_connect("key_press_event", on_key)
 timer = fig.canvas.new_timer(interval=300)
 timer.add_callback(poll)
 timer.start()
