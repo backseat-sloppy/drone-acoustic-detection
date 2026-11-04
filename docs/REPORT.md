@@ -6112,3 +6112,58 @@ drone and half no-drone (`CleanSampler`), whatever the folder sizes.
 Synthetic data: no numbers from it are detection performance.
 **Next.** Commit and push the code, upload `data/processed/scenes/it11/`,
 and train on JupyterLab. All of these wait for Mads.
+
+## 103 - The iteration 11 scenes uploaded to JupyterLab
+- Date: 2026-11-04
+- Iteration: 11
+- Type: Infrastructure
+- Commit: 95a395c (branch it11-soundscapes)
+
+**What changed.** `data/processed/scenes/it11/` (entry 102) is on the
+server at `~/drone-acoustic-detection/data/processed/scenes/it11/`.
+**How.** The folder was zipped without compression (1 391 359 704 bytes,
+MD5 8cbb0f645fd9f3fa5f0c2802de040003). The JupyterLab page in the browser
+read it in 166 chunks of 8 MB from a temporary localhost server on the Mac
+and wrote it with the Jupyter contents API's chunked upload (112 s).
+`md5sum`, `unzip` and a file count ran in a JupyterLab terminal. The zip
+and the local server were then removed.
+**Result.** The MD5 on the server matches. 4320 WAVs and 4320 label files;
+676 MB each in `drone/` and `nodrone/`.
+**Next.** Training on JupyterLab with `train_clean.py` (entry 101) when
+Mads starts it. The server repo still has to be on branch it11-soundscapes
+for the new `train_clean.py`. Its current branch was not checked.
+
+## 104 - The server repo is on branch it11-soundscapes
+- Date: 2026-11-04
+- Iteration: 11
+- Type: Infrastructure
+- Commit: 95a395c
+
+**What changed.** Nothing. Mads confirmed that the server repo is on
+it11-soundscapes, which answers the open point in entry 103.
+**Next.** Training (entry 101's command), when Mads starts it.
+
+## 105 - Correction: iteration 10 trained on FSD50K eval stems; train_clean now skips them
+- Date: 2026-11-04
+- Iteration: 11 (correction to iteration 10)
+- Type: Correction
+- Commit: uncommitted (on top of 95a395c)
+
+**What changed.** `load_nodrone` in `scripts/train_clean.py` skips stems.csv
+rows with source `fsd50k_eval`.
+**Why.** Checked on the server: `~/nodrone/stems.csv` lists 61
+`fsd50k_eval` stems. That is the stem set from before entry 099, and every
+one of its non-drone FSD50K stems is from eval. Iteration 10
+(`artifacts/it10_clean/`) took its no-drone clips from `~/nodrone`, so it
+trained on a held-out test source (CLAUDE.md section 5, `docs/datasets.md`).
+Any score of an iteration 10 model on FSD50K eval audio is therefore not a
+clean held-out figure. The real recordings in `~/nodrone/recordings` are
+not affected.
+**Also found.** The server's Python environment is `~/dad/.venv`. `~/dad`
+is an older copy of the repo without git. The current code is in
+`~/drone-acoustic-detection` (branch it11-soundscapes), which has no
+`.venv`, so the training command uses `~/dad/.venv/bin/python` with the
+repo's scripts. `train_clean.py` puts the repo's own `src/` first on the
+path.
+**Result.** No run. `py_compile` passes.
+**Next.** Commit and push, `git pull` on the server, then train.

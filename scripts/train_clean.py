@@ -80,7 +80,8 @@ def load_drones(root: Path, val_seed: int, limit: int | None):
 def load_nodrone(root: Path, val_rig: str, limit: int | None):
     """[(audio, group)] per clip; the clips of rig val_rig validate."""
     rows = [(r["wav"], r["source"]) for r in csv.DictReader((root / "recordings.csv").open())]
-    rows += [(r["file"], "stem:" + r["group"]) for r in csv.DictReader((root / "stems.csv").open())]
+    rows += [(r["file"], "stem:" + r["group"]) for r in csv.DictReader((root / "stems.csv").open())
+             if r.get("source") != "fsd50k_eval"]          # FSD50K eval is a held-out test source
     train, val = [], []
     for k, (rel, group) in enumerate(rows):
         if limit and k >= limit * 2:
