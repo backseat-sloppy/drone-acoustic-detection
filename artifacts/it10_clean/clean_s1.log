@@ -1,0 +1,9 @@
+10:16:03 train: 1800 drone scenes, 314 no-drone clips; validation: 2988 drone and 8999 no-drone windows
+10:16:13 comb: {'auc': 0.5926585365055436, 'recall_at_5pct_fa': 0.2878179384203481, 'fa_at_95_recall': 1.0, 'threshold_5pct_fa': 3.5107744151033753}
+10:17:14 lgbm: {'auc': 1.0, 'recall_at_5pct_fa': 1.0, 'fa_at_95_recall': 0.0, 'threshold_5pct_fa': 1.3986702385216067e-07}
+10:19:26     dscnn [level]:   50048 windows, loss 0.1225, 418 windows/s
+10:21:20     dscnn [level]:  100032 windows, loss 0.0027, 428 windows/s
+10:23:18     dscnn [level]:  150016 windows, loss 0.0007, 427 windows/s
+10:24:56     dscnn [level]:  200000 windows, loss 0.0003, 445 windows/s
+10:24:58 dscnn: {'auc': 1.0, 'recall_at_5pct_fa': 1.0, 'fa_at_95_recall': 0.0, 'threshold_5pct_fa': 3.883157660311554e-06, 'train_seconds': 463.9}
+10:24:58 wrote /home/jupyter-mariusq/dad/artifacts/runs/clean_s1.json

@@ -32,7 +32,7 @@ def make_scene(seed, bg_db=40.0, dist_range=(300, 500), **fixed):
     T = p["start_dist"] / p["speed"]       # flight time = time to impact
     n = int(T / 0.02)
     thr = make_throttle(rng, n, p["base"], p["wobble"], p["dive_start"], p["dive_gain"])
-    x, fs = render_dry(thr, p["pscale"])   # dry drone, heard from 1 m (fs comes from Pd)
+    x, fs = render_dry(thr, p["pscale"], falloff=p.get("falloff"))   # dry drone at 1 m (fs from Pd)
 
     N = int(T * fs)                        # trim or pad to exactly the flight time
     x = np.pad(x, (0, max(0, N - len(x))))[:N]

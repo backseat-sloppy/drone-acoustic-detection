@@ -1,0 +1,77 @@
+{
+ "name": "clean_s0",
+ "seed": 0,
+ "frontend": "16000 Hz mono | 1 s window (100 frames) | 0.125 s hop | 64 log-mel 50-8000 Hz | 25/10 ms frame/stride",
+ "variant": "level",
+ "window_s": 1.0,
+ "eval_hop_s": 0.5,
+ "windows": 200000,
+ "lgbm_windows": 40000,
+ "train": {
+  "drone_scenes": 1800,
+  "nodrone_clips": 314,
+  "nodrone_groups": [
+   "d3set",
+   "fpv",
+   "halmstad",
+   "stem:background",
+   "stem:distracter",
+   "stem:war",
+   "stem:wind"
+  ]
+ },
+ "val": {
+  "drone_scenes": 180,
+  "drone_windows": 2988,
+  "nodrone_clips": 28,
+  "nodrone_windows": 8999,
+  "rig": "nightjar"
+ },
+ "models": {
+  "comb": {
+   "auc": 0.5926585365055436,
+   "recall_at_5pct_fa": 0.2878179384203481,
+   "fa_at_95_recall": 1.0,
+   "threshold_5pct_fa": 3.5107744151033753
+  },
+  "lgbm": {
+   "auc": 1.0,
+   "recall_at_5pct_fa": 1.0,
+   "fa_at_95_recall": 0.0,
+   "threshold_5pct_fa": 1.1499968632354194e-07
+  },
+  "dscnn": {
+   "auc": 1.0,
+   "recall_at_5pct_fa": 1.0,
+   "fa_at_95_recall": 0.0,
+   "threshold_5pct_fa": 5.721203251596307e-06,
+   "train_seconds": 500.4,
+   "history": [
+    {
+     "windows": 50048,
+     "steps": 782,
+     "loss": 0.13528457524791143,
+     "seconds": 150.6
+    },
+    {
+     "windows": 100032,
+     "steps": 781,
+     "loss": 0.0023464148546802773,
+     "seconds": 265.1
+    },
+    {
+     "windows": 150016,
+     "steps": 781,
+     "loss": 0.00107147540135736,
+     "seconds": 400.3
+    },
+    {
+     "windows": 200000,
+     "steps": 781,
+     "loss": 0.0002655242725558148,
+     "seconds": 487.1
+    }
+   ]
+  }
+ }
+}

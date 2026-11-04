@@ -15,6 +15,8 @@ Expect it to tie on clean data and lose off-distribution.
 
 from __future__ import annotations
 
+import sys
+
 import numpy as np
 
 try:  # LightGBM if present, else sklearn's equivalent histogram booster.
@@ -30,6 +32,10 @@ class MfccBaseline:
 
     def __init__(self, **kwargs) -> None:
         defaults = dict(n_estimators=200, num_leaves=31, learning_rate=0.1, verbose=-1)
+        if sys.platform == "darwin":
+            # macOS: LightGBM's OpenMP (Homebrew libomp) segfaults when it starts threads
+            # beside torch's own libomp in one process; one thread avoids it.
+            defaults["n_jobs"] = 1
         if _BACKEND != "lightgbm":
             defaults = dict(max_iter=200, max_leaf_nodes=31, learning_rate=0.1)
         self.clf = _Booster(**{**defaults, **kwargs})

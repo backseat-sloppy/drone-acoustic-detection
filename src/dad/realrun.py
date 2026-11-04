@@ -21,6 +21,7 @@ import collections
 import csv
 import math
 import queue
+import sys
 import threading
 import time
 import types
@@ -484,6 +485,10 @@ class NetScorer:
             self.device = torch_directml.device()
         else:
             self.device = torch.device(device)
+        if sys.platform == "darwin":
+            # macOS: torch's libomp threads segfault beside scikit-learn's libomp (loaded by
+            # this module's sklearn import); one thread avoids it.
+            torch.set_num_threads(1)
         # On CUDA the frontend runs batched on the GPU (gpufront, entry 092); elsewhere numpy, as before.
         self.torch_frontend = getattr(self.device, "type", None) == "cuda"
         self._gpufe = None
