@@ -96,15 +96,31 @@ def parse_distracters(spec: str) -> dict:
     return {c: int(s) for c, s in (p.split(":") for p in spec.split(","))}
 
 
+class Sources(dict):
+    """load()'s result. "wind" and "distracters" are read on first use, so a machine without those
+    stems (only `build_stems.py --picked` run) can still render war-only scenes."""
+
+    def __missing__(self, key):
+        if key == "wind":
+            if not (STEMS / WIND).exists():
+                raise SystemExit(f"wind stem {STEMS / WIND} is missing; run scripts/build_stems.py")
+            self[key] = sf.read(STEMS / WIND)[0]
+        elif key == "distracters":
+            import distracters as dt                             # here: distracters imports this module
+            self[key] = dt.load_stems()
+        else:
+            raise KeyError(key)
+        return self[key]
+
+
 def load(war_dir=WAR):
-    """The war track (pascals), its events and phases, the wind stem and the distracter stems."""
-    import distracters as dt                                     # here: distracters imports this module
+    """The war track (pascals), its events and phases; the wind stem and the distracter stems
+    are read when first used (Sources)."""
     x, fs = sf.read(war_dir / "war_track.wav")
     if fs != FS:
         raise SystemExit(f"war track at {fs} Hz, want {FS}")
     rows = lambda name: list(csv.DictReader(open(war_dir / name, encoding="utf-8")))  # noqa: E731
-    return dict(war=x * FULL, war_events=rows("events.csv"), phases=rows("phases.csv"),
-                wind=sf.read(STEMS / WIND)[0], distracters=dt.load_stems())
+    return Sources(war=x * FULL, war_events=rows("events.csv"), phases=rows("phases.csv"))
 
 
 def war_window(src, offset, n):

@@ -11,7 +11,6 @@ speed (steps of 10 km/h), and cached.
 """
 from __future__ import annotations
 
-import io
 import subprocess
 import sys
 import tempfile
@@ -127,10 +126,17 @@ def play(_=None) -> None:
         return
     x = np.clip(last["audio"] / max(np.percentile(np.abs(last["audio"]), 99.9), 1e-9) * 0.9, -1, 1)
     if sys.platform == "win32":
+        # winsound cannot play from memory asynchronously (RuntimeError), so play a temp file;
+        # the previous one is stopped first and deleted
         import winsound
-        buf = io.BytesIO()
-        sf.write(buf, x, cfg.sample_rate, format="WAV", subtype="PCM_16")
-        winsound.PlaySound(buf.getvalue(), winsound.SND_MEMORY | winsound.SND_ASYNC)
+        winsound.PlaySound(None, 0)
+        old, f = last.get("wav"), tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        f.close()
+        sf.write(f.name, x, cfg.sample_rate, subtype="PCM_16")
+        last["wav"] = f.name
+        if old:
+            Path(old).unlink(missing_ok=True)
+        winsound.PlaySound(f.name, winsound.SND_FILENAME | winsound.SND_ASYNC)
         return
     f = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     sf.write(f.name, x, cfg.sample_rate, subtype="PCM_16")

@@ -6200,3 +6200,627 @@ E are rejected. Real war recordings are still wanted, as test data.
 random-phase copies of real drone and no-drone windows and on a
 noise-slope sweep from -12 to +6 dB/octave, and score the steady suite as
 the baseline.
+## Note on numbering
+
+The entries below were written on branch `NicolaiBranchGUI` as 095 to 104, and later on `master`, while entries 095 to 100 above were written elsewhere. They were renumbered twice when the work met on `master` (2026-11-04) and are now 101 to 115; references between them were renumbered with them.
+
+## 101 - Ten ITU ARIS excerpts drawn for Mads to listen to (sealed set opened)
+
+- Date: 2026-11-04
+- Iteration: none (between iterations)
+- Type: Data, Evaluation
+- Commit: 87a7bdf, uncommitted
+
+**What changed.** Mads asked for 10 random drone clips from the sealed test
+that he can open in `scripts/detect_gui.py` himself. ITU ARIS was not on this
+PC, so it was downloaded again from Zenodo, and 10 excerpts of 10 s were
+written out.
+
+**Why.** Mads's request. He was told first that clips he scores are no longer
+sealed.
+
+**How.**
+- Download: Zenodo record 22980617, `itu-aris-lab-acoustic-drone-dataset-v1.1.0.zip`
+  (161.3 MB, CC BY 4.0), with `curl.exe` into `data/ITU_ARIS_Lab/`. MD5
+  `90eb3f25769a72415432ba62f5687514` matches the host and entry 027, so this
+  is the same version as before (v1.1.0 changed documentation only; audio,
+  `groups.json` and splits are identical to v1.0.0, record 22682339). The
+  host record is saved as `_source_record.json`. The record was found by web
+  search, since the `manifest_zenodo.tsv` and `download_new_datasets.ps1` of
+  entry 027 are not on this PC and not in git.
+- Unzipped to `data/extracted/ITU_ARIS_Lab/` (5,499 files); the zip is
+  untouched.
+- Draw: a scratch script (not in the repo) takes the 35 drone intervals of
+  `groups.json`, keeps those with at least 19 segments (10 s), picks 10
+  distinct intervals and one random start in each with numpy
+  `default_rng(20261104)`, and joins every second 1 s segment (segments
+  overlap 50 %), so each excerpt is 10 s of continuous audio at 22.05 kHz,
+  unchanged otherwise. Continuity was checked: the second half of each
+  segment equals the first half of the next, max difference 0.0.
+- Output: `data/extracted/sealed_peek/aris_peek_01.wav` to `_10.wav`, and
+  `draw.json` with the interval, segment range and offset of each.
+
+| File | Interval | Segments | Offset in interval |
+|---|---|---|---|
+| aris_peek_01 | drone_interval_10 | drone_0712-0730 | 10.5 s |
+| aris_peek_02 | drone_interval_11 | drone_0750-0768 | 6.0 s |
+| aris_peek_03 | drone_interval_18 | drone_1311-1329 | 2.0 s |
+| aris_peek_04 | drone_interval_19 | drone_1336-1354 | 0.0 s |
+| aris_peek_05 | drone_interval_25 | drone_2546-2564 | 32.0 s |
+| aris_peek_06 | drone_interval_26 | drone_2586-2604 | 6.5 s |
+| aris_peek_07 | drone_interval_27 | drone_2930-2948 | 1.0 s |
+| aris_peek_08 | drone_interval_28 | drone_3021-3039 | 28.0 s |
+| aris_peek_09 | drone_interval_32 | drone_4185-4203 | 0.0 s |
+| aris_peek_10 | drone_interval_34 | drone_4454-4472 | 17.5 s |
+
+**Result.** No model was run on the clips by Claude. Whatever Mads sees in
+`detect_gui` is a look at the sealed set, not a reported figure.
+
+**Assessment.** ITU ARIS is partly opened: 10 of 35 drone intervals have
+been seen. Every interval holds one drone pass, so a later sealed score
+should leave out these 10 intervals (listed above and in `draw.json`), or
+say that they were seen. If what Mads sees steers a design choice, that
+must be written down (CLAUDE.md section 5).
+
+**Next.** Mads tests the clips in `detect_gui`.
+
+## 102 - Detection window: optional war-shaped noise at a chosen SNR
+
+**Why.** Mads asked for a tick box in `scripts/detect_gui.py` that adds
+war-shaped noise to the opened files at a chosen level in dB, with a
+sensible min and max, scores the noisy clip and lets him listen to it
+afterwards.
+
+**What.** On top of commit 87a7bdf, uncommitted. `scripts/detect_gui.py`:
+- "add war-shaped noise" tick box and an "SNR dB" box above "Open audio
+  files...": -20 to +30 dB, default +10, lower = more noise. A value
+  outside the range, or not a number, is refused in the status line before
+  the file dialog opens. The setting applies to the next batch.
+- The level is an SNR, as in `docs/war_shaped_noise.md`: the file's
+  broadband RMS over the noise's RMS, both at 16 kHz after `read_wav`. A
+  file-relative level was chosen over an absolute dBFS level because the
+  opened files have unknown recording levels (entry 080).
+- `war_noise()`: `war_shaped_noise.shaped_noise` with the 44.1 kHz gain
+  table (`Pure-data+Script/WarShapedNoise/war_gain.txt`), seed 1000 + the
+  file's place in the batch (test seeds start at 1000), resampled to
+  16 kHz; at most 60 s, repeated for longer files (the noise is periodic,
+  so the loop has no click). A digitally silent file is listed as an error,
+  since there is no level to set the noise against.
+- The detectors score the mix; Play (main and stats window) plays the mix;
+  the mix is written as a 16 kHz float WAV to
+  `artifacts/detect_gui/mixes/<stem>_wsn_snr<SNR>dB_seed<seed>.wav`. The
+  spectrogram title names the SNR and seed; `results.csv` has
+  `noise_snr_db`, `noise_seed` and `mix_file`.
+
+**Checks.** Headless (Agg backend, dialog stubbed), on two made-up files
+(8 s 180 Hz tone plus noise at 44.1 kHz; 3 s white noise at 16 kHz), not on
+the ITU ARIS clips:
+- "abc", "40" and "-25" were refused, and no batch started.
+- SNR +10 and -5.5 (typed "-5,5"): measured SNR of the saved mix against the
+  clean file +10.000 and -5.500 dB; seeds 1000 and 1001; the played audio
+  equals the saved WAV. Tick box off: no noise, audio equal to the file.
+- 150 s of noise: 2,400,000 samples, the 60 s loop repeats exactly.
+- `uv run pytest`: all pass. The window was rendered to PNG and looked at.
+- Seen in passing, made-up audio only: at SNR -5.5 dB the CNN alarmed on 59 %
+  of the windows of the white-noise file with war noise added, and on none
+  at +10 dB. Steady war-shaped noise at a high level can make the CNN alarm
+  by itself. Synthetic scaffolding (section 5): not a detection figure.
+- Not checked in a live window: the tick box and text box by mouse, sound.
+
+**Next.** None. A tool change.
+
+## 103 - Correction: Play in the detection window never made a sound on Windows
+
+**Why.** Mads could not hear anything from Play in `scripts/detect_gui.py`.
+
+**What was wrong.** `play()` called `winsound.PlaySound(bytes, SND_MEMORY |
+SND_ASYNC)`. Python's `winsound` refuses that combination with
+`RuntimeError: Cannot play asynchronously from memory` (reproduced on this
+PC), and the error was lost in the matplotlib button callback. So Play has
+been silent on Windows since entry 080. Entry 082's check stubbed `winsound`
+and only recorded what it was sent, so it could not catch this; its "Play
+sent 320000 samples" was true of the stub, not of the sound card.
+`scripts/stress_gui.py` had the same call.
+
+**What.** On top of commit 87a7bdf, uncommitted. Both scripts now stop any
+sound, write the clip to a temp WAV, play it with `SND_FILENAME |
+SND_ASYNC`, and delete the previous temp file. What the detectors score is
+unchanged.
+
+**Checks.** `play()` and `hush()` of `detect_gui.py` with the real `winsound`
+(Agg backend, a 1 s 440 Hz tone): no error, a second Play deleted the first
+temp file, Stop raised nothing. `stress_gui.py` compiles; not run. Whether
+the speakers sound was not observable from here; Mads to confirm.
+
+**Next.** None. A bug fix. (Mads confirmed afterwards that he hears the sound.)
+
+## 104 - Detection window: several SNRs at once, one graph per SNR
+
+**Why.** Mads asked to test several war-noise levels in one go (SNR 0, 10
+and 30 dB) and get one graph per level.
+
+**What.** On top of commit 87a7bdf, uncommitted. `scripts/detect_gui.py`:
+- The SNR box takes one or more values, apart with spaces, commas or
+  semicolons, each -20 to +30 dB, at most 6, repeats dropped; default
+  "0 10 30". Decimals take a point, so entry 102's "-5,5" now reads as two
+  values, -5 and 5.
+- Each file is scored once per SNR. Every SNR is its own row in the list
+  (the SNR after the name), its own mix WAV and its own rows in
+  `results.csv`. All SNRs of a file use the same noise (seed 1000 + the
+  file's place in the batch), so only the level differs between them.
+- Under the spectrogram the file gets one confidence graph per SNR, both
+  detectors in each, the selected row in bold with a dark frame. Clicking a
+  graph selects that SNR: the spectrogram switches to it and Play plays it.
+  Without noise there is one graph, as before.
+- Fixed in passing: an empty list divided by zero when laying out the
+  graphs (found by the check below before Mads ran it).
+
+**Checks.** Headless (Agg backend, dialog stubbed), the two made-up files of
+entry 102:
+- "0 10 30" and "0, 10; 30" give [0, 10, 30]; "0 10 30 10" drops the repeat;
+  7 values, "x", 40 dB and an empty box are refused.
+- Six rows (2 files x 3 SNRs); measured SNR of each saved mix +0.000,
+  +10.000, +30.000 dB; the noise of one file is the same at every SNR up to
+  scale. Row 0 shows three graphs (rows 0-2), row 3 shows rows 3-5; a click
+  on the third graph selected the +30 dB row. 12 CSV rows. Noise off: two
+  rows, one graph each.
+- `uv run pytest`: all pass. The window was rendered to PNG and looked at.
+- Made-up audio only, not a detection figure (section 5): the CNN alarmed
+  on 41 % of the white-noise file's windows at SNR 0 dB, on none at 10 and
+  30 dB, which matches entry 102's observation that strong war-shaped noise
+  alone can trigger it.
+- Not checked in a live window: mouse clicks on the graphs.
+
+**Next.** None. A tool change.
+
+## 105 - Detection window: a single decision was invisible; ITU ARIS background opened
+
+**Why.** Mads opened `background_0001.wav` (ITU ARIS, the no-drone class, 1 s)
+at SNR -20, 0, 10 and 30 dB. The list said CNN DRONE 100 % at -20 and 0 dB,
+but the graphs were empty, and he heard footsteps.
+
+**What was wrong.** A 1 s file gives exactly one 1 s window, so one decision,
+stamped at 1.00 s. "100 %" was 1 of 1 windows alarmed, and correct. A line
+through one point draws nothing, and `fill_between` with one point shades
+nothing, so the alarm did not show. The footsteps are in the ITU ARIS
+recording itself (its background class comes from the session's opening
+25 minutes, with people around), not in the war-shaped noise, which has no
+events.
+
+**What.** On top of commit 87a7bdf, uncommitted. `scripts/detect_gui.py`:
+with fewer than 20 decisions, the confidence curves get dots (not clipped at
+the right edge), and each alarmed decision shades the 1 s window it heard;
+the same dots in the stats window. Longer files are drawn as before.
+
+**Checks.** A made-up 1 s white-noise file at -20, 0, 10 and 30 dB: CNN
+scores 0.585, 0.292, 0.146, 0.133 (threshold 0.297), so DRONE only at
+-20 dB; the dots and the shaded window show in the rendered window.
+`uv run pytest`: all pass. Made-up audio, not a detection figure.
+
+**Sealed set.** Mads's run scored at least one ITU ARIS background clip
+(`background_0001.wav`), beyond the 10 drone excerpts of entry 101. What he
+saw there: CNN alarm at SNR -20 and 0 dB, none at +10 and +30 dB; comb none.
+It was looked at, not counted as a sealed figure. A later sealed score
+should leave out the background clips that have been opened, or say that
+they were seen.
+
+**Next.** None. A tool fix.
+
+## 106 - A 10 s ITU ARIS background excerpt next to the drone excerpts
+
+- Date: 2026-11-04
+- Type: Data
+- Commit: 87a7bdf, uncommitted
+
+**Why.** Mads asked for a 10 s no-drone clip in `data/extracted/sealed_peek/`
+to check false positives in `detect_gui` next to the drone excerpts of entry
+101.
+
+**How.** A scratch script (not in the repo), numpy
+`default_rng(20261105)`: one random background block of `groups.json` (20
+blocks of 50 segments), one random start, 10 consecutive segments.
+- The first attempt, joining every second segment as for the drone
+  excerpts (entry 101), was stopped by its own continuity check: unlike the
+  drone segments, the background segments do not overlap. A search over
+  lags for three segment pairs found no shared audio. The README's "spaced
+  0.5 s apart" therefore does not mean a 0.5 s hop with overlap; the gap
+  between segments is not documented.
+- So the 10 segments are put end to end, with a 5 ms raised-cosine fade out
+  and in at each of the 9 joints so a joint is not a click. The clip is 10 s
+  of real ITU ARIS background, not 10 s of continuous audio: each joint
+  skips an unknown stretch of the recording.
+
+**Result.** `data/extracted/sealed_peek/aris_peek_background_01.wav`: block
+`background_block_15`, segments `background_0782` to `background_0791`,
+10.0 s at 22.05 kHz, 16-bit. `draw.json` has a `background` entry with the
+same facts. Not scored by Claude.
+
+**Assessment.** Ten more ITU ARIS background segments are opened (with
+`background_0001`, entry 105). Leave them out of, or name them in, a later
+sealed score. The fades and joints are not in the original audio; an alarm
+exactly at a joint could come from the joint.
+
+**Next.** Mads tests it in `detect_gui`.
+
+## 107 - The war scenes no longer need the wind and distracter stems
+
+**Why.** On this PC, Run in `scripts/drone_war_gui.py` failed with
+`LibsndfileError: Error opening ...stems\wind\wind\fsd50k_eval_382591.wav`.
+Only `build_stems.py --picked` has been run here: `stems/wind/` is absent,
+and so are the distracter classes `car`, `motorcycle` and `birds`.
+`env_sim.load()` read the wind stem and every distracter stem up front,
+although the drone-in-war test uses neither (wind step 1 = off, no
+distracters).
+
+**What.** On top of commit 87a7bdf, uncommitted. `scripts/env_sim.py`:
+`load()` returns a `Sources` dict that reads `"wind"` and `"distracters"`
+on first access and keeps them. A missing wind stem is then reported by
+name with "run scripts/build_stems.py"; missing distracters keep their
+existing message from `distracters.load_stems()`. Every caller
+(`env_sim.build`, `env_grid.py`, `env_gui.py`, `drone_war_grid.py`) is
+unchanged: they index `src["wind"]` as before. Nothing about what a scene
+sounds like changed.
+
+**Checks.**
+- New `tests/test_env_sim.py::test_wind_and_distracters_read_only_when_used`:
+  a war-only build with no wind stem on disk reads neither and gives the
+  same mix as before; turning wind on raises the message naming the stem.
+  `uv run pytest`: all pass.
+- On this PC: `drone_war_grid._sources()` loads the 600 s war track without
+  touching wind or distracters, and
+  `drone_war_grid.py --speeds 1 --speed-min 150 --speed-max 150 --wars 1
+  --levels 1 --war-min-db -10 --war-max-db -10` ran to the end (one cell,
+  grid PNG, `results.csv`, `hops.csv`, in a scratch folder). Synthetic
+  scaffolding; no figure from it is reported.
+- Not checked: the GUI window itself by mouse. `env_gui.py` and
+  `env_grid.py` still need the stems when they use wind or distracters.
+
+**Next.** None. A bug fix.
+
+## 108 - The sealed_peek clips committed to git, on Mads's request
+
+**Why.** Mads asked to push `data/extracted/sealed_peek/` to GitHub. This is
+an exception to section 6 (`data/` is not in git), made by Mads for these
+11 small clips only.
+
+**What.** Commit 55175a1 on branch `NicolaiBranchGUI`, holding only that
+folder (13 files, about 4.9 MB), force-added past the `data/*` and `*.wav`
+ignore rules. Mads had renamed two clips; checked against the source
+segments: `Drone 10.wav` is `aris_peek_10.wav`, `Dummy.wav` is
+`aris_peek_background_01.wav`. A `README.md` was added with the CC BY 4.0
+attribution the licence requires, the renames, and the note that these
+sealed-set clips are opened. The other uncommitted changes (entries 102 to
+107) are not in this commit.
+
+**Not done.** The push failed here: git needs Mads's GitHub login, which
+Claude cannot enter. Mads pushes from GitHub Desktop. If the repository is
+public, the clips are public once pushed.
+
+**Next.** Mads pushes.
+
+## 109 - Correction to entry 108: the sealed_peek commit is Mads's be2db19, without the README
+
+The first push from GitHub Desktop failed with `remote rejected ... (Internal
+Server Error)` from GitHub (githubstatus.com said all systems operational
+minutes later, so taken as transient; the 3.2 MB pack is far below GitHub's
+limits). Commit 55175a1 of entry 108 was then undone, and Mads committed the
+folder himself as be2db19, "Add sealed audio evaluation peek": the 11 WAVs
+and `draw.json`, **without** the attribution `README.md`, which is no longer
+on disk. That commit was undone in turn and has been restored by
+fast-forward; it is what goes to GitHub. The other changes (entries 102 to
+109) were stashed meanwhile and restored unchanged.
+
+Open point: CC BY 4.0 requires attribution where the clips are shared. With
+no README in the folder, the attribution lives only in this report
+(entries 101, 106) and `docs/datasets.md`. Mads to decide whether the folder
+gets it back. Not pushed from here (no GitHub login in Claude's shell).
+
+## 110 - Correction: entries 101 to 109 were asked for by Nicolai, not Mads; the push keeps failing
+
+**Who.** Entries 101 to 109 say "Mads asked". The requests came from Nicolai
+Lennart Larsson (git user and e-mail of this machine, GitHub
+`TwoStepSpinAround`), working in this repo. Every "Mads" in those entries
+means Nicolai, except where an entry quotes REQUIREMENTS.md or an older
+decision. The exception to CLAUDE.md section 6 in entry 108 (sealed_peek in
+git) was Nicolai's call; Mads owns that rule and has not been asked.
+
+**Push.** The second push of be2db19 from GitHub Desktop failed the same way
+(`remote rejected ... (Internal Server Error)`, 2026-11-04 09:45:06Z). Not the
+cause, checked: GitHub status (Git Operations operational, no incident);
+branch rules (none on `NicolaiBranchGUI`); write access (Nicolai's account
+has a commit on `origin` already); LFS (no `.gitattributes`); pack size
+(3.2 MB). The repository is public. The remote branch is still at 87a7bdf.
+
+To find out whether the content is the trigger, the push is split. be2db19 is
+kept on the local branch `sealed-peek-backup`. `NicolaiBranchGUI` now holds
+ebe3bf7, "Add sealed_peek draw metadata", with `draw.json` only; the WAVs
+are on disk, untracked (ignored), to follow in a second commit. Nicolai
+pushes ebe3bf7 next. If it goes through, the WAVs are the trigger; if it
+fails too, the problem is not the files.
+
+Follow-up, same day: ebe3bf7 (`draw.json` only) pushed fine and is on
+`origin`. Nicolai then renamed the clips without spaces: `aris_peek_01` to
+`_09` became `Drone_01` to `_09`, `Drone 10` became `Drone_10`, `Dummy`
+unchanged (each checked by blob hash against the committed file). The WAVs
+are now one commit, 029980f "Add sealed_peek WAVs", on top of ebe3bf7, for
+Nicolai to push. `draw.json` keeps the original names. Whether the space in
+"Drone 10.wav" caused the server error is not established.
+
+Then: 029980f pushed. Nicolai committed `scripts/detect_gui.py` as 03c725d
+"Detect_gui" and merged `NicolaiBranchGUI` into `master` (076072e). The rest
+of the uncommitted work (this report's entries, `env_sim.py`,
+`stress_gui.py`, `tests/test_env_sim.py`) went into a GitHub Desktop stash on
+`NicolaiBranchGUI`; it was brought onto `master` from that stash, and these
+entries renumbered (note above). The stash itself is kept.
+
+## 111 - Detection window: the 600 s war track as a noise source
+
+- Date: 2026-11-04
+- Type: Tooling
+- Commit: on top of 076072e (master), uncommitted
+
+**Why.** Nicolai asked to add a random stretch of the 600 s war soundscape
+instead of war-shaped noise, still at a chosen SNR.
+
+**What.** `scripts/detect_gui.py`:
+- The tick box is now "add war noise", with a source below it:
+  "war-shaped noise" (as entries 102 and 104) or "war track (600 s)".
+- War track: `data/processed/war/war_track.wav` (600 s, 44.1 kHz,
+  `scripts/war_track.py` seed 0: FSD50K war sounds in calm, normal and
+  intense phases), read once and resampled to 16 kHz. Each file gets a
+  window of its own length from a start drawn with seed 1000 + the file's
+  place in the batch, the same window at every SNR. A file longer than the
+  track gets the track repeated from 0. A window with no sound at all is
+  listed as an error.
+- SNR as before: the file's broadband RMS over the window's RMS. The track's
+  level changes with its phases and events, so at one SNR a calm window is
+  amplified more than an intense one, and its events stand out against it.
+- The title, the mix name (`<stem>_wartrack<start>s_snr<SNR>dB_seed<seed>.wav`)
+  and `results.csv` (`noise_source`, `noise_offset_s`) give the window's
+  start.
+
+**Checks.** Headless (Agg backend, dialog stubbed), two made-up files (8 s
+tone, 3 s white noise), war track at 0, 10 and 30 dB: measured SNR +0.000,
++10.000, +30.000; the added signal correlates 1.000000 with the track window
+at the stated start (120.6 s and 539.3 s); the same seed gives the same
+start; a file longer than the track starts at 0; the war-shaped source still
+works. `uv run pytest`: all pass (with the restored `env_sim.py` and test).
+The window was rendered to PNG and looked at. Made-up audio, not a detection
+figure (section 5). Not checked in a live window: the radio buttons by mouse.
+
+**Next.** None. A tool change.
+
+## 112 - Detection window: a slide show of the SNR graphs
+
+- Date: 2026-11-04
+- Type: Tooling
+- Commit: on top of 076072e (master), uncommitted
+
+**Why.** Nicolai asked for a button that turns the stacked SNR graphs into a
+slide show in the same window, each graph large.
+
+**What.** `scripts/detect_gui.py`:
+- "Slide show" (top right) hides the spectrogram and shows the current row's
+  confidence graph alone over the right side, larger text, the CNN and comb
+  summaries on two lines, and the file, noise and "slide i of n" above it.
+- "< SNR" / "SNR >" (shown only in the slide show) and the Left / Right keys
+  step through the file's SNRs, wrapping around; Play plays the slide shown;
+  Previous / Next and the list still change file. Escape or the button
+  ("Back to all graphs") returns to the normal view.
+- Fixed in passing: for short files (under 20 decisions, entry 105) each
+  alarmed decision shaded its own 1 s window, so overlapping windows stacked
+  into darker bands. Overlapping windows are now merged and shaded once.
+
+**Checks.** Headless (Agg backend, dialog stubbed), two made-up files at
+five SNRs with the war track: toggling before any file is open does not
+fail; slide show on gives one graph, spectrogram hidden, arrows shown;
+"SNR >" five times visits rows 0, 1, 2, 3, 4, 0; Left from row 0 goes to the
++30 dB row; selecting row 7 shows that file's slide 3 of 5; Escape gives back
+five graphs and the spectrogram. Both views rendered to PNG and looked at.
+`uv run pytest`: all pass. Not checked in a live window: keys and clicks.
+
+**Next.** None. A tool change.
+
+## 113 - Detection window: "dummy" scores the added noise alone
+
+- Date: 2026-11-04
+- Type: Tooling
+- Commit: on top of 076072e (master), uncommitted
+
+**Why.** Nicolai asked for a "dummy" tick box that shows the confidence on
+the war sound alone, to see what difference it makes when a drone is in the
+file too.
+
+**What.** `scripts/detect_gui.py`:
+- "dummy" tick box beside the noise source; it needs "add war noise" (with
+  it alone, the status line says so and nothing runs).
+- With it, each row's added noise (the same stretch, at the level it has in
+  that mix) is scored on its own as well. Both detectors' noise-alone curves
+  are drawn dotted in the same graph, in the normal view and the slide show,
+  not shaded; the title adds "(noise: N%)", the share of noise-alone windows
+  that alarmed. `results.csv` gets `noise_alone_verdict` and
+  `noise_alone_flagged_share`.
+- Reading it: the gap between the solid (file + noise) and dotted (noise
+  alone) curves is what the file adds; an alarm on the dotted curve is a
+  false alarm from the noise. `comb` is a level-free ratio, so its dotted
+  curve is the same at every SNR; the CNN's depends on level.
+- The scoring of a clip moved into `score()`, used for the mix and the
+  noise alone; `add_noise` also returns the added layer.
+
+**Checks.** Headless (Agg backend, dialog stubbed), two made-up files, war
+track at -10 and +10 dB: "dummy" without noise is refused; the noise-alone
+scores equal an independent rescoring of (mix - file) (CNN, `allclose`);
+noise alone gave CNN 0 % everywhere and comb 0 % (tone file's window) and
+53 % (white-noise file's window) at both SNRs; dummy off gives no
+noise-alone curves; both views rendered to PNG and looked at. `uv run
+pytest`: all pass. Made-up audio, not a detection figure (section 5).
+
+**Next.** None. A tool change.
+
+## 114 - Detection window: the noise alone gets rows of its own
+
+**Why.** Nicolai ticked "dummy" and could not see it. The noise-alone curves
+of entry 113 are dotted lines in the graphs only; where the noise alone
+scores near 0 they lie along the bottom of the graph and are hard to see.
+Nothing was in the list.
+
+**What.** On top of 076072e (master), uncommitted. `scripts/detect_gui.py`:
+with "dummy", each file's noise alone also gets list rows, after the file's
+own, named "NOISE <file> <SNR>", one per SNR, as their own group. Selecting
+one shows the noise's spectrogram, its graphs at every SNR (titled "NOISE
+ALONE") and a title saying which stretch it is and at whose level; Play
+plays the noise alone. The dotted overlay stays. `results.csv` keeps one row
+per file, SNR and detector (the noise rows are already in the
+`noise_alone_*` columns).
+
+**Checks.** Headless (Agg backend, dialog stubbed), two made-up files, war
+track at 0 and 10 dB: 8 rows (4 file, 4 noise); a noise row's audio equals
+mix minus file; its graphs are the noise rows of that file; 8 CSV rows.
+Rendered to PNG and looked at. `uv run pytest`: all pass.
+
+Seen on the way: the stretch of `war_track.wav` drawn for the tone file
+starts with 1.2 s of digital silence. Over the whole track, 0.8 % of 100 ms
+blocks are exactly silent; much more of the calm phases is very quiet. At a
+fixed SNR such quiet stretches are what the file is measured against, so
+the noise in a mix can be near nothing for seconds at a time.
+
+**Next.** None. A tool change.
+
+## 115 - Detection window: one dummy row, and one war-track start per batch (replaces 113-114)
+
+**Why.** Nicolai: the dummy should be just the war soundscape with no drone,
+once, not a noise row per file; and every file should use the same
+soundscape offset.
+
+**What.** On top of 076072e (master), uncommitted. `scripts/detect_gui.py`:
+- Entries 113 and 114 are undone: no dotted noise-alone curves, no "NOISE"
+  rows per file, no `noise_alone_*` CSV columns.
+- "dummy" adds one row at the top of the list, "DUMMY war track": the war
+  track alone, no file, no drone, at the track's own level (as rendered;
+  full scale 110 dB SPL like the detectors' input), as long as the first
+  readable file (10 s if none). It does not need "add war noise" and does
+  not depend on the SNR. Every alarm on it is a false alarm. Play plays it;
+  `results.csv` marks its rows `dummy=yes`.
+- One seed (1000) for the whole batch instead of 1000 + the file's place:
+  the war track has one start per batch, drawn so the longest file fits,
+  used by every file at every SNR and by the dummy; a window past the end
+  wraps to 0. War-shaped noise also uses seed 1000 for every file.
+
+**Checks.** Headless (Agg backend, dialog stubbed), two made-up files (8 s,
+3 s): dummy without noise gives one dummy row plus the files; with war track
+at 0 and 10 dB, 5 rows, one dummy; the dummy equals the track from 120.6 s;
+all four mixes use the start 120.6 s (added signal correlates 1.000000 with
+the track there); the CSV has 10 rows with the dummy marked; a 5 s window
+from 598 s wraps to the track's start. Rendered to PNG and looked at.
+`uv run pytest`: all pass. Made-up audio, not a detection figure.
+
+**Next.** None. A tool change.
+
+
+## 116 - Merge of Mads's model picker with entries 111-115 in the detection window
+
+- Date: 2026-11-04
+- Type: Infrastructure
+- Commit: on top of 3d1cc2e (master), uncommitted
+
+**What happened.** Mads pushed 3d1cc2e "gui push": `scripts/detect_gui.py`
+got radio buttons that pick the network per batch (it6 CNN, it9 CNN, it9
+CRNN, it10 CNN; his entry 098). Pulling it onto Nicolai's uncommitted work
+(entries 111 to 115: war track, slide show, dummy) gave four conflicts in
+`detect_gui.py`. `docs/REPORT.md` merged by union (his entry 097), and both
+sides had numbered new entries from 097: Nicolai's were renumbered 101 to
+115 (note above them).
+
+**Resolution.** Both kept. Left column: noise tick box, SNR, source,
+dummy, buttons, then the list (now 16 rows, 0.15 to 0.64 of the window),
+then Mads's model picker at the bottom. State holds his `model` and
+`loaded` with the slide-show flag; the batch worker uses his
+loaded-model check with Nicolai's one-start-per-batch noise; `results.csv`
+keeps the noise source, start and dummy columns with his per-model
+threshold lookup and detector names.
+
+**Checks.** Compiles; `uv run pytest`: all pass. Headless (Agg backend,
+dialog stubbed), two made-up files: the dummy and war-track checks of entry
+115 and the slide-show checks of entry 112 give the same results as
+before the merge; with "it9 CRNN" picked, dummy and war track at 0 and
+10 dB, the batch runs on that model and the list and graphs name it.
+Rendered to PNG and looked at. Not checked: a live window.
+
+Not touched: the staged deletion of `data/extracted/sealed_peek/Dummy.wav`
+(the file is not on disk; whether that is meant is Nicolai's call), and
+the GitHub Desktop stash `stash@{0}`, which is kept.
+
+Afterwards: Nicolai committed `detect_gui.py` alone (c0187b0) and moved to
+`NicolaiBranchGUI`; the staged `docs/REPORT.md` with entries 101 to 116 was
+not committed and was gone from the working tree. It was restored from git's
+unreachable objects (blob d28e415: the committed report plus those entries,
+nothing removed, no conflict markers).
+
+## 117 - Detection window: tick several models at once
+
+- Date: 2026-11-04
+- Type: Tooling
+- Commit: on top of c0187b0 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked for the models to be tick boxes instead of radio
+buttons, so several iterations' percentages can be seen side by side.
+
+**What.** `scripts/detect_gui.py`: Mads's model radio buttons (entry 098) are
+now tick boxes, each label coloured as its model's curve; at least one must
+be ticked (otherwise the status line says so). Each batch scores every ticked
+model next to comb, each with its own frozen threshold (loaded once and
+kept). The list gets one column per model and comb; with more than one model
+the columns are compact ("38%*", * = alarmed). Each model has its own colour
+and dashed threshold in the graphs, the slide show and the stats window;
+with several models the graph titles are shortened to "model: DRONE N%" or
+"none". `results.csv` has one row per file, SNR and detector, the detector
+named as the model.
+
+**Checks.** Headless (Agg backend, dialog stubbed), two made-up files, war
+track at 0 dB, dummy, all four models: none ticked is refused; five columns;
+"it9 CRNN" in the batch scores exactly as it does alone; 15 CSV rows with
+the five detector names; list, graphs and stats window rendered to PNG and
+looked at. `uv run pytest`: all pass. Made-up audio, not a detection figure.
+
+Seen on the way, not changed: the threshold the GUI reads for "it10 CNN"
+(`artifacts/it10_clean/clean_s0.json`) is 5.7e-6. Its scores on the made-up
+files and the war-track dummy stay near 0 but above that, so it alarmed on
+53 to 93 % of their windows, the dummy included. Whether that threshold is
+right is a question for the it10 run, not for the GUI.
+
+**Next.** None. A tool change.
+
+## 118 - Detection window: comb is a tick box too
+
+- Date: 2026-11-04
+- Type: Tooling
+- Commit: on top of c0187b0 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked for comb to be switchable like the models.
+
+**What.** `scripts/detect_gui.py`: "DSP (comb)" is the last box in the
+detector tick boxes (now titled "detectors"), ticked by default with it6
+CNN. Any one or more detectors can run, comb alone included; with none
+ticked the status line says so. comb, when ticked, keeps model 6's frozen
+threshold and is loaded once on its own, no longer through a network's
+loader. The notes under the graphs and in the stats window mention comb's
+scaling only when comb ran.
+
+**Checks.** Headless (Agg backend, dialog stubbed), two made-up files, war
+track at 0 dB, dummy: comb alone gives one column (`DSP (comb)` in the CSV);
+it6 CNN and it9 CNN without comb give two columns, no comb curve or note;
+nothing ticked is refused; the stats window and slide show open in each case.
+Rendered to PNG and looked at. `uv run pytest`: all pass. Made-up audio, not
+a detection figure.
+
+**Next.** None. A tool change.
+
+## 119 - sealed_peek: Dummy.wav renamed Fugle.wav
+
+Nicolai renamed `data/extracted/sealed_peek/Dummy.wav` to `Fugle.wav` and
+asked to push it. Same file, checked by blob hash (4b69db3): the 10 s ITU
+ARIS background clip of entry 106 (`aris_peek_background_01` in
+`draw.json`), not a new recording. Staged with `git add -f` next to the
+staged deletion of `Dummy.wav`, so git records a rename. Not committed or
+pushed by Claude. Its ITU ARIS origin and CC BY 4.0 attribution are as in
+entries 101 and 106.

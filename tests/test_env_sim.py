@@ -49,3 +49,17 @@ def test_wind_level_and_distracters_by_seed():
     row = es.row_for(1, "x.wav", 20.0, 7, 1, 0, 1, {"car": 6, "mower": 4}, a, ia)
     assert row["D_car_step"] == 6 and row["D_birds_step"] == 1 and row["seed"] == 7
     assert es.parse_distracters("none") == {} and es.parse_distracters("car:6,mower:4") == {"car": 6, "mower": 4}
+
+
+def test_wind_and_distracters_read_only_when_used(tmp_path, monkeypatch):
+    src = fake_src()
+    lazy = es.Sources(war=src["war"], war_events=src["war_events"], phases=src["phases"])
+    monkeypatch.setattr(es, "STEMS", tmp_path)                 # no wind stem here
+    mix, _, _ = es.build(10, 5.0, 1, {}, 20 * FS, 0, lazy)     # wind off, no distracters: nothing read
+    assert np.array_equal(mix, src["war"][5 * FS:25 * FS]) and "wind" not in lazy and "distracters" not in lazy
+    try:
+        es.build(1, 0, 6, {}, 20 * FS, 0, lazy)                # wind on: the missing stem is named
+    except SystemExit as e:
+        assert "wind stem" in str(e) and "build_stems.py" in str(e)
+    else:
+        raise AssertionError("missing wind stem not reported")
