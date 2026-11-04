@@ -49,7 +49,7 @@ def render_dry(throttle, pscale=1.0, step_ms=20):
     return x, fs
 
 
-def make_throttle(rng, n, base=60, wobble=6.0, dive_start=0.7, dive_gain=80):
+def make_throttle(rng, n, base=60.0, wobble=6.0, dive_start=0.7, dive_gain=80.0):
     """n steps of 20 ms. Steady cruise, small corrections, dive at the end."""
     slow = np.convolve(rng.standard_normal(n), np.ones(25) / 25, mode="same")
     slow = slow / slow.std() * wobble

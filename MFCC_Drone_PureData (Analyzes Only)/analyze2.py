@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import find_peaks
 
-FILE = "drone_rec.wav"     # <- your filename
+FILE = "fpv_drone.wav"     # <- your filename
 SR = 44100
 START = 5              # seconds: start of a stable stretch
 DURATION = 4           # seconds to analyse

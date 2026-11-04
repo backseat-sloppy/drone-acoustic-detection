@@ -3,9 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 
-REAL_FILE, REAL_START = "drone_rec.wav", 5      # stable stretch of the real drone
-PD_FILE,   PD_START   = "pd_drone.wav", 2   # skip the first 2 s of the patch
-DURATION = 4
+REAL_FILE, REAL_START = "fpv_drone.wav", 0      # stable stretch of the real drone
+PD_FILE,   PD_START   = "pd_drone_3.wav", 2   # skip the first 2 s of the patch
+DURATION = 1.8
 SR = 44100
 N_FFT = 8192
 HOP = 512
@@ -33,6 +33,14 @@ def peaks_below(spec_db, fmax=3000):
     m = f <= fmax
     p, _ = find_peaks(spec_db[m], prominence=6, distance=int(20 / (SR / N_FFT)))
     return f[m][p], spec_db[m][p]
+
+def check(path, start):
+    total = librosa.get_duration(path=path)
+    print(f"{path}: {total:.1f} s long, reading {start} to {start + DURATION} s")
+    assert start + DURATION <= total, f"{path} is too short for START+DURATION"
+
+check(REAL_FILE, REAL_START)
+check(PD_FILE, PD_START)
 
 
 real = load(REAL_FILE, REAL_START)

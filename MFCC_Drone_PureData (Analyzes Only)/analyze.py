@@ -3,7 +3,7 @@ import librosa.display
 import matplotlib.pyplot as plt
 import numpy as np
 
-FILE = "drone_rec.wav"      # filename
+FILE = "fpv_drone.wav"      # filename
 SR = 44100              # fixed on purpose: Pd output and recording must match
 DURATION = 15           # seconds to analyse
 

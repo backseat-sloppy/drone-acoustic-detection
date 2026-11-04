@@ -3,6 +3,7 @@ import numpy as np
 import soundfile as sf
 from pathlib import Path
 from render import render_dry, make_throttle
+from typing import Any
 
 HERE = Path(__file__).parent
 C, P_REF = 343.0, 20e-6
@@ -13,7 +14,7 @@ def make_scene(seed, bg_db=40.0, dist_range=(300, 500), **fixed):
     rng = np.random.default_rng(seed)
 
     # random parameters of this drone and flight
-    p = dict(
+    p: dict[str, Any] = dict(
         seed=seed,
         speed=rng.uniform(28, 45),         # m/s
         start_dist=rng.uniform(*dist_range),  # m
@@ -56,12 +57,18 @@ def make_scene(seed, bg_db=40.0, dist_range=(300, 500), **fixed):
     bg = bg / np.sqrt(np.mean(bg**2)) * P_REF * 10 ** (bg_db / 20)
     return y + bg, y, fs, p, pos[0]
 
+def make_listenable(y, loudness=0.3, ceiling=0.95):
+    """Gain by typical level (90th percentile), then soft-limit the loud end."""
+    g = loudness / np.percentile(np.abs(y), 90)
+    return (ceiling * np.tanh(y * g / ceiling)).astype(np.float32)
+
 if __name__ == "__main__":
     for seed in (1, 2, 3):
         mix, drone, fs, p, start = make_scene(seed)
         p["start_xyz"] = [round(float(v), 1) for v in start]
         scale = P_REF * 10 ** (FULL_SCALE_DB / 20)
         sf.write(HERE / f"scene_{seed}.wav", (mix / scale).astype(np.float32), fs)           # calibrated
-        sf.write(HERE / f"scene_{seed}_listen.wav", (mix / np.abs(mix).max()).astype(np.float32), fs)
+        sf.write(HERE / f"scene_{seed}_listen.wav", make_listenable(mix), fs)
         (HERE / f"scene_{seed}.json").write_text(json.dumps(p, indent=2))
         print(seed, {k: round(v, 2) if isinstance(v, float) else v for k, v in p.items()})
+

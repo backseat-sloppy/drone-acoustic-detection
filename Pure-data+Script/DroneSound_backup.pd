@@ -1,4 +1,4 @@
-#N canvas 0 25 2155 1093 12;
+#N canvas 0 25 1440 794 12;
 #X obj 730 251 t f f f f, f 59;
 #X obj 729 488 + 0;
 #X obj 866 493 + 2.3;
@@ -6,7 +6,7 @@
 #X obj 1140 493 + 5.1;
 #X obj 853 978 lop~ 1500;
 #X obj 852 1053 hip~ 30;
-#X obj 852 1170 dac~;
+#X obj 853 1190 dac~;
 #X obj 730 597 sig~;
 #X obj 867 602 sig~;
 #X obj 1004 612 sig~;
@@ -60,7 +60,7 @@
 #X obj 234 988 noise~;
 #X obj 234 1019 lop~ 8;
 #X obj 234 1081 +~ 1;
-#X obj 852 1115 *~;
+#X obj 853 1135 *~;
 #X text 131 987 fast flutter on the master volume, f 13;
 #X text 286 1026 fast \, nervous \, but not a buzz;
 #X obj 1223 978 / 127;
@@ -78,7 +78,6 @@
 #X text 919 412 Motors;
 #X obj 852 1084 *~;
 #X obj 234 1050 *~ 4;
-#X obj 1707 369 loadbang;
 #X msg 1707 434 \; pd dsp 1 \; wr open -bytes 2 out.wav \; wr start \; q read throttle.txt \; q rewind \; q bang, f 28;
 #X obj 1707 562 r wr;
 #X obj 1707 596 writesf~ 1;
@@ -160,7 +159,7 @@
 #X connect 60 0 61 0;
 #X connect 61 0 7 0;
 #X connect 61 0 7 1;
-#X connect 61 0 82 0;
+#X connect 61 0 81 0;
 #X connect 64 0 67 0;
 #X connect 65 0 66 0;
 #X connect 66 0 6 0;
@@ -168,8 +167,7 @@
 #X connect 68 0 65 0;
 #X connect 77 0 61 1;
 #X connect 78 0 60 0;
-#X connect 79 0 80 0;
-#X connect 81 0 82 0;
-#X connect 83 0 84 0;
-#X connect 84 1 85 0;
-#X connect 85 0 86 0;
+#X connect 80 0 81 0;
+#X connect 82 0 83 0;
+#X connect 83 1 84 0;
+#X connect 84 0 85 0;

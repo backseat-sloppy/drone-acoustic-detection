@@ -7,7 +7,7 @@ C, P_REF = 343.0, 20e-6
 
 def lowpass(x, fc, fs):
     a = np.exp(-2 * np.pi * fc / fs)
-    return lfilter([1 - a], [1, -a], x)
+    return np.asarray(lfilter([1 - a], [1, -a], x))
 
 
 def to_spl(x, L):
