@@ -6,6 +6,7 @@ import soundfile as sf
 
 HERE = Path(__file__).parent
 PATCH = HERE / "DroneSound.pd"
+HARM_PATCH = HERE / "DroneSoundHarm.pd"     # same patch with a "falloff" receiver
 LAUNCH = HERE / "run.pd"
 
 _found = (glob.glob("/Applications/Pd*.app/Contents/Resources/bin/pd")      # macOS
@@ -15,9 +16,13 @@ if not _found:
 PD = _found[0]
 
 
-def render_dry(throttle, pscale=1.0, step_ms=20):
-    """throttle: array of slider values 0..127, one per step_ms."""
+def render_dry(throttle, pscale=1.0, step_ms=20, falloff=None):
+    """throttle: array of slider values 0..127, one per step_ms.
+    falloff: motor low-pass at falloff x f0 (DroneSoundHarm.pd); None renders DroneSound.pd."""
     lines = ["0;", f"pscale {pscale:.3f};"]
+    if falloff is not None:
+        lines.append(f"falloff {falloff:.3f};")
+    patch = PATCH if falloff is None else HARM_PATCH
     for v in throttle:
         lines.append(f"{step_ms};")
         lines.append(f"throttle {v:.2f};")
@@ -35,7 +40,7 @@ def render_dry(throttle, pscale=1.0, step_ms=20):
         out.unlink(missing_ok=True)
         try:
             res = subprocess.run([PD, "-nogui", "-nosound", "-batch", "-r", "44100",
-                                  "-open", str(PATCH), "-open", str(LAUNCH)],
+                                  "-open", str(patch), "-open", str(LAUNCH)],
                                  timeout=40, cwd=HERE, capture_output=True, text=True)
             print(res.stdout[-800:], res.stderr[-800:])
         except subprocess.TimeoutExpired as e:

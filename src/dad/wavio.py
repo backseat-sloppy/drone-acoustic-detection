@@ -209,6 +209,10 @@ def threshold_from_run(run_json, checkpoint, window_s: float) -> float:
     if checkpoint == "comb":
         raise ValueError("the comb's threshold depends on the held-out arm: pass --threshold with the "
                          "deploy_threshold of the 'comb (no ML)' result for that arm in the run file")
+    if "models" in run:   # scripts/train_clean.py: threshold at 5% false alarms on its validation
+        if run.get("window_s", 1.0) != window_s:
+            raise ValueError(f"{run_json} was trained with a {run.get('window_s')} s window; pass --window {run.get('window_s')}")
+        return float(run["models"][Path(checkpoint).stem.rsplit("_", 1)[-1]]["threshold_5pct_fa"])
     trained = run["args"].get("window_seconds", 1.0)
     if trained != window_s:
         raise ValueError(f"{run_json} was trained with a {trained} s window; pass --window {trained}")
