@@ -27,6 +27,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 7 | 055 to 058 | Edge Impulse model (MFE + small CNN) on upload-licensed data, scored locally next to model 6 | Mads asked to try Edge Impulse; deployment hardware still open | **Negative result.** On the shared windows the EI model detects nothing off its training rig (Halmstad recall 0 at the frozen threshold, test AUC 0.36); model 6 0.55 at 4.8% false positives on Halmstad. Small on Cortex-M4F (12 ms, 20 KB RAM), but its MFE is too slow at FFT 1024. Model 6 stays the candidate. |
 | Iteration 8 | 059 to 061 | Edge Impulse on the pool, d3set held out, clips scaled to -30 dBFS | Mads asked for leave-one-dataset-out in Edge Impulse; iteration 7 failed on a 50 dB level gap between rigs | **Hypothesis rejected.** In-distribution AUC rose to 0.92, but on unseen d3set AUC 0.12 (background ranked above drones), worse than the untrained comb (0.53). Microcontroller out of scope (entry 060); Edge Impulse stopped. |
 | Iteration 9 | 090 to 094 | Iteration 5's recipe on real data, with the frontend as the only change: MFE (log-mel), MFCC, linear spectrogram | The supervisor's feedback (entry 086) and Mads's choice to compare frontends on real data, after dropping synthetic training (entries 087-089) | **Hypothesis rejected for both.** FPV mean at 10% own false alarms: MFE 0.669, MFCC 0.485, linear 0.692 (+2.3 against +5 required). Linear gains near the rigs (+23-26 points within 50 m) but loses on d3set at 100-200 m (-6.7), on Lund (-18) and alarms 12 points more on mower audio. MFE stays. |
+| Iteration 11 | 100 to | Steady-noise family (random slopes, random-phase copies of rig no-drone windows) as negatives and maskers; no war audio in training. Judged on unseen real noise stems and the mower session, with recall guards | All networks alarm on 99-100% of war-shaped noise and on pink/brown noise, but on 0% of the war track: the failure is steady noise, not war (entry 100) | In progress. Council held (entry 100); step 0 next. |
 
 ## Templates
 
@@ -5958,3 +5959,244 @@ merged without a conflict and with both entries kept.
   merge button.
 
 **Next.** None. A tool change.
+
+## 098 - Detect GUI: pick the network per batch
+
+- Date: 2026-11-04
+- Iteration: none (tooling)
+- Type: Infrastructure
+- Commit: 791d95e plus the uncommitted `scripts/detect_gui.py` change below
+
+**What changed.** `scripts/detect_gui.py` gets radio buttons at the bottom
+left that pick the network run next to comb, for the next batch opened:
+
+| Name in the GUI | Checkpoint | Threshold (from its run file) |
+|---|---|---|
+| it6 CNN | `artifacts/models/it6_final_none_simdist_dscnn.pt` (model 6, the old default) | 0.297 |
+| it9 CNN | `artifacts/models/final_dscnn_none_simdist_dscnn.pt` (entry 096) | 0.380 |
+| it9 CRNN | `artifacts/models/final_crnn_none_simdist_crnn.pt` (entry 096) | 0.483 |
+| it10 CNN | `artifacts/it10_clean/clean_s0_dscnn.pt` (seed 0 of commit 32142e1) | 5.7e-06 |
+
+"it9" is Mads's name for the entry 096 checkpoints (MFE frontend, after
+iteration 9); the report files them under no iteration. comb keeps model 6's
+frozen threshold whatever is picked. The model's name replaces "CNN" in the
+list, the graphs, the stats window and the `detector` column of
+`artifacts/detect_gui/results.csv`. The list shows 18 files at a time
+instead of 22, to make room.
+
+**Why.** Mads asked to run his own files through each of the three new
+models in the GUI.
+
+**How.** Loaded headless (`MPLBACKEND=Agg`), set each model, and ran
+`detect`, `redraw`, `write_csv` and `open_stats` on
+`data/extracted/sealed_peek/Drone_01.wav`. All four load and score.
+
+**Result.** A smoke test, not a detection result: one file, no sidecar.
+it6 CNN alarmed on 97% of windows, it9 CNN 74%, it9 CRNN 71%, it10 CNN 0%
+(its threshold of 5.7e-06 comes from a validation set it separated
+perfectly, AUC 1.0, so it says little about real audio); comb 14%.
+
+**Next.** None. A tool change.
+
+## 099 - Drone-in-war GUI: pick the network per run
+
+- Date: 2026-11-04
+- Iteration: none (tooling)
+- Type: Infrastructure
+- Commit: 791d95e plus the uncommitted changes below and in entry 098
+
+**What changed.**
+- `scripts/drone_war_grid.py`: the model list of entry 098 moves here as
+  `MODELS` (it6 CNN, it9 CNN, it9 CRNN, it10 CNN; same checkpoints and
+  thresholds). `_detectors(model)` loads one of them next to comb, cached
+  per model. New `--model` option (default `it6 CNN`, the old behaviour).
+  `results.csv` and `hops.csv` get a first column `model`. The folder
+  constant `MODELS` is renamed `MODEL_DIR` to free the name.
+- `scripts/drone_war_gui.py`: horizontal radio buttons under "Flush plots"
+  pick the network for the next Run. Its name heads the table column and
+  appears in the grid's title ("CNN = ..."), the detail window's title and
+  legend, and the saved PNGs' titles.
+- `scripts/detect_gui.py`: uses `drone_war_grid.MODELS` instead of its own
+  copy. No change in behaviour.
+
+**Why.** Mads asked for the same model choice in the drone-in-war GUI as
+in entry 098.
+
+**How.**
+```
+uv run python scripts/drone_war_grid.py --model "<each of the four>" --speeds 1 --speed-min 100 --speed-max 100 --levels 1 --war-min-db -10 --war-max-db -10 --wars 1 --no-drone --out <scratch>
+```
+and the GUI loaded headless (`MPLBACKEND=Agg`): it9 CRNN picked, Run,
+table, grid and detail window drawn. `detect_gui.py` rerun on
+`Drone_01.wav` with all four models: same window shares as entry 098.
+
+**Result.** All four models run in both GUIs and on the command line.
+Synthetic scaffolding, not detection performance (CLAUDE.md section 5):
+in this one 100 km/h, war -10 dB case every network alarmed on 99-100% of
+war-only windows, and comb on 3.3%.
+
+**Next.** None. A tool change.
+
+# Iteration 11 - Steady noise as negatives, without war audio in training
+
+> **Changed from iteration 9 / entry 096:** only the training negatives
+> and maskers. A family of steady noises is added to training: (a) Gaussian
+> noise with a random spectral slope (-12 to +3 dB/octave) and a random
+> smooth EQ, (b) random-phase copies of the training rigs' own no-drone
+> windows (same spectrum, no texture), each with a slow level wobble
+> (0.2-2 Hz, +-3 dB). About 15% of negative windows are such noise alone,
+> and about 30% of positive windows get one under the drone at -5 to +15 dB
+> in-band SNR (the existing `buried` range). Whether random-phase copies of
+> drone windows are added as hard negatives (c) is decided by step 0. No
+> war audio (the 23 FSD50K war clips, the war track or war-shaped noise)
+> and no noise stem goes into training.
+> **Why:** entries 075-076 and 100: with no drone present, model 6 and both
+> entry 096 networks alarm on 99-100% of windows of war-shaped noise at
+> every level from -40 to -10 dB, and on 0% of the war track at the same
+> levels. Pink noise gives 54-100%, brown 9-89%, white 0-3%. The mower
+> session gave 55% for model 6. The failure is steady noise with
+> low-frequency emphasis, not war. The council (entry 100) rejected
+> training on war-shaped noise made from the war clips.
+> **Kept the same:** MFE (64 log-mel, 25/10 ms), per-window level
+> normalisation, DS-CNN, iteration 5's `simdist` recipe with speed
+> perturbation 0.8-1.25, 200,000 windows, 1 s window, deployment threshold
+> frozen at 5% false alarms on validation, the validation set itself.
+> **Hypothesis:** the networks alarm on steady noise because no training
+> negative is steady and broadband after level normalisation. Steady
+> negatives remove that, and false alarms fall on steady noise the model
+> never saw, at a small cost in recall.
+> **Judged by** (seed means of 3 seeds per arm, the treated arm against the
+> same recipe without steady noise on the same seeds; decided before any
+> run). All at the deployment threshold frozen on validation; the steady
+> suite is never used to choose between variants.
+> - Success needs all of these:
+>   - Real unseen no-drone audio: the FSD50K distracter, background and
+>     wind stems (none trained on), pooled false alarms, with the aircraft
+>     classes (helicopter, prop plane, aircraft) reported apart. They fall
+>     by at least half.
+>   - The mower session: at most 20% false alarms.
+>   - Synthetic tripwires, never reported as performance: war-shaped noise
+>     from all 23 clips, white, pink and brown noise, each at most 5%. The
+>     war track stays at most 1%.
+>   - Recall guards: validation recall at the deployment threshold drops at
+>     most 2 points. Lund recall drops at most 3 points. FPV mean recall at
+>     10% own false alarms on the iteration 9 leave-one-unit-out arms drops
+>     at most 3 points, and no unit more than 5.
+> - Failure: any held-out colour above 20%, or a recall guard broken. That
+>   would be the evidence that MFE with per-window level removal cannot
+>   separate a steady drone from steady noise, and the next council would
+>   weigh PCEN with these numbers.
+> - `comb` and `lgbm` are reported next to both arms. This iteration targets
+>   R3 robustness. R2 (Lund recall 0.56 against 0.95) stays the larger gap.
+> - Iteration 10 (`it10-SynthDrone`) is not logged in this file yet; its
+>   number is left to it.
+
+## 100 - Council: what to do about false alarms on steady noise
+
+- Date: 2026-11-04
+- Iteration: 11
+- Type: Council
+- Commit: 791d95e plus the uncommitted entries 096-099
+
+**Question.** Iteration 11: (A) train on war-shaped noise (under drones
+and alone) and test false alarms on held-out real war clips (the 23 FSD50K
+war clips split by uploader), (B) a PCEN frontend, (C) back to MFCC,
+(D) wait for real war recordings, or (E) keep the current approach?
+
+**Evidence gathered for the brief** (synthetic diagnostics, not detection
+performance). `drone_war_grid.py`, no drone, one 20 s clip, war-shaped
+noise seed 1000 against the war track's first 20 s (calm phase):
+```
+uv run python scripts/drone_war_grid.py --model "<m>" --war-source shaped|track --speeds 0 --no-drone --levels 4 --war-min-db -40 --war-max-db -10 --wars 1 --out <scratch>
+```
+
+| Model | War-shaped noise, -40/-30/-20/-10 dB | War track, same levels | `comb`, shaped / track |
+|---|---|---|---|
+| it6 CNN (model 6) | 100 / 100 / 100 / 100% | 0% at all | 3.3% / 10.5% |
+| it9 CNN (entry 096 DS-CNN) | 98.7 / 99.3 / 99.3 / 99.3% | 0% at all | same |
+| it9 CRNN (entry 096) | 100% at all | 0% at all | same |
+
+Plain noise, 20 s, -30 dBFS RMS, seed 0, scored with `dad.wavio.stream` at
+each model's frozen threshold (alarm share, median score):
+
+| Model | White | Pink | Brown |
+|---|---|---|---|
+| it6 CNN | 0.0% (0.05) | 94.8% (0.43) | 88.9% (0.42) |
+| it9 CNN | 2.6% (0.25) | 100% (0.59) | 9.2% (0.27) |
+| it9 CRNN | 0.0% (0.16) | 53.6% (0.48) | 37.3% (0.45) |
+
+Entry 075's guess (steady 600-750 Hz energy from the shout and siren clips)
+does not explain pink and brown noise; the broader reading is steady noise
+with low-frequency emphasis.
+
+**Devil's Advocate.** Decisive and serious objections, and how each was
+answered:
+- *Decisive: the proposed test is at the floor before the change.* Real
+  war audio already gives under 1% (entry 065) and 0% (above), so held-out
+  war clips can only show a regression; the only number that moves is
+  synthetic. **Accepted.** The test is replaced by real unseen steady noise
+  (the FSD50K distracter, background and wind stems, which no it6 or it9
+  model trained on; checked: `rangerun.py`, `realrun.py` and `run_range.py`
+  do not read the stems) and the mower session. The synthetic noises stay
+  as tripwires only.
+- *Decisive: the failure is stationarity and spectral tilt, not war; A
+  fixes one spectrum.* **Accepted.** Training gets a family of steady
+  noises, not the war spectrum.
+- *Serious: the generator becomes a "no drone" fingerprint.* **Answered in
+  the design.** Two different generators (random slopes, random-phase
+  copies of real windows), a slow level wobble, and a test made of noise
+  from neither: real stems, the mower, war-shaped noise, exact colours.
+- *Serious: low-SNR positives are label noise and cost recall.* **Partly
+  answered.** Maskers go under only 30% of positives, in the existing
+  `buried` range (-5 to +15 dB in-band), and recall guards are part of the
+  verdict. It stands as a risk.
+- *Serious: 23 clips, 201.6 s, one siren: too few to split, and an invite
+  to tune on test.* **Accepted.** No war clip is split or trained on; all
+  stay test-only, and the steady suite is never used for selection.
+- *Serious: a one-seed guard cannot detect a regression.* **Accepted.**
+  Three seeds per arm, both arms on the same seeds.
+- *Serious: opportunity cost against Lund recall.* **Stands, noted.** One
+  iteration of about 30-60 GPU minutes; R2 remains the main gap.
+
+**Scholar** (given the problem without our context). Best practice is
+multi-condition training: real or realistic noise mixed under positives at
+random SNR plus noise-only negatives, with false alarms reported on real
+background from sources never seen, seen and unseen noise reported apart
+(the Aurora-2 set A / set B idea; checked via secondary sources only).
+Pitfalls: a long-term spectrum computed from the test recordings is a
+statistic of the test set (leakage); steady noise as negatives can teach
+"stationary = no target" and hurt steady targets (Salamon & Bello 2017 saw
+augmentation hurt the steady air-conditioner class; checked); augmentation
+gains are often modest (Reuter, Ohlenbusch & Rollwage, arXiv:2605.31329,
+2026, acoustic drone detection: little gain out of domain; checked).
+Placement: A is standard if noise and test are disjoint by source; B (PCEN)
+a defensible variation, with the caveat that it suppresses what is
+stationary and could attenuate a hovering drone (Lostanlen et al. 2019;
+checked); C against practice for a CNN; D against practice as a blanket
+rule; E against practice.
+**Departure:** the Scholar prefers real noise recordings in training; we
+train on synthetic steady noise and keep the real noise stems for the
+test. Reason: the stems are the only real, unseen steady noise we have;
+training on them would leave no unseen-noise test. When real field noise
+arrives, it can be split by source between the two.
+
+**Problem Solver.** Verdict: try a modified version. Train on a
+steady-noise family, not war audio; keep all war material for testing;
+score a steady false-alarm suite; three seeds per arm; step 0 first:
+score the existing models on random-phase copies of drone and no-drone
+windows and on a slope sweep, to see whether they use the spectral
+envelope rather than the harmonics, before any GPU time. Confidence
+medium. One factual error, checked against entry 094: it says MFCC "lost
+18 points on Lund"; that was the linear spectrogram. MFCC lost on the FPV
+mean (0.485 against 0.669), which is enough to rule C out.
+
+**Decision.** Iteration 11 as boxed above: the Problem Solver's modified
+A, with the Devil's Advocate's two decisive objections built in and the
+Scholar's leakage rule kept by putting no war or stem audio in training.
+B (PCEN) is held back for a later council if iteration 11 fails. C, D and
+E are rejected. Real war recordings are still wanted, as test data.
+
+**Next.** Step 0 (no training): score it6, it9 CNN and CRNN on
+random-phase copies of real drone and no-drone windows and on a
+noise-slope sweep from -12 to +6 dB/octave, and score the steady suite as
+the baseline.

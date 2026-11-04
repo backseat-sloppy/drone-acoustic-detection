@@ -16,8 +16,9 @@ For each war level (dB added to the war track), for each drone speed, for each w
             drone (war only, for false alarms). The cell with neither is silence and is skipped.
     wind    optional, env_sim's wind step (1 = off).
 
-The drone starts at --onset s in the clip. Every mix is scored hop by hop by the CNN
-and comb at their frozen iteration 6 thresholds, against a sidecar that marks the drone from
+The drone starts at --onset s in the clip. Every mix is scored hop by hop by a network
+(--model, see MODELS; default model 6) at the threshold its run froze, and by comb at its frozen
+iteration 6 threshold, against a sidecar that marks the drone from
 its first sound reaching the mic to impact. Output in --out:
 
     results.csv            one row per mix and detector: recall, false-positive rate, lead time
@@ -52,11 +53,15 @@ from dad.wavio import evaluate_file, load_scorer, rates, threshold_from_run  # n
 
 C = 343.0
 RUN = ROOT / "artifacts/runs/it6_final.json"
-MODELS = ROOT / "artifacts/models"
+MODEL_DIR = ROOT / "artifacts/models"
 WSN_GAIN = ROOT / "Pure-data+Script/WarShapedNoise/war_gain.txt"   # 44.1 kHz table (docs/war_shaped_noise.md)
 WSN_SEED = 1000                                              # test-noise seeds start at 1000 (docs/war_shaped_noise.md)
-DETECTORS = {"CNN": str(MODELS / "it6_final_none_simdist_dscnn.pt"), "comb": "comb"}   # lgbm dropped (Mads, 2026-10-30)
+DETECTORS = {"CNN": str(MODEL_DIR / "it6_final_none_simdist_dscnn.pt"), "comb": "comb"}   # lgbm dropped (Mads, 2026-10-30)
 COLORS = {"CNN": "#2a78d6", "comb": "#1baf7a"}
+MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file with its threshold, checkpoint)
+          "it9 CNN": (ROOT / "artifacts/runs/final_dscnn.json", MODEL_DIR / "final_dscnn_none_simdist_dscnn.pt"),
+          "it9 CRNN": (ROOT / "artifacts/runs/final_crnn.json", MODEL_DIR / "final_crnn_none_simdist_crnn.pt"),
+          "it10 CNN": (ROOT / "artifacts/it10_clean/clean_s0.json", ROOT / "artifacts/it10_clean/clean_s0_dscnn.pt")}
 OFF = float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
 NO_DRONE = 0.0                                               # drone "speed" of the no-drone row (war only)
 
@@ -250,16 +255,17 @@ def _sources():
 
 
 @functools.cache
-def _detectors():
-    thr = {k: comb_threshold() if spec == "comb" else threshold_from_run(RUN, spec, DEFAULT.window_seconds)
-           for k, spec in DETECTORS.items()}
-    return thr, {k: load_scorer(spec, DEFAULT, "cpu") for k, spec in DETECTORS.items()}
+def _detectors(model="it6 CNN"):
+    """(thresholds, scorers) for "CNN" = the network MODELS[model] and "comb"."""
+    run, ckpt = MODELS[model]
+    thr = {"CNN": threshold_from_run(run, str(ckpt), DEFAULT.window_seconds), "comb": comb_threshold()}
+    return thr, {"CNN": load_scorer(str(ckpt), DEFAULT, "cpu"), "comb": load_scorer("comb", DEFAULT, "cpu")}
 
 
 def defaults():
     return argparse.Namespace(speeds=10, speed_min=100.0, speed_max=200.0, wars=10, levels=3, war_min_db=-20.0,
                               war_max_db=0.0, wind=1, length=20.0, onset=0.0, flight_s=10.0, drone_seed=1,
-                              pscale=0.85, elev_deg=40.0, keep=False, no_drone=False, no_war=False, war_source="shaped", out=ROOT / "artifacts/drone_war/run1")
+                              pscale=0.85, elev_deg=40.0, keep=False, no_drone=False, no_war=False, war_source="shaped", model="it6 CNN", out=ROOT / "artifacts/drone_war/run1")
 
 
 def steps(lo, hi, n, what):
@@ -300,7 +306,7 @@ def run(a, progress=print, on_level=None, stop=lambda: False):
     offsets = war_offsets(a, len(src["war"]) / es.FS)
     progress(f"rendering {len(speeds)} drones (cached after the first time)")
     drones = render_drones(speeds, a, ROOT / "artifacts/drone_war/drones")   # shared: names hold every drone parameter
-    thr, scorers = _detectors()
+    thr, scorers = _detectors(a.model)
     work = a.out / "mixes"
     work.mkdir(parents=True, exist_ok=True)
     war = {o: es.build(10, o, a.wind, {}, n, 0, src)[1] for o in offsets}   # layers: war (0 dB) and wind
@@ -316,7 +322,7 @@ def run(a, progress=print, on_level=None, stop=lambda: False):
     rows, by_gain = [], {}
     with open(a.out / "hops.csv", "w", newline="", encoding="utf-8") as hops_f:
         hops = csv.writer(hops_f)
-        hops.writerow(["war_gain_db", "speed_kmh", "war_offset_s", "detector", "t_end_s", "score", "drone", "truth", "snr_db"])
+        hops.writerow(["model", "war_gain_db", "speed_kmh", "war_offset_s", "detector", "t_end_s", "score", "drone", "truth", "snr_db"])
         for g in gains:
             res = {}
             for v in speeds:
@@ -355,10 +361,10 @@ def run(a, progress=print, on_level=None, stop=lambda: False):
                                 cell["snr"] = cell["drone_db"] - cell["noise_db"]
                         q = rates(r["counts"], r["leads"])
                         lead = r["leads"][0] if r["leads"] else dict(first_alarm_s=None, lead_s=None)
-                        rows.append(dict(war_source=a.war_source, war_gain_db=g, speed_kmh=round(v, 1), war_offset_s=off, detector=k,
+                        rows.append(dict(model=a.model, war_source=a.war_source, war_gain_db=g, speed_kmh=round(v, 1), war_offset_s=off, detector=k,
                                          threshold=thr[k], recall=q["recall"], false_positive_rate=q["false_positive_rate"],
                                          first_alarm_s=lead["first_alarm_s"], lead_s=lead["lead_s"], **r["counts"]))
-                        hops.writerows([g, round(v, 1), off, k, round(float(t), 4), float(s), bool(b), int(y),
+                        hops.writerows([a.model, g, round(v, 1), off, k, round(float(t), 4), float(s), bool(b), int(y),
                                         round(float(q_), 2)]
                                        for t, s, b, y, q_ in zip(d.t_end, d.score, d.drone, lab, cell["snr"]))
                     res[(v, off)] = cell
@@ -392,6 +398,7 @@ def main():
     ap.add_argument("--war-max-db", type=float, default=d.war_max_db, help="war gain of the loudest level, dB")
     ap.add_argument("--war-source", choices=["shaped", "track"], default=d.war_source,
                     help="shaped: war-shaped noise (stationary, the war's spectrum); track: the war track itself")
+    ap.add_argument("--model", choices=list(MODELS), default=d.model, help="the network scored next to comb")
     ap.add_argument("--wind", type=int, default=d.wind, help="env_sim wind step 1-10 (1 = off)")
     ap.add_argument("--length", type=float, default=d.length, help="clip length, s")
     ap.add_argument("--onset", type=float, default=d.onset, help="drone start in the clip, s")

@@ -1,12 +1,19 @@
-"""Find drones in your own audio files: open one or more files and the CNN and comb listen to them.
+"""Find drones in your own audio files: open one or more files and a CNN and comb listen to them.
 
     uv run python scripts/detect_gui.py
 
 "Open audio files..." picks any number of WAV, FLAC, OGG or MP3 files. Each file is read as
 dad.wavio reads it (channel 0, resampled to 16 kHz) and every detector scores it hop by hop as it
 would run live: a 1 s window every 0.125 s, a decision stamped at the window's end, drone when the
-score reaches the frozen iteration 6 threshold (the same detectors and thresholds as
-scripts/drone_war_gui.py). Nothing else is set: no sliders.
+score reaches the model's frozen threshold. Nothing else is set: no sliders.
+
+Model: the radio buttons at the bottom left pick the network that runs next to comb, for the next
+batch opened. Each uses the threshold its own run froze at 5% false alarms on validation:
+  it6 CNN   artifacts/models/it6_final_none_simdist_dscnn.pt (model 6, as scripts/drone_war_gui.py)
+  it9 CNN   artifacts/models/final_dscnn_none_simdist_dscnn.pt (report entry 096)
+  it9 CRNN  artifacts/models/final_crnn_none_simdist_crnn.pt (report entry 096)
+  it10 CNN  artifacts/it10_clean/clean_s0_dscnn.pt (seed 0, trained on synthetic drones only)
+comb keeps model 6's frozen threshold whichever model is picked.
 
 War-shaped noise (optional): tick "add war-shaped noise" before opening files and type one or
 more SNRs in dB, separated by spaces, commas or semicolons (each -20 to +30, at most 6, default
@@ -52,7 +59,7 @@ import drone_war_grid as dwg  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import soundfile as sf  # noqa: E402
-from matplotlib.widgets import Button, CheckButtons, TextBox  # noqa: E402
+from matplotlib.widgets import Button, CheckButtons, RadioButtons, TextBox  # noqa: E402
 from scipy.signal import resample_poly  # noqa: E402
 
 from dad.config import DEFAULT  # noqa: E402
@@ -67,7 +74,8 @@ AUDIO_TYPES = [("Audio files", "*.wav *.flac *.ogg *.mp3"), ("All files", "*.*")
 HOP_S = DEFAULT.samples_per_hop / DEFAULT.sample_rate
 TEXT, GREY, RED = "#333333", "#777777", "#c0392b"
 NAMES = {"CNN": "CNN", "comb": "DSP (comb)"}                 # detector -> name in the stats window
-LIST_ROWS = 22                                               # files shown in the list at once
+LIST_ROWS = 18                                               # files shown in the list at once
+MODELS = dwg.MODELS
 
 fig = plt.figure(figsize=(15, 9))
 fig.canvas.manager.set_window_title("Find drones in audio files")
@@ -86,20 +94,31 @@ b_next = Button(fig.add_axes([0.145, 0.79, 0.12, 0.04]), "Next >")
 b_play = Button(fig.add_axes([0.015, 0.745, 0.12, 0.04]), "Play")
 b_hush = Button(fig.add_axes([0.145, 0.745, 0.12, 0.04]), "Stop sound")
 status = fig.text(0.015, 0.73, "Open one or more audio files.", fontsize=8, color=TEXT, va="top", wrap=True)
-ax_list = fig.add_axes([0.015, 0.03, 0.26, 0.66])
+ax_list = fig.add_axes([0.015, 0.15, 0.26, 0.54])
+ax_model = fig.add_axes([0.015, 0.01, 0.25, 0.12], frameon=False)
+ax_model.set_title("model, for the next batch opened", fontsize=8, color=TEXT, loc="left")
+r_model = RadioButtons(ax_model, list(MODELS), active=0)
+for lbl in r_model.labels:
+    lbl.set_fontsize(8)
 ax_list.axis("off")
 ax_spec = fig.add_axes([0.33, 0.62, 0.65, 0.30])
 CONF_BOX = (0.33, 0.07, 0.65, 0.50)                          # left, bottom, width, height of the graphs
 
-state = dict(thread=None, files=[], cur=0, top=0, detectors=None, conf_axes=[])
+state = dict(thread=None, files=[], cur=0, top=0, model=next(iter(MODELS)), loaded={}, conf_axes=[])
 events: queue.Queue = queue.Queue()
 
 
 def detectors():
-    """(thresholds, scorers), loaded on first use: the CNN takes a few seconds."""
-    if state["detectors"] is None:
-        state["detectors"] = dwg._detectors()
-    return state["detectors"]
+    """(thresholds, scorers) of the batch's model and comb, loaded on first use: a network takes a few seconds."""
+    m = state["model"]
+    if m not in state["loaded"]:
+        state["loaded"][m] = dwg._detectors(m)
+    return state["loaded"][m]
+
+
+def shown_as(k):
+    """Detector k as shown: the picked model's name for the network."""
+    return state["model"] if k == "CNN" else NAMES[k]
 
 
 def peaks(drone: np.ndarray) -> list[tuple[int, int]]:
@@ -167,7 +186,7 @@ def worker(paths, snrs=None):
             for snr in snrs or [None]:
                 events.put(("status", f"listening to file {i + 1} of {len(paths)}: {Path(p).name}"
                                       + ("" if snr is None else f" at SNR {snr:+g} dB")
-                                      + (" (the first file also loads the detectors)" if state["detectors"] is None else "")))
+                                      + (" (the first file also loads the detectors)" if state["model"] not in state["loaded"] else "")))
                 events.put(("file", detect(p, None if snr is None else (snr, dwg.WSN_SEED + i), group=i)))
         events.put(("status", f"done: {len(paths)} file(s). " + (f"Table in {OUT.relative_to(dwg.ROOT).as_posix()}"
                               if snrs is None else f"Table, mixes in {OUT.parent.relative_to(dwg.ROOT).as_posix()}")))
@@ -192,7 +211,7 @@ def draw_list():
     files = state["files"]
     if not files:
         return
-    ax_list.text(0, 1, f"{'':3s}{'file':16s}{'CNN':>11s}{'comb':>11s}", family="monospace", fontsize=8,
+    ax_list.text(0, 1, f"{'':3s}{'file':16s}{shown_as('CNN'):>11s}{'comb':>11s}", family="monospace", fontsize=8,
                  weight="bold", color=TEXT, va="top")
     ax_list.cell_rows = {}
     for row, i in enumerate(range(state["top"], min(state["top"] + LIST_ROWS, len(files)))):
@@ -243,7 +262,7 @@ def plot_score(ax, d, y, k):
     one, at 1.00 s), and a line through one point draws nothing, so few decisions get dots and
     each alarmed one shades the 1 s window it heard."""
     few = len(d.t_end) < 20
-    ax.plot(d.t_end, y, color=dwg.COLORS[k], lw=1.2, label=k, marker="o" if few else None, ms=5,
+    ax.plot(d.t_end, y, color=dwg.COLORS[k], lw=1.2, label=shown_as(k), marker="o" if few else None, ms=5,
             clip_on=not few)                                 # the last dot sits on the right edge
     if few:
         for t in d.t_end[d.drone]:
@@ -265,7 +284,7 @@ def draw_conf(ax, f, thr, selected, legend):
         plot_score(ax, d, y, k)
         ax.axhline(0.5 if k == "comb" else thr[k], color=dwg.COLORS[k], lw=0.8, ls="--")
         s = f["summary"][k]
-        lines.append(f"{k}: " + (f"DRONE  first alarm {s['first_alarm_s']:.2f} s, longest alarm {s['longest_s']:.2f} s, "
+        lines.append(f"{shown_as(k)}: " + (f"DRONE  first alarm {s['first_alarm_s']:.2f} s, longest alarm {s['longest_s']:.2f} s, "
                                  f"{100 * s['flagged']:.0f}% of windows" if s["drone"] else "no drone heard"))
     ax.set(ylim=(0, 1), xlim=(0, f["seconds"]), ylabel="confidence")
     ax.set_title(head + "   |   ".join(lines), fontsize=9, color=TEXT, loc="left",
@@ -322,11 +341,11 @@ def write_csv():
         w.writerow(["file", "seconds", "detector", "threshold", "verdict", "flagged_share", "first_alarm_s",
                     "longest_alarm_s", "peaks_above_threshold", "time_above_threshold_s", "noise_snr_db",
                     "noise_seed", "mix_file", "error"])
-        thr = state["detectors"][0] if state["detectors"] else {}
+        thr = state["loaded"].get(state["model"], ({},))[0]
         for f in state["files"]:
             for k in dwg.DETECTORS:
                 s = f.get("summary", {}).get(k, {})
-                w.writerow([f["path"], round(f["seconds"], 3) if "seconds" in f else "", k, thr.get(k, ""),
+                w.writerow([f["path"], round(f["seconds"], 3) if "seconds" in f else "", shown_as(k), thr.get(k, ""),
                             verdict(f, k), s.get("flagged", ""), s.get("first_alarm_s", ""), s.get("longest_s", ""),
                             len(s["peaks"]) if s else "", s.get("above_s", ""), f.get("snr_db", ""),
                             f.get("noise_seed", ""), f.get("mix_path", ""), f.get("error", "")])
@@ -406,7 +425,7 @@ def on_open(_):
     paths = pick_files()
     if not paths:
         return
-    state.update(files=[], cur=0, top=0)
+    state.update(files=[], cur=0, top=0, model=r_model.value_selected)
     redraw()
     state["thread"] = threading.Thread(target=worker, args=(paths, snr), daemon=True)
     state["thread"].start()
@@ -453,10 +472,10 @@ def open_stats(i):
                         fontsize=7, color=TEXT)
             rows.append(f"{n:3d} {t0:8.2f} {t1:8.2f} {(b - a + 1) * HOP_S:7.2f} {y[j]:6.2f}")
         ax.set(ylim=(0, 1.08), xlim=(0, f["seconds"]), ylabel="confidence")
-        ax.set_title(NAMES[k], fontsize=10, weight="bold", color=dwg.COLORS[k], loc="left")
+        ax.set_title(shown_as(k), fontsize=10, weight="bold", color=dwg.COLORS[k], loc="left")
         ax.grid(color="#e5e5e5", lw=0.5)
         scored = len(d.score) * HOP_S
-        lines = [NAMES[k],
+        lines = [shown_as(k),
                  f"peaks above threshold   {len(s['peaks'])}",
                  f"time above threshold    {s['above_s']:.2f} s ({100 * s['above_s'] / scored:.1f} % of {scored:.1f} s scored)",
                  f"longest peak            {s['longest_s']:.2f} s",
