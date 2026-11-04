@@ -20,6 +20,8 @@ import csv
 import io
 import json
 import struct
+import time
+import urllib.error
 import urllib.request
 import zipfile
 import zlib
@@ -47,9 +49,16 @@ CHOSEN = {"gunfire": "404334", "explosion": "353421", "wind": "344887", "birds":
 
 
 def get(name: str, start: int, end: int) -> bytes:
+    """One range request; on 429 or 503 (Zenodo rate limit) wait Retry-After, or 2**k s, and retry."""
     req = urllib.request.Request(URL.format(name), headers={"Range": f"bytes={start}-{end}"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return r.read()
+    for k in range(8):
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return r.read()
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 503) or k == 7:
+                raise
+            time.sleep(float(e.headers.get("Retry-After") or 2 ** (k + 1)))
 
 
 def size(name: str) -> int:

@@ -6,15 +6,21 @@ Each scene is --seconds of 16 kHz mono audio plus a JSON file of time-stamped la
               (random flight, Doppler, 1/r). Cruise fundamental f0 ~ U(100, 700) Hz, set
               through pscale; harmonic falloff ~ log-U(1, 16), the motor low-pass at
               falloff x f0 (two poles), so the harmonic ratio is random but moves with pitch.
-    bed       one wind stem, always.
-    events    Poisson(--mean-events) bug stems: insects, buzzing insect, mosquito, at
-              --bug-db (default -24..-12 dB, against wind at -10..0 dB).
-    confuser  with probability --p-confuser, exactly one helicopter stem.
-              (Only wind, bugs and helicopters, at Marius's request, report entry 082.)
+    bed       one ambience stem, always: wind, rain, stream or traffic, at -10..0 dB.
+    events    Poisson(--mean-events) quiet stems: insects, buzzing insect, mosquito, birds,
+              at --bug-db (default -24..-12 dB).
+    transient Poisson(--mean-transients) loud short stems: gunfire, machine gun, small arms,
+              mortar and artillery, explosions near and far, thunder, shouting, dog, at
+              -6..+12 dB. They mask the frames they fall on (the case the CRNN is for).
+    confuser  with probability --p-confuser, exactly one engine or tonal stem: helicopter,
+              truck, car, motorcycle, scooter, aircraft, prop plane, jet, tank, generator,
+              idling engine, mower, chainsaw, power tool, siren, air-raid siren, at -6..+6 dB.
+              (Supervisor's list, report entry 097; was wind, bugs and helicopters only.)
 
 Non-drone stems come from data/processed/stems/ (scripts/build_stems.py), all at the
 same active RMS, mixed at random gains. The drone is scaled so its RMS over its own
-active samples is --snr dB (uniform) against everything else over the same samples.
+active samples is --snr dB (uniform) against the bed, events and confuser over the same
+samples; transients are added after, so a boom masks the drone without turning it down.
 The mix is then scaled to -26 dBFS RMS, never above -0.1 dBFS peak.
 
 Labels are one event per source: {label, role, onset, offset}, seconds in the scene;
@@ -47,11 +53,15 @@ STEMS = ROOT / "data" / "processed" / "stems" / "manifest.csv"
 FS = 16000
 
 ROLES = {
-    "bed": ["wind"],
-    "event": ["insects", "buzzing_insect", "mosquito"],
-    "confuser": ["helicopter"],
+    "bed": ["wind", "rain", "stream", "traffic"],
+    "event": ["insects", "buzzing_insect", "mosquito", "birds"],
+    "transient": ["gunfire", "machine_gun", "small_arms", "mortar_artillery", "explosion",
+                  "explosion_far", "thunder", "shout", "dog"],
+    "confuser": ["helicopter", "truck", "car", "motorcycle", "scooter", "aircraft", "prop_plane",
+                 "jet", "tank", "generator", "idling", "mower", "chainsaw", "power_tool", "siren",
+                 "air_raid_siren"],
 }
-GAIN_DB = {"bed": (-10, 0), "event": (-6, 6), "confuser": (-6, 6)}
+GAIN_DB = {"bed": (-10, 0), "event": (-6, 6), "transient": (-6, 12), "confuser": (-6, 6)}
 
 
 def load_stems(sources: set[str] | None) -> dict[str, list[dict]]:
@@ -85,8 +95,9 @@ def place(x: np.ndarray, n: int, rng, fill: bool) -> tuple[np.ndarray, int, int]
     return track, onset, onset + len(x)
 
 
-def mix(noise: list[np.ndarray], drone: np.ndarray | None, snr_db: float | None):
-    """Sum the noise tracks, add the drone at snr_db over its active samples, level the mix.
+def mix(noise: list[np.ndarray], drone: np.ndarray | None, snr_db: float | None, extra=()):
+    """Sum the noise tracks, add the drone at snr_db over its active samples, add the extra
+    tracks (transients: not part of the SNR reference), level the mix.
     No noise tracks: the drone alone (snr_db unused)."""
     total = np.sum(noise, axis=0) if noise else np.zeros(len(drone))
     if drone is not None:
@@ -95,6 +106,8 @@ def mix(noise: list[np.ndarray], drone: np.ndarray | None, snr_db: float | None)
             active = drone != 0
             g = np.sqrt(np.mean(total[active] ** 2) / np.mean(drone[active] ** 2)) * 10 ** (snr_db / 20)
         total = total + g * drone
+    for x in extra:
+        total = total + x
     scale = min(10 ** (-26 / 20) / np.sqrt(np.mean(total ** 2)), 10 ** (-0.1 / 20) / np.abs(total).max())
     return (total * scale).astype(np.float32)
 
@@ -122,12 +135,12 @@ def render_drone(seed: int, rng, n: int, f0_range=(100, 700), falloff_range=(1, 
 def make_one(i: int, seed: int, pools, args) -> dict:
     rng = np.random.default_rng(seed)
     n = int(args.seconds * FS)
-    noise, events = [], []
+    noise, transients, events = [], [], []
 
     def add(role: str, stem: dict):
         x = read_16k(stem["file"]) * 10 ** (rng.uniform(*(args.bug_db if role == "event" else GAIN_DB[role])) / 20)
         track, lo, hi = place(x, n, rng, fill=(role == "bed"))
-        noise.append(track)
+        (transients if role == "transient" else noise).append(track)
         events.append(dict(label=stem["cls"], role=role, onset=round(lo / FS, 3), offset=round(hi / FS, 3),
                            stem=stem["file"], source=stem["source"], license=stem["license"]))
 
@@ -136,6 +149,8 @@ def make_one(i: int, seed: int, pools, args) -> dict:
         add("bed", pick("bed"))
         for _ in range(rng.poisson(args.mean_events)):
             add("event", pick("event"))
+        for _ in range(rng.poisson(args.mean_transients)):
+            add("transient", pick("transient"))
         if rng.random() < args.p_confuser:
             add("confuser", pick("confuser"))
 
@@ -147,7 +162,7 @@ def make_one(i: int, seed: int, pools, args) -> dict:
                               source="pd:DroneSoundHarm.pd"))
 
     name = f"scene_{i:06d}"
-    sf.write(args.out / "audio" / f"{name}.wav", mix(noise, drone, snr), FS)
+    sf.write(args.out / "audio" / f"{name}.wav", mix(noise, drone, snr, transients), FS)
     label = dict(scene=name, seed=seed, fs=FS, seconds=args.seconds, snr_db=None if snr is None else round(snr, 2),
                  heldout=any(e["source"] == "fsd50k_eval" for e in events), events=events, drone=drone_params)
     (args.out / "labels" / f"{name}.json").write_text(json.dumps(label, indent=1))
@@ -174,11 +189,13 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--p-drone", type=float, default=0.75)
     ap.add_argument("--p-confuser", type=float, default=0.4)
     ap.add_argument("--mean-events", type=float, default=2.0)
+    ap.add_argument("--mean-transients", type=float, default=1.0,
+                    help="mean number of gunfire / explosion / shout ... stems per scene (Poisson)")
     ap.add_argument("--snr", type=float, nargs=2, default=(-20.0, 10.0))
     ap.add_argument("--f0", type=float, nargs=2, default=(100.0, 700.0), help="cruise fundamental range, Hz")
     ap.add_argument("--falloff", type=float, nargs=2, default=(1.0, 16.0), help="harmonic falloff range (log-uniform)")
     ap.add_argument("--bug-db", type=float, nargs=2, default=(-24.0, -12.0),
-                    help="gain of insects, buzzing insect and mosquito stems, dB (others: bed -10..0, helicopter -6..+6)")
+                    help="gain of the quiet event stems, dB (others: bed -10..0, transient -6..+12, confuser -6..+6)")
     ap.add_argument("--drone-only", action="store_true",
                     help="every scene is one Pd drone and nothing else (no bed, bugs or helicopter)")
     ap.add_argument("--sources", default=None, help="comma list of stem sources, e.g. fsd50k_dev (default: all)")
@@ -195,6 +212,8 @@ def check(args) -> None:
         raise ValueError("bug level needs min <= max")
     if not 0 < args.falloff[0] <= args.falloff[1]:
         raise ValueError("falloff needs 0 < min <= max")
+    if args.mean_events < 0 or args.mean_transients < 0:
+        raise ValueError("mean event counts are >= 0")
     if not (0 <= args.p_drone <= 1 and 0 <= args.p_confuser <= 1):
         raise ValueError("probabilities are 0 to 1")
 

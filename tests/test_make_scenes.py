@@ -30,3 +30,17 @@ def test_mix_drone_alone_is_only_levelled():
     out = ms.mix([], drone, None).astype(np.float64)
     assert not out[:500].any()
     assert np.allclose(out / np.abs(out).max(), drone / np.abs(drone).max(), atol=1e-6)
+
+
+def test_transients_are_outside_the_snr_reference():
+    rng = np.random.default_rng(1)
+    n = 16000
+    bed = rng.standard_normal(n)
+    drone = np.sin(np.arange(n) / 4.0)
+    boom = np.zeros(n)
+    boom[8000:8400] = 50 * rng.standard_normal(400)
+    a = ms.mix([bed], drone, -6.0).astype(np.float64)
+    b = ms.mix([bed], drone, -6.0, [boom]).astype(np.float64)
+    # same drone-to-bed ratio with and without the boom: b is a + boom, then levelled
+    ka, kb = np.std(a[:8000]), np.std(b[:8000])
+    assert np.allclose(a[:8000] / ka, b[:8000] / kb, atol=1e-4)

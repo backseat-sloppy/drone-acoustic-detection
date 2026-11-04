@@ -10,6 +10,10 @@ recordings.csv and stems.csv), skipping digital silence; the rig --val-rig valid
 trains. Nothing is mixed: each window is one drone or one no-drone clip, as Marius chose
 (2026-11-04). Batches are half drone, half no-drone; variant "level" (each window's own
 in-band level removed, entry 014), so loudness says nothing about the label.
+With soundscape scenes (`make_scenes.py` without --drone-only), the drone windows carry their
+scene's background, and the scenes without a drone join the no-drone clips (split by the same
+--val-seed), so a soundscape alone is a negative as well. Scenes marked heldout (an FSD50K eval
+stem in them, a test source) are skipped.
 
 Models: dscnn (MFE, 64 log-mel, the iteration 6 and 9 recipe through NetScorer, --windows),
 and the baselines `comb` (no training) and `lgbm` (--lgbm-windows from the same sampler).
@@ -53,20 +57,24 @@ def read16k(path: Path) -> np.ndarray:
 
 
 def load_drones(root: Path, val_seed: int, limit: int | None):
-    """[(audio, lo, hi)] per scene, train and validation; lo/hi: drone label in samples."""
-    train, val = [], []
+    """[(audio, lo, hi)] per scene, train and validation; lo/hi: drone label in samples.
+    Scenes without a drone come back as no-drone clips [(audio, "scene")]; heldout scenes are skipped."""
+    train, val, neg_train, neg_val = [], [], [], []
     for k, lab in enumerate(sorted((root / "labels").glob("*.json"))):
         if limit and k >= limit:
             break
         d = json.loads(lab.read_text())
+        if d.get("heldout"):
+            continue
         ev = [e for e in d["events"] if e["role"] == "drone"]
         if not ev:
+            (neg_val if d["seed"] >= val_seed else neg_train).append((read16k(root / "audio" / f"{lab.stem}.wav"), "scene"))
             continue
         lo, hi = int(ev[0]["onset"] * FS), int(ev[0]["offset"] * FS)
         if hi - lo < N:
             continue
         (val if d["seed"] >= val_seed else train).append((read16k(root / "audio" / f"{lab.stem}.wav"), lo, hi))
-    return train, val
+    return train, val, neg_train, neg_val
 
 
 def load_nodrone(root: Path, val_rig: str, limit: int | None):
@@ -131,7 +139,8 @@ def scores(scorer, pos, neg) -> dict:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--drones", type=Path, required=True)
+    p.add_argument("--drones", type=Path, nargs="+", required=True,
+                   help="one or more scene folders (make_scenes.py --out), e.g. it11/drone it11/nodrone")
     p.add_argument("--nodrone", type=Path, required=True)
     p.add_argument("--name", required=True)
     p.add_argument("--out", type=Path, default=REPO / "artifacts" / "runs")
@@ -147,8 +156,9 @@ def main() -> None:
     a.out.mkdir(parents=True, exist_ok=True)
     log = lambda m: print(time.strftime("%H:%M:%S"), m, flush=True)  # noqa: E731
 
-    d_train, d_val = load_drones(a.drones, a.val_seed, a.limit)
+    d_train, d_val, w_train, w_val = (sum(z, []) for z in zip(*(load_drones(r, a.val_seed, a.limit) for r in a.drones)))
     n_train, n_val = load_nodrone(a.nodrone, a.val_rig, a.limit)
+    n_train, n_val = n_train + w_train, n_val + w_val       # no-drone scenes, if any, are no-drone too
     if not (d_train and d_val and n_train and n_val):
         raise SystemExit(f"empty split: drones {len(d_train)}/{len(d_val)}, no-drone {len(n_train)}/{len(n_val)}")
     hop = int(a.eval_hop * FS)

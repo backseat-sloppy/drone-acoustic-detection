@@ -22,7 +22,16 @@ those.
 Non-drone classes come from FSD50K eval (CC0 or CC BY only; labels limited to
 the class and its ancestors in the ontology; nothing whose title, tags or
 description mention a drone), read by range request with
-`scripts/fetch_env_clips.py`'s reader. Helicopters are not in FSD50K and are
+`scripts/fetch_env_clips.py`'s reader.
+
+--split dev builds the same classes from FSD50K dev instead (source fsd50k_dev, the
+split that may be trained on; eval is a held-out test source), and adds the classes
+FSD50K has no label for (KEYWORDS: helicopter, scooter, mower, ..., the war classes),
+chosen by a word in the title or tags plus a fitting label, never with a music or
+speech label. A clip goes to the first class that takes it, so no stem is in two
+classes. Keyword picks are not listened to; expect some that do not fit.
+
+    uv run python scripts/build_stems.py --split dev --per-class 30 --skip-drones Helicopters are not in FSD50K and are
 not here yet.
 
 Every stem is mono at 44.1 kHz, at most --max-seconds long (the most energetic
@@ -120,6 +129,35 @@ PICKED = {
         "prop_plane": [("dev", "403316"), ("dev", "369482"), ("eval", "431206")],
     },
 }
+# class -> (group, title/tag regex, labels of which the clip must have one); dev only, in this order
+# (a clip goes to the first class that matches it: machine gun before small arms, far explosions
+# before mortar and artillery)
+AIR = {"Aircraft", "Fixed-wing_aircraft_and_airplane", "Engine", "Vehicle"}
+ROAD = {"Vehicle", "Motor_vehicle_(road)", "Motorcycle", "Engine", "Idling", "Accelerating_and_revving_and_vroom"}
+MACHINE = {"Engine", "Mechanisms", "Tools", "Power_tool", "Idling", "Mechanical_fan", "Sawing"}
+BUG = {"Insect", "Buzz", "Animal", "Wild_animals"}
+GUN = {"Gunshot_and_gunfire", "Explosion"}
+BOOM = {"Explosion", "Boom", "Gunshot_and_gunfire", "Thunder"}
+KEYWORDS = {
+    "helicopter": ("distracter", r"helicopter|chopper", AIR),
+    "prop_plane": ("distracter", r"propeller|prop plane|cessna|piper|biplane", AIR),
+    "jet": ("war", r"\bjets?\b|jet engine", AIR),
+    "scooter": ("distracter", r"scooter|moped|vespa", ROAD),
+    "tank": ("war", r"\btanks?\b.*(army|military|engine|tracks?)|(army|military).*\btanks?\b|panzer|\bapc\b",
+             ROAD | MACHINE),
+    "mower": ("distracter", r"lawn ?mower|mower", MACHINE),
+    "chainsaw": ("distracter", r"chain ?saw", MACHINE),
+    "generator": ("distracter", r"generator", MACHINE),
+    "mosquito": ("distracter", r"mosquito|gnat", BUG),
+    "buzzing_insect": ("distracter", r"\bbees?\b|bumblebee|wasp|hornet|\bfly\b|\bflies\b", BUG),
+    "machine_gun": ("war", r"machine ?gun|minigun|automatic (rifle|fire)", GUN),
+    "small_arms": ("war", r"rifle|pistol|handgun|shotgun|revolver|\bak-?47|\bm16", GUN),
+    "explosion_far": ("war", r"(distant|far|faraway|far-off).*(explosion|boom|blast|bomb)"
+                             r"|(explosion|boom|blast|bomb).*(distant|far away)", BOOM),
+    "mortar_artillery": ("war", r"mortar|artillery|howitzer|cannon", BOOM),
+    "air_raid_siren": ("war", r"air ?-?raid|civil defen[cs]e siren|warning siren", {"Siren", "Alarm"}),
+}
+NOT_WANTED = {"Music", "Musical_instrument", "Speech", "Singing"}
 # Clips whose label does not fit their content, found by reading the titles (2026-10-26)
 EXCLUDE = {"214675": "'Bubble wrap', labelled Explosion", "238926": "'Click-Click.wav', labelled traffic",
            "25287": "'Wails_ses2.wav', labelled Crowd",
@@ -191,31 +229,47 @@ def finish(x, target_dbfs):
 
 # ------------------------------------------------------------------ sources
 
-def fsd_candidates(per_class, min_s):
-    """Up to per_class clips per class: licence-clean, labels within the class's branch, no drone words."""
-    gt = {r["fname"]: r["labels"].split(",") for r in csv.DictReader(fz.open_meta("FSD50K.ground_truth/eval.csv"))}
-    info = json.loads(fz.open_meta("FSD50K.metadata/eval_clips_info_FSD50K.json").read())
-    cd = fz.central_directory()
+def fsd_candidates(per_class, min_s, split="eval"):
+    """Up to per_class clips per class: licence-clean, labels within the class's branch, no drone words.
+    split "dev" adds the KEYWORDS classes; a clip goes to the first class that takes it."""
+    parts = fz.PARTS if split == "eval" else fz.DEV_PARTS
+    gt = {r["fname"]: r["labels"].split(",") for r in csv.DictReader(fz.open_meta(f"FSD50K.ground_truth/{split}.csv"))}
+    info = json.loads(fz.open_meta(f"FSD50K.metadata/{split}_clips_info_FSD50K.json").read())
+    cd = fz.central_directory(parts)
     sizes = {Path(k).stem: (k, v) for k, v in cd.items() if k.endswith(".wav")}
-    out = []
+
+    def clean(fname):
+        meta = info[fname]
+        text = " ".join([meta["title"], meta.get("description", ""), " ".join(meta.get("tags", []))])
+        return (fname in sizes and sizes[fname][1][4] / fz.BYTES_PER_S >= min_s and fname not in EXCLUDE
+                and any(a in meta["license"] for a in fz.ALLOWED) and not DRONE_WORDS.search(text))
+
+    tests = []                                            # (group, cls, test(fname, labels))
     for group, classes in FSD_CLASSES.items():
         for cls, (label, extra) in classes.items():
             with_label = [set(l) for l in gt.values() if label in l]
-            ancestors = set.intersection(*with_label) - {label}  # FSD50K always adds a label's ancestors
-            rows = []
-            for fname, labels in gt.items():
+            allowed = set.intersection(*with_label) | extra  # FSD50K always adds a label's ancestors
+            tests.append((group, cls, lambda f, ls, label=label, allowed=allowed: label in ls and set(ls) <= allowed))
+    if split == "dev":
+        for cls, (group, pattern, need) in KEYWORDS.items():
+            rx = re.compile(pattern, re.I)
+            tests.append((group, cls, lambda f, ls, rx=rx, need=need: (
+                bool(need & set(ls)) and not NOT_WANTED & set(ls)
+                and bool(rx.search(info[f]["title"] + " " + " ".join(info[f].get("tags", [])))))))
+    out, taken = [], set()
+    for group, cls, test in tests:
+        rows = []
+        for fname, labels in gt.items():
+            if fname not in taken and test(fname, labels) and clean(fname):
                 meta = info[fname]
-                text = " ".join([meta["title"], meta.get("description", ""), " ".join(meta.get("tags", []))])
-                secs = sizes[fname][1][4] / fz.BYTES_PER_S
-                if (label in labels and set(labels) <= ancestors | extra | {label} and secs >= min_s
-                        and fname not in EXCLUDE
-                        and any(a in meta["license"] for a in fz.ALLOWED) and not DRONE_WORDS.search(text)):
-                    rows.append(dict(group=group, cls=cls, source="fsd50k_eval", id=fname, seconds=round(secs, 1),
-                                     labels=",".join(labels), license=meta["license"], uploader=meta["uploader"],
-                                     title=meta["title"], member=sizes[fname]))
-            rows.sort(key=lambda r: -r["seconds"])
-            out += rows[:per_class]
-            print(f"  {group}/{cls}: {len(rows)} candidates, taking {min(per_class, len(rows))}")
+                rows.append(dict(group=group, cls=cls, source=f"fsd50k_{split}", id=fname,
+                                 seconds=round(sizes[fname][1][4] / fz.BYTES_PER_S, 1),
+                                 labels=",".join(labels), license=meta["license"], uploader=meta["uploader"],
+                                 title=meta["title"], member=sizes[fname], parts=parts))
+        rows.sort(key=lambda r: -r["seconds"])
+        out += rows[:per_class]
+        taken |= {r["id"] for r in rows[:per_class]}
+        print(f"  {group}/{cls}: {len(rows)} candidates, taking {min(per_class, len(rows))}")
     return out
 
 
@@ -271,6 +325,11 @@ def main():
     ap.add_argument("--floor-db", type=float, default=-20.0)
     ap.add_argument("--max-loss-db", type=float, default=1.0,
                     help="keep a gated stem only if it lost at most this much content")
+    ap.add_argument("--split", choices=("eval", "dev"), default="eval",
+                    help="FSD50K split for the non-drone classes (dev: the trainable one, plus KEYWORDS)")
+    ap.add_argument("--resume", action="store_true",
+                    help="FSD50K stems already on disk are kept, not fetched again; their manifest row is "
+                         "rebuilt from the file (denoise 'resumed', gate figures blank)")
     ap.add_argument("--skip-fsd", action="store_true")
     ap.add_argument("--skip-drones", action="store_true")
     ap.add_argument("--picked", action="store_true", help="build only the PICKED clips")
@@ -334,20 +393,30 @@ def main():
                       title=p.name, labels="drone,hover,1m"))
 
     if not a.skip_fsd:
-        print("FSD50K eval:")
-        for r in fsd_candidates(a.per_class, a.min_seconds):
+        print(f"FSD50K {a.split}:")
+        for r in fsd_candidates(a.per_class, a.min_seconds, a.split):
+            path = OUT / r["group"] / r["cls"] / f"{r['source']}_{r['id']}.wav"
+            if a.resume and path.exists():
+                y, _ = sf.read(path, dtype="float64")
+                rows.append(dict(group=r["group"], cls=r["cls"], source=r["source"], id=r["id"],
+                                 file=str(path.relative_to(ROOT)), seconds=round(len(y) / FS, 2), denoise="resumed",
+                                 noise_removed_db=None, content_kept_db=None, active_rms_in_dbfs=None, gain_db=None,
+                                 active_rms_out_dbfs=round(active_rms_db(y), 1),
+                                 peak_dbfs=round(20 * np.log10(np.abs(y).max()), 1),
+                                 **{k: r[k] for k in ("license", "uploader", "title", "labels")}))
+                continue
             disk, off, csize, method, _ = r.pop("member")[1]
-            x = read_mono(fz.read_member(disk, off, csize, method))
-            policy = "percentile" if r["group"] == "distracter" else "none"
+            x = read_mono(fz.read_member(disk, off, csize, method, r.pop("parts")))
+            policy = "percentile" if r["group"] in ("distracter", "war") else "none"
             profile = np.percentile(np.abs(spec(x)[2]), 20, axis=1) if policy != "none" else None
             save(r.pop("group"), r.pop("cls"), r.pop("source"), r.pop("id"), x, policy, profile,
                  {k: r[k] for k in ("license", "uploader", "title", "labels")})
 
     OUT.mkdir(parents=True, exist_ok=True)
-    built = {(r["group"], r["cls"]) for r in rows}        # keep the rows of classes this run did not build
+    built = {r["file"] for r in rows}                     # keep the rows of stems this run did not write
     if (OUT / "manifest.csv").exists():
         rows = [r for r in csv.DictReader(open(OUT / "manifest.csv", encoding="utf-8"))
-                if (r["group"], r["cls"]) not in built] + rows
+                if r["file"] not in built] + rows
     keys = list(dict.fromkeys(k for r in rows for k in r))
     with open(OUT / "manifest.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=keys)
