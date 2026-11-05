@@ -61,7 +61,19 @@ COLORS = {"CNN": "#2a78d6", "comb": "#1baf7a"}
 MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file with its threshold, checkpoint)
           "it9 CNN": (ROOT / "artifacts/runs/final_dscnn.json", MODEL_DIR / "final_dscnn_none_simdist_dscnn.pt"),
           "it9 CRNN": (ROOT / "artifacts/runs/final_crnn.json", MODEL_DIR / "final_crnn_none_simdist_crnn.pt"),
-          "it10 CNN": (ROOT / "artifacts/it10_clean/clean_s0.json", ROOT / "artifacts/it10_clean/clean_s0_dscnn.pt")}
+          "it10 CNN": (ROOT / "artifacts/it10_clean/clean_s0.json", ROOT / "artifacts/it10_clean/clean_s0_dscnn.pt"),
+          "it11 CNN": (ROOT / "artifacts/it11_soundscapes/it11_s0.json",   # soundscape scenes, seed 0
+                       ROOT / "artifacts/it11_soundscapes/it11_s0_dscnn.pt"),
+          "it11r CNN": (ROOT / "artifacts/it11r_realism/it11r_s0.json",    # the same with --realism, seed 0
+                        ROOT / "artifacts/it11r_realism/it11r_s0_dscnn.pt"),
+          "it11r CRNN": (ROOT / "artifacts/it11r_crnn/it11r_crnn_s0.json",  # it11r scenes, CRNN, seed 0
+                         ROOT / "artifacts/it11r_crnn/it11r_crnn_s0_crnn.pt"),
+          "it11r CRNN 600k": (ROOT / "artifacts/it11r_crnn600k/it11r_crnn600k_s0.json",  # as above, 3x the training
+                              ROOT / "artifacts/it11r_crnn600k/it11r_crnn600k_s0_crnn.pt"),
+          # itG = the Glasgow experiment (report entries 106-110), trained on the Mac, seed 0:
+          #   A = Pd drones only (the comparison run), B = half the drones real Glasgow recordings
+          "itG-A CNN": (ROOT / "artifacts/itG/A_s0.json", ROOT / "artifacts/itG/A_s0_dscnn.pt"),
+          "itG-B CNN": (ROOT / "artifacts/itG/B_s0.json", ROOT / "artifacts/itG/B_s0_dscnn.pt")}
 OFF = float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
 NO_DRONE = 0.0                                               # drone "speed" of the no-drone row (war only)
 

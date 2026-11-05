@@ -6200,3 +6200,609 @@ E are rejected. Real war recordings are still wanted, as test data.
 random-phase copies of real drone and no-drone windows and on a
 noise-slope sweep from -12 to +6 dB/octave, and score the steady suite as
 the baseline.
+
+## 101 - Soundscape line: a per-drone fingerprint and a recording chain (`--realism`)
+- Date: 2026-11-04
+- Iteration: the soundscape line on branch it11-soundscapes (artifacts `it11_*`). It is not
+  master's iteration 11. Its earlier entries were dropped by the 14:42 merge of master
+  (c96f8d4) and are still to be restored; they survive in commit 850d1f6.
+- Type: Data
+- Commit: uncommitted (on top of c96f8d4)
+
+**What changed.**
+1. `DroneSoundHarm.pd` gets four receivers, `det0`..`det3`, wired to the
+   right inlets of the motors' detune `+` objects. `render.render_dry(...,
+   detune=)` sets them through the qlist. Without it, the patch keeps
+   0, +2.3, -3.7 and +5.1 Hz.
+2. `drone_sim.make_scene` takes three optional extras:
+   - `detune`;
+   - prop noise: white noise band-passed at `noise_fc` with Q `noise_q`,
+     following the throttle, added at `noise_db` against the motor tone at
+     1 m, from its own rng;
+   - a ground reflection: the image source mirrored in flat ground
+     `mic_h` below the microphone, `refl_db` below the direct path.
+3. `make_scenes.py --realism` draws those extras per drone:
+   - detune U(-5, +5)% of the cruise pitch for each motor;
+   - noise U(-25, -3) dB, log-U(300, 4000) Hz, Q U(0.5, 2);
+   - mic height U(0.5, 3) m, reflection U(-8, -1) dB.
+
+   It also applies a recording chain per seed to the whole mix:
+   - a high-pass at log-U(30, 200) Hz;
+   - a smooth EQ of U(-6, +6) dB at 6 log-even points over 50-8000 Hz;
+   - a decaying-noise reverb with RT60 U(0.05, 0.5) s at U(-25, -8) dB;
+
+   then levels the mix again. The chain comes from `rng([seed, 2])`, so the
+   drone and no-drone scenes of one seed share it, and the chain cannot
+   tell the label. The label JSON records the drone extras and `chain`.
+**Why.** Mads asked for both changes after the it11 CNN did badly on his
+GUI run of `sealed_peek` clips (10 real ARIS drone excerpts with the war
+track at 0 dB):
+- the CNN alarmed on 7 of 10 clips, with a mean of 14% of windows flagged
+  (median 5%);
+- comb alarmed on 4 of 10 (mean 4%);
+- neither alarmed on the war-only rows.
+
+Hypotheses, not tested: every Pd drone had the same rotor detune (so the
+same beating) and the same noise band, and no drone passed through a
+microphone, a room or a ground reflection. Mads declined a measurement on
+the real development rigs. **Test-hygiene note:** `sealed_peek` holds
+excerpts of ITU ARIS, a sealed test source (docs/datasets.md). Its result
+is what prompted this change, so this design step was steered by a look at
+sealed test audio (CLAUDE.md section 5).
+**How.** `uv run pytest tests/test_make_scenes.py`: 5 passed (new:
+`test_chain_is_seeded_and_keeps_the_level_rule`,
+`test_realism_detune_scales_with_pitch`).
+
+Pd check: a steady throttle-60 render with `falloff 4`.
+- Fixed detune: one motor peak in 180-320 Hz, at 237.1 Hz.
+- Detune (0, +40, -40, +80) Hz: four peaks, at 195.8, 234.5, 274.9 and
+  315.0 Hz.
+
+Smoke render: `make_scenes.py --realism --n 3 --seed 300 --p-drone {1,0}
+--sources fsd50k_dev --out data/processed/scenes/listen_realism/p{1,0}`.
+Each pair shares its chain. Detunes are -24.5 to +12.0 Hz at f0 316-516 Hz.
+**Result.** No training and no scoring.
+**Assessment.** These are scaffolding changes. The hypothesis is that the
+model then learns "a drone" rather than "this patch". It is to be judged
+on real drones, and preferably on a real development set rather than on
+the sealed ARIS excerpts.
+**Next.** Mads listens. Then, if he wants: render 6 h + 6 h with
+`--realism`, upload and train three seeds as before.
+
+## 102 - Listening check of `--realism`: the drone stays audible
+- Date: 2026-11-04
+- Iteration: the soundscape line (see entry 101)
+- Type: Data
+- Commit: uncommitted
+
+**What changed.** Nothing in the code.
+**How.** Mads found the three entry 101 scenes hard to hear: seeds 300-302
+at SNR +7.8, -3.9 and +7.6 dB, each with a bed, events, transients and in
+two a confuser. An A/B for seed 300, in
+`data/processed/scenes/listen_ab/`:
+- A: the drone alone, as before;
+- B: the same drone alone with `--realism`;
+- C: a `--realism` scene at +10 dB.
+**Result.** Mads: B and C are good. The realism changes do not bury the
+drone. The difficulty came from the soundscape at those SNRs, which is
+intended by the -20 to +10 dB range.
+**Next.** Ranges unchanged. Render the training set with `--realism` when
+Mads says so.
+
+## 103 - The `--realism` training set, uploaded, and three seeds training
+- Date: 2026-11-04
+- Iteration: the soundscape line (see entry 101)
+- Type: Data, Model
+- Commit: rendering uncommitted (on top of c96f8d4); training on the server at 850d1f6
+
+**What changed.** Mads rendered `data/processed/scenes/it11r/` on the Mac.
+It uses the commands of the first set with `--realism` added: seeds
+0-2159, `--p-drone 0` and `1`, `--sources fsd50k_dev`. It was then
+uploaded and trained, at Mads's request.
+**Check.** Label files, checked with a short script:
+- 2160 + 2160 scenes, 6.00 h each, 5.38 h of drone, none heldout, every
+  non-drone stem from `fsd50k_dev`;
+- confusers in 838 scenes (39%);
+- every scene has a chain, all 2160 drone/no-drone pairs share theirs, and
+  all 2160 drones have their own detune.
+
+`throttle.txt` was restored.
+**Upload.** As in the first set: an uncompressed zip of 1 392 648 171 bytes,
+MD5 1f59e8fa4734a42559f8c843ccd44edb. It went in 167 chunks of 8 MB in
+106 s, and the MD5 on the server matches. 4320 WAVs and 4320 labels, at
+`~/drone-acoustic-detection/data/processed/scenes/it11r/`.
+**Training.** Started at 15:25, one TITAN X per seed, named
+`it11r_s{0,1,2}`, with the same command and defaults as the it11 runs. The
+server's `train_clean.py` at 850d1f6 is all training needs; `--realism`
+only matters for rendering.
+- Split: 1800 drone scenes and 2053 no-drone clips for training;
+  validation of 5956 drone and 15 839 no-drone windows.
+- `comb` on this validation: AUC 0.598, recall 0.151 at 5% false alarms.
+
+The validation set differs from the it11 one (it has the chain and the
+fingerprints), so the two cannot be compared as a gain or a loss.
+**Next.** Collect the results and the checkpoints, then add an "it11r CNN"
+to the GUIs if Mads wants.
+
+## 104 - `--realism` results (validation only), checkpoints copied, "it11r CNN" in the GUIs
+- Date: 2026-11-04
+- Iteration: the soundscape line (see entry 101)
+- Type: Model, Infrastructure
+- Commit: uncommitted (on top of c96f8d4)
+
+**Result.** Entry 103's three runs finished at 15:34. Validation: 5956
+drone and 15 839 no-drone windows, 1 s window, 0.5 s hop.
+
+| Model | Seed | AUC | Recall at 5% FA | FA at 95% recall | Threshold |
+|---|---|---|---|---|---|
+| comb | (untrained) | 0.598 | 0.151 | 1.000 | 7.020 |
+| lgbm | 0 / 1 / 2 | 0.681 / 0.699 / 0.641 | 0.237 / 0.253 / 0.241 | 0.856 / 0.821 / 0.891 | 0.68-0.69 |
+| dscnn | 0 / 1 / 2 | 0.824 / 0.817 / 0.813 | 0.374 / 0.382 / 0.374 | 0.551 / 0.574 / 0.576 | 0.622 / 0.644 / 0.635 |
+
+DS-CNN training took 491-500 s per seed. The loss at 50k / 100k / 150k /
+200k windows was 0.645-0.651 / 0.609-0.611 / 0.594-0.598 / 0.584-0.589,
+still falling at the end.
+
+The validation set is not the one of the runs without `--realism`, which
+reached dscnn AUC 0.812-0.826. It now holds the recording chain and the
+per-drone fingerprints, so the two cannot be compared as a gain or a loss.
+**Assessment.** Synthetic validation, so this is not detection performance
+(CLAUDE.md section 5). The DS-CNN beats both baselines on every seed, by
+AUC +0.12 to +0.17 over lgbm, and its seeds agree (0.813-0.824). Whether
+`--realism` helps on real drones is untested.
+**Checkpoints.** The 12 files (`it11r_s{0,1,2}` `.json`, `.log`,
+`_dscnn.pt`, `_lgbm.pkl`) were copied from the server into
+`artifacts/it11r_realism/` as in the first set, and all 12 MD5s match. The
+JupyterLab page posted them to a localhost receiver that accepts only
+these names.
+**GUIs.** `drone_war_grid.MODELS` has a new "it11r CNN" entry:
+`artifacts/it11r_realism/it11r_s0_dscnn.pt`, threshold 0.6224 from
+`it11r_s0.json`. It sits next to "it11 CNN", which this branch added
+before (entry still to be restored, see entry 101). `detect_gui.py` lists
+it. In `drone_war_gui.py`, six names no longer fit the horizontal model
+row, so the picker became a column at (0.19, 0.005), next to Flush plots.
+The load check and the offscreen renders of both windows show all six.
+**Next.** Mads tries "it11r CNN" against "it11 CNN" in the GUI. A test on
+a real development set would be the fair comparison.
+
+## 105 - Mads's GUI comparison on the sealed_peek clips: `--realism` helps, synthetic training still lags
+- Date: 2026-11-04
+- Iteration: the soundscape line (see entry 101)
+- Type: Evaluation
+- Commit: uncommitted
+
+**What changed.** Nothing. Mads ran `detect_gui.py` three times on the same
+batch:
+- the 10 `sealed_peek` drone clips (ITU ARIS excerpts), each mixed with
+  the war track at 0 dB;
+- the Dummy clip;
+- the "DUMMY war track" row.
+
+One run each with "it11r CNN", "it11 CNN" and "it9 CRNN". The figures below
+are read from his screenshot of the three windows (% of windows alarmed).
+**Result.** Drone clips 10 to 01, in that order:
+
+| Model | Drone_10 ... Drone_01 | Clips alarmed | Mean | Dummy rows |
+|---|---|---|---|---|
+| it11 CNN | 11, 0, 1, 25, 0, 0, 3, 64, 5, 26 | 7 / 10 | 13.5% | 0% |
+| it11r CNN | 14, 1, 40, 25, 1, 15, 12, 63, 11, 49 | 10 / 10 | 23.1% | 0% |
+| it9 CRNN | 62, 45, 82, 79, 67, 77, 19, 74, 41, 37 | 10 / 10 | 58.3% | 0% |
+| comb | 0, 0, 0, 0, 0, 22, 8, 0, 1, 5 | 4 / 10 | 3.6% | 0% |
+
+**Assessment.** These are ten clips from one sealed source, under one
+noise condition, so this is indicative and not a test result. The share of
+alarmed windows is not recall against a label: the clips have no sidecar,
+and the drone is taken to be present throughout.
+- `--realism` almost doubled the it11 CNN's alarmed share and found every
+  clip.
+- The model trained on real drones (it9 CRNN, entry 096) still alarms
+  2.5 times as often.
+- None of them alarmed on the war-only rows.
+
+**Test-hygiene note:** this is the second design discussion steered by the
+sealed ARIS excerpts (see entry 101). A final verdict needs data that has
+not been looked at.
+**Next.** For Mads to decide:
+- (A) allow real drones in training beside the synthetic ones, which needs
+  a change to REQUIREMENTS.md;
+- (B) set the threshold on real, unsealed development data first, with no
+  training;
+- (C) a CRNN on the synthetic set, which needs a council first;
+- (D) more realistic synthesis.
+
+Claude recommends B first.
+
+## 106 - Council: real Glasgow drones in training next to the Pd drones
+- Date: 2026-11-04
+- Iteration: the soundscape line (see entry 101)
+- Type: Council
+- Commit: uncommitted
+
+**Question.** Should the next model train on real drone recordings next
+to the synthetic Pd drones? Mads chose this (option A, entry 105). The
+alternatives were:
+- (a) keep synthetic-only training;
+- (b) add the 24-drone Glasgow set as drone sources in the same
+  `--realism` soundscapes;
+- (c) set the threshold on real development data first;
+- (d) a CRNN.
+
+Constraints: off campus, the GPU server cannot be reached and Mads allows
+training on the Mac (M1 Pro, MPS). The real field rigs and real no-drone
+audio are not on the Mac. Glasgow, FSD50K stems, the war track and the 10
+ARIS excerpts are.
+
+**Devil's Advocate (against (b)).**
+- *Decisive, partly answered.* There is no uncontaminated real validation
+  set on the Mac, so a gain could only be seen on the sealed ARIS
+  excerpts, which have already steered two decisions. Answer: held-out
+  Glasgow drones become the validation and test sources, the success rule
+  is fixed below before anything runs, and ARIS is scored once at the end.
+  What stands: the Glasgow figures are in-domain, so the out-of-domain
+  verdict rests on 10 clips (about +-10 points of noise) until a real
+  field rig is scored on campus.
+- *Decisive, answered by design.* Every real positive carries the Glasgow
+  room and microphone, and no negative does (the iteration 1 failure
+  mode). Answer: the Glasgow drone-free room recording
+  (`noise/_uav_2022noise_n_noise_1m_.WAV`, 60 min) goes into the negatives
+  through the same chain. More than 5% alarms on it, at the frozen
+  threshold, counts as a leak and fails the experiment.
+- *Serious, answered.* It overturns a data rule from the day before,
+  before Glasgow has been audited for the near-silent clips that motivated
+  the rule. Answer: Mads makes the rule change himself (below), and an
+  audit of the 256 clips' levels and silence comes before rendering.
+- *Serious, stands, stated.* A split by drone still shares one session.
+  Glasgow validation and test therefore measure "unseen drone, seen room"
+  and are not R2/R3 evidence.
+- *Serious, partly answered.* Pushing near-field 1 m audio out to range is
+  physically doubtful. Answer: the 5 m recordings are used too. Whether it
+  transfers is exactly what the ARIS check measures.
+
+**Scholar (context-free).** Synthetic data for scale plus real data to
+anchor the model is standard practice: DESED/Scaper soundscapes, and
+multi-condition training with simulated RIRs and noise (Ko et al., ICASSP
+2017). Option (b) is standard on three conditions: split by drone model,
+weight the small real set, and report synthetic-only (a) beside it as an
+ablation. A threshold from synthetic validation does not carry over to
+real data (Ovadia et al., NeurIPS 2019), so thresholds belong on a real,
+in-domain development set. (d) is a defensible variation but no remedy
+for domain shift, and changing data and architecture at once confounds
+the result. Unsettled: the synthetic-to-real mix ratio, and whether
+re-propagated near-field indoor drones stand in for far-field outdoor
+ones. Sources as the Scholar reported them; their checking was its own.
+**No departure from best practice in the decision.**
+
+**Problem Solver.** Try a modified version of (b).
+- Mix, do not replace: 50% of drone scenes take a Glasgow hover clip as
+  the dry source in `drone_sim.make_scene`, in place of `render_dry`.
+- Split by drone: train d1-d16, validation d17-d20, test d21-d24.
+- Run A (it11r recipe, no real drones) against run B (identical except
+  the Glasgow drones), 3 seeds each, on the Mac. `train_clean.py`'s
+  `--nodrone` becomes optional.
+- Step 0 is option (c) for free: score the it11r models on validation
+  scenes with d17-d20 drones. If the AUC is high and only the recall is
+  low, the threshold is the problem.
+
+**Decision (Claude).** The modified (b), as the Problem Solver laid it
+out, with the Devil's Advocate's conditions built in. Success rule, fixed
+now, at the threshold frozen on Glasgow validation (5% false alarms):
+- *Success:* on the ARIS excerpts with the war track at 0 dB, B alarms on
+  at least 45% of windows (about twice it11r's 23.1%), with at most 5%
+  false alarms on the war-only rows, on the Glasgow room recording and on
+  FSD50K-eval no-drone stems.
+- *Failure:* B at or below 30% on ARIS. Also failure: B is high on Glasgow
+  d21-d24 while ARIS does not move (it learned Glasgow).
+- *Leak:* more than 5% alarms on the Glasgow room recording, whatever else
+  holds.
+
+Run A's figures, comb and LightGBM are reported alongside. Everything is
+scored once on ARIS and on Glasgow d21-d24, and each scoring is logged.
+No CRNN in this step.
+
+**Needed from Mads before training:** approve the change to the data rule
+in REQUIREMENTS.md. Mac training is already approved (2026-11-04).
+
+## 107 - Requirements: real Glasgow drones allowed in training
+- Date: 2026-11-04
+- Iteration: the soundscape line (see entry 101)
+- Type: Requirements
+- Commit: uncommitted
+
+**What changed.** At Mads's word ("Yes, change it") after entry 106's
+council, the REQUIREMENTS.md row "Synthetic training data" now allows
+real drone recordings from the Glasgow set in training as well as
+synthetic drones: drones d1-d16 train, d17-d20 validate, d21-d24 test.
+Other real drone recordings stay for validation and test, with the FPV
+clips as test. Before, training could use only synthetic drones (entry
+087).
+**Why.** Entry 105: models trained only on synthetic drones alarm on
+13-23% of windows of the ARIS excerpts, against 58% for a model trained
+on real rigs.
+**Next.** Entry 106's plan: audit the Glasgow clips, then build, render
+and train runs A and B on the Mac.
+
+## 108 - Glasgow audit; real drones and the room recording in `make_scenes.py`; `--nodrone` optional
+- Date: 2026-11-04
+- Iteration: the soundscape line (see entry 101)
+- Type: Data
+- Commit: uncommitted
+
+**Audit (entry 106's condition).** All 256 Glasgow hover recordings are
+44.1 kHz:
+- 24 drones; 16 drones have 10 files and 8 have 12; each file 120-148 s;
+- RMS at 1 m -54.9 to -51.5 dBFS, at 5 m -58.3 to -55.0;
+- no 0.5 s frame more than 30 dB below its clip's loudest, digital zeros
+  at most 1%, no clip more than 10 dB below the median.
+
+So none has the near-silent defect that motivated the synthetic-only rule.
+**A finding about the room recording.** It is 60.5 min at -56.5 dBFS. In
+Welch spectra (8192 points), the drone clips are quieter than the room
+recording in every band below 2 kHz: 1 m clips -20.8 dB at 50-200 Hz,
+-7.9 dB at 200-500 Hz, -8.8 dB at 500-1000 Hz, -2.6 dB at 1-2 kHz. They
+are louder only at 2-4 kHz (+3.3 dB) and 4-8 kHz (+11.4 dB); the 5 m clips
+are 1.5-4 dB lower. The room recording was therefore made at another gain
+or under other conditions than the background inside the drone clips. As a
+leak probe it tests the room's spectral shape, not the exact background
+under the drones. That weakens entry 106's leak check, which still stands
+as the only one available here.
+**What changed.**
+1. `drone_sim.make_scene(..., dry=)`: a real 44.1 kHz recording replaces
+   the Pd render. It is looped from a random start (rng `[seed, 5]`) and
+   then flown the same way.
+2. `make_scenes.py --real-drones DIR --p-real P`: a drone scene flies a
+   Glasgow hover clip (1 m or 5 m) with probability P (rng `[seed, 4]`, so
+   a Pd scene is identical with or without the option).
+   - The drone number comes from `--drone-ids` (default 1-16), or from
+     `--val-drone-ids` (17-20) for seeds >= `--val-seed` (1800, as in
+     `train_clean.py`).
+   - Overlapping id sets are refused.
+   - Real drones keep `--realism`'s ground reflection and chain, but not
+     its detune or prop noise.
+3. `--room-noise FILE --room-db` (default -20 to -5 dB against a stem):
+   every scene, drone or not, gets an excerpt of the room recording (rng
+   `[seed, 3]`). It is part of the SNR reference.
+4. `train_clean.py --nodrone` is optional. Without it, the negatives are
+   the no-drone scenes only, because the real no-drone recordings are on
+   the server.
+**How.** `uv run pytest tests/test_make_scenes.py`: 6 passed (new:
+`test_drone_ids_and_the_glasgow_split_by_seed`). Smoke render, seeds
+1798-1801 with `--p-real 1`:
+- training seeds flew d15 and d2, validation seeds flew d17;
+- every drone scene's other events and chain equal its no-drone
+  partner's;
+- 4 scenes rendered in 8 s.
+**Next.** Render, in `data/processed/scenes/itG/`:
+- `nodrone`: seeds 0-2159, shared by A and B;
+- `droneA`: Pd only;
+- `droneB`: `--p-real 0.5`;
+- `test_drone`: seeds 5000-5359, all Glasgow d21-d24;
+- `test_nodrone`: seeds 5000-5359.
+
+All with `--realism --room-noise ... --sources fsd50k_dev`. Then time
+training on MPS.
+
+## 109 - The A and B training sets rendered; Pd retries raised to 6
+- Date: 2026-11-04
+- Iteration: the soundscape line (see entry 101)
+- Type: Data, Bug fix
+- Commit: uncommitted
+
+**Result.** In `data/processed/scenes/itG/`, all with `--realism`
+`--room-noise` and `--sources fsd50k_dev`:
+
+| Set | Seeds | Scenes | Drones |
+|---|---|---|---|
+| `nodrone` (shared by A and B) | 0-2159 | 2160 | none |
+| `droneB` | 0-2159 | 2160 | 1058 Glasgow, 1102 Pd |
+| `droneA` + `droneA2` | 0-2159 | 2160 | all Pd |
+| `test_drone` | 5000-5359 | 360 | all Glasgow, d21-d24 only |
+| `test_nodrone` | 5000-5359 | 360 | none |
+
+- In `droneB`, training seeds use only d1-d16 and validation seeds
+  (>= 1800) only d17-d20.
+- Every scene holds a room excerpt, and none is heldout.
+- The drone and no-drone scenes of a seed share their bed and chain.
+
+**Bug.** The first `droneA` run stopped at scene 62:
+`render.py` raised "Pd render stayed short after 3 attempts" (267 008 of
+515 970 samples). Pd quit before `writesf~` had written the file, while
+Claude's MPS timing run was loading the Mac. `render_dry` now tries 6
+times. The remaining seeds 62-2159 went to `droneA2` with nothing else
+running, needing one retry. A covers every seed 0-2159 exactly once
+(checked from the labels).
+**MPS timing** (not a result): `train_clean.py --device mps` on the it11r
+set, `--limit 1850 --windows 51200`, with a render running at the same
+time, trained the DS-CNN at 575 windows/s. The TITAN X ran at about 400.
+**Next.** Train A_s0-2 and B_s0-2 on the Mac (two at a time,
+`artifacts/itG/`), with `--nodrone` left out (the real no-drone
+recordings are on the server). Then score once with
+`scripts/score_itG.py`.
+
+## 110 - Runs A and B trained on the Mac; the test scoring stopped unfinished
+- Date: 2026-11-05
+- Iteration: the soundscape line (see entry 101)
+- Type: Model, Evaluation
+- Commit: uncommitted
+
+**Training.** `train_clean.py --device mps` without `--nodrone`, two runs at
+a time, 3 seeds each, in `artifacts/itG/`. Each run took 467-508 s.
+Validation was 5956 drone and 6840 no-drone windows.
+
+| Run | Validation | Seed | dscnn AUC | dscnn recall at 5% FA | lgbm AUC | comb AUC |
+|---|---|---|---|---|---|---|
+| A (Pd only) | Pd scenes | 0 / 1 / 2 | 0.691 / 0.686 / 0.691 | 0.31-0.32 | 0.64 | 0.545 |
+| B (half Glasgow) | half Glasgow d17-d20 | 0 / 1 / 2 | 0.730 / 0.728 / 0.732 | 0.39 | 0.69 | 0.529 |
+
+A and B validate on different drones, so the gap is not a test result.
+"itG-A CNN" and "itG-B CNN" (seed 0) are in both GUIs, with a note on
+what the model names mean.
+**Test scoring.** `scripts/score_itG.py` did not finish:
+1. A pipe hid a crash. Attempt 1 ended with no output after loading the
+   sets.
+2. Attempt 2 showed exit 139. LightGBM segfaults on macOS when torch is
+   already loaded (two OpenMP runtimes). The scorer now scores LightGBM
+   before any network.
+3. Attempt 3 was still running after 12.5 h, with 34 min of CPU, because
+   the Mac slept. Mads stopped it ("Forget it", 2026-11-05).
+
+No test figure was seen, except one: while debugging, comb's alarm share
+on the Glasgow room recording at threshold 8.84 was 0.047 on the first
+5 min and 0.0067 on the whole hour. **Entry 106's verdict is therefore
+open.** The test sets have not been scored by any model.
+
+## 111 - CRNN on the it11r scenes: three seeds training on JupyterLab
+- Date: 2026-11-05
+- Iteration: the soundscape line (see entry 101)
+- Type: Model
+- Commit: uncommitted. The server runs 850d1f6 plus this `train_clean.py`,
+  copied by the contents API (MD5 d14194338f43992a55ea75b2f2cd8e69).
+
+**What changed.** `train_clean.py --arch {dscnn,crnn}`, default dscnn. It
+saves `<name>_<arch>.pt` and `models.<arch>` in the JSON. The CRNN is
+`dad.models.zoo.Crnn`, the same architecture master's entry 096 trained on
+real rigs (739 747 parameters). Seeds 0-2 started at 09:30 on the three
+TITAN X, named `it11r_crnn_s{0,1,2}`. Everything else is entry 103's it11r
+command: same scenes, `--nodrone ~/nodrone`, defaults. So the architecture
+is the only change, and the it11r DS-CNN validation (entry 104) compares
+directly.
+**Why.** Mads chose option 2 of 2026-11-05: the CRNN, now that he is on
+campus. Entry 086's council already covered the supervisor's CRNN proposal
+("a CRNN against score smoothing"). Entry 106's Scholar advised testing it
+without changing the data at the same time, which is why only the
+architecture changes. No new council: the architecture is not new to the
+project.
+**Check.** A local smoke run of 2048 windows on MPS trained, scored and
+saved `_crnn.pt` (140 windows/s). On the server all three logs show
+entry 103's split: 1800 drone scenes, 2053 no-drone clips, validation
+5956 / 15 839 windows, comb AUC 0.598.
+**Next.** Collect the three results, copy the checkpoints, and add
+"it11r CRNN" to the GUIs.
+
+## 112 - CRNN on the it11r scenes: validation results; "it11r CRNN" in the GUIs
+- Date: 2026-11-05
+- Iteration: the soundscape line (see entry 101)
+- Type: Model
+- Commit: uncommitted
+
+**Result.** Entry 111's runs finished at 09:39 after 200 000 windows each.
+Validation was the same as the it11r DS-CNN's (entry 104): 5956 drone and
+15 839 no-drone windows, 1 s window, 0.5 s hop.
+
+| Model | Seed 0 / 1 / 2 AUC | Recall at 5% FA | Threshold |
+|---|---|---|---|
+| it11r CRNN | 0.775 / 0.798 / 0.811 | 0.329 / 0.355 / 0.346 | 0.702 / 0.641 / 0.659 |
+| it11r DS-CNN (entry 104) | 0.824 / 0.817 / 0.813 | 0.374 / 0.382 / 0.374 | 0.622 / 0.644 / 0.635 |
+| lgbm (same runs) | 0.681 / 0.699 / 0.641 | 0.24-0.25 | |
+| comb | 0.598 | 0.151 | |
+
+- CRNN training took about 504 s per seed (seed 0).
+- The loss at 50k / 100k / 150k / 200k windows was 0.645 / 0.626 / 0.607 /
+  0.592 for seed 0, still falling at the end and higher than the DS-CNN's
+  0.584-0.589.
+**Assessment.** Synthetic validation (CLAUDE.md section 5). On it, the
+CRNN is a little below the DS-CNN (AUC -0.002 to -0.049) and varies more
+between seeds. Its rising-then-falling loss suggests it is under-trained
+at 200 000 windows. Whether it does better on real drones, as it9's CRNN
+did against it9's CNN on the ARIS excerpts (entry 105), is untested.
+**Checkpoints and GUIs.** The 12 files are in `artifacts/it11r_crnn/`, and
+all MD5s match the server's. "it11r CRNN" (seed 0, threshold 0.7024) is
+in `drone_war_grid.MODELS`, so both GUIs list it. The name note in both
+windows explains it. Offscreen renders of both windows show all nine
+models.
+
+## 113 - CRNN on the it11r scenes with 3x the training windows (started)
+- Date: 2026-11-05
+- Iteration: the soundscape line (see entry 101)
+- Type: Tuning
+- Commit: uncommitted (server: 850d1f6 + entry 111's `train_clean.py`)
+
+**What changed.** Only `--windows 600000` instead of 200 000. Everything
+else is the same as entry 111. Seeds 0-2 started at 09:46, one TITAN X
+each, named `it11r_crnn600k_s{0,1,2}`. The logs show the same split and
+comb as entries 103 and 111.
+**Why.** Entry 112: the CRNN's loss was still falling at 200 000 windows
+(0.607 to 0.592 over the last 50 000), so it was probably under-trained.
+Mads asked to train it longer.
+**Judged by.** The same validation as entry 112, compared with the CRNN
+at 200 000 windows and with the it11r DS-CNN. Synthetic validation, so
+this is not detection performance.
+
+## 114 - CRNN at 600 000 windows: lower training loss, same validation AUC
+- Date: 2026-11-05
+- Iteration: the soundscape line (see entry 101)
+- Type: Tuning
+- Commit: uncommitted
+
+**Result.** Entry 113's runs finished at 10:10-10:14. Validation is the
+same as in entries 104 and 112.
+
+| Model | Windows | AUC seed 0 / 1 / 2 (mean) | Recall at 5% FA | Threshold |
+|---|---|---|---|---|
+| it11r CRNN | 600 000 | 0.803 / 0.787 / 0.793 (0.794) | 0.367 / 0.370 / 0.374 | 0.631 / 0.663 / 0.631 |
+| it11r CRNN | 200 000 | 0.775 / 0.798 / 0.811 (0.795) | 0.329 / 0.355 / 0.346 | |
+| it11r DS-CNN | 200 000 | 0.824 / 0.817 / 0.813 (0.818) | 0.374 / 0.382 / 0.374 | |
+
+- Training took 1366-1561 s per seed, at about 400 windows/s.
+- Training loss at 600 000 windows: 0.551-0.556, against 0.592 at 200 000.
+**Assessment.** Synthetic validation (CLAUDE.md section 5).
+- Three times the training lowered the training loss a lot but left the
+  validation AUC unchanged (mean 0.794 against 0.795).
+- Recall at 5% false alarms rose a little (+0.02 to +0.04, all seeds),
+  matching the DS-CNN's.
+- The extra training is fitting the training scenes, not generalising
+  further. The CRNN still does not beat the DS-CNN on this validation.
+- Real-drone behaviour is untested.
+**Checkpoints and GUIs.** The 12 files are in `artifacts/it11r_crnn600k/`,
+and all MD5s match the server's. "it11r CRNN 600k" (seed 0, threshold
+0.6311) is in both GUIs; the name note says "600k: 3x trained".
+`detect_gui.py`'s model box grew from 0.12 to 0.17 of the window height,
+and the file list moved up, so ten names fit. An offscreen render with
+one scene loaded and scored with the new model shows the layout and the
+scoring.
+
+## 115 - Mads's drone-in-war run with "it11r CRNN 600k"; silent windows now score 0
+- Date: 2026-11-05
+- Iteration: the soundscape line (see entry 101)
+- Type: Evaluation, Algorithm
+- Commit: uncommitted
+
+**Observation (Mads's screenshot of `drone_war_gui.py`).** Setup:
+war-shaped noise, seed 1000; Pd drones at 100, 150 and 200 km/h; war at
+-40, -20 and 0 dB plus a no-war column and a no-drone row; recall and
+false alarms are % of 1 s windows.
+
+| War | it11r CRNN 600k recall / false+ / >=3 s | comb recall / false+ / >=3 s |
+|---|---|---|
+| no war | 100.0 / 0.0 / 3 | 92.6 / 0.0 / 3 |
+| -40 dB | 25.9 / 0.3 / 0 | 30.2 / 3.7 / 3 |
+| -20 dB | 7.9 / 0.3 / 0 | 4.2 / 3.7 / 3 |
+| 0 dB | 1.6 / 0.3 / 0 | 3.2 / 3.7 / 3 |
+
+Mads: better than the earlier models, but still bad.
+1. In war noise alone the CRNN scores 0.4-0.5, just under its threshold
+   (0.631). It does not separate war-shaped noise from a drone, so it
+   alarms only in the last 1-2 s before impact. No speed reaches R5's 3 s
+   at any war level.
+2. After impact the clip is digital silence, and the score sits flat at
+   0.34: "confident there is a drone when there is no audio".
+
+Synthetic test: Pd drones in war-shaped noise, so this is not detection
+performance.
+**Cause and fix of 2.** No model has seen silence: `train_clean.py`
+skips windows below `realrun.SILENCE_POWER`, and level normalisation turns
+silence into amplified rounding noise. `dad.wavio.stream`, used by both
+GUIs and `drone_war_grid.py`, now sets the score of a window below that
+in-band power to 0. Check with the it11r CRNN 600k:
+- 3 s of white noise scored 0.334 / 0.305 / 0.335;
+- the 3 s of zeros after it scored 0 / 0 / 0, with no alarm.
+
+`uv run pytest -q tests`: all passed.
+**Causes of 1 (hypotheses, not tested).**
+- The it11r scenes hold no steady broadband noise: war-shaped noise was
+  removed from training on purpose (entry 097, it is the test background).
+  Master's iteration 11 ("steady noise as negatives", entry 100) targets
+  exactly this, with random-slope noise, not the war spectrum.
+- The training SNR range is -20 to +10 dB, while a drone 3 s before impact
+  (about 170 m at 200 km/h) sits far below its noise.
+**Also.** In `drone_war_gui.py` the model-name note overlapped the
+results table. It moved to y 0.17 at font size 6.

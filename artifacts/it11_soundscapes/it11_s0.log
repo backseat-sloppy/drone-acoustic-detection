@@ -1,0 +1,9 @@
+14:02:37 train: 1800 drone scenes, 2053 no-drone clips; validation: 5950 drone and 15839 no-drone windows
+14:02:51 comb: {'auc': 0.58153621446053, 'recall_at_5pct_fa': 0.14319327731092438, 'fa_at_95_recall': 1.0, 'threshold_5pct_fa': 6.589058006085882}
+14:03:41 lgbm: {'auc': 0.7190045526386576, 'recall_at_5pct_fa': 0.2692436974789916, 'fa_at_95_recall': 0.7848349011932572, 'threshold_5pct_fa': 0.6564434625180897}
+14:06:08     dscnn [level]:   50048 windows, loss 0.6419, 357 windows/s
+14:08:05     dscnn [level]:  100032 windows, loss 0.5887, 390 windows/s
+14:10:16     dscnn [level]:  150016 windows, loss 0.5686, 386 windows/s
+14:11:37     dscnn [level]:  200000 windows, loss 0.5615, 426 windows/s
+14:11:40 dscnn: {'auc': 0.8263628656210259, 'recall_at_5pct_fa': 0.433781512605042, 'fa_at_95_recall': 0.5828019445672076, 'threshold_5pct_fa': 0.5901105403900146, 'train_seconds': 479.0}
+14:11:40 wrote /home/jupyter-mariusq/drone-acoustic-detection/artifacts/runs/it11_s0.json

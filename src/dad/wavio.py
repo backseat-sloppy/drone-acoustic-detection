@@ -74,13 +74,20 @@ class Decisions:
 def stream(clip: Clip, scorer, cfg: FrontendConfig = DEFAULT, threshold: float | None = None,
            batch: int = 256) -> Decisions:
     """Score every full window that starts on a hop. The first decision comes
-    one window in; a clip shorter than a window yields none."""
+    one window in; a clip shorter than a window yields none.
+
+    A window of digital silence (in-band power below realrun.SILENCE_POWER, the rule training uses
+    to skip such windows) scores 0: no model has seen one, and level normalisation turns it into
+    amplified rounding noise that networks score at random (report entry 115)."""
+    from .realrun import SILENCE_POWER, inband_power
     n, hop = cfg.samples_per_window, cfg.samples_per_hop
     starts = np.arange(0, len(clip.audio) - n + 1, hop) if len(clip.audio) >= n else np.empty(0, int)
     out = []
     for i in range(0, len(starts), batch):
         a = np.stack([clip.audio[s:s + n] for s in starts[i:i + batch]])
-        out.append(np.asarray(scorer.score(a), dtype=np.float64))
+        sc = np.asarray(scorer.score(a), dtype=np.float64)
+        sc[[inband_power(w) < SILENCE_POWER for w in a]] = 0.0
+        out.append(sc)
     score = np.concatenate(out) if out else np.empty(0)
     return Decisions((starts + n) / cfg.sample_rate, score, threshold)
 

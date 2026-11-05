@@ -13,6 +13,13 @@ batch opened. Each uses the threshold its own run froze at 5% false alarms on va
   it9 CNN   artifacts/models/final_dscnn_none_simdist_dscnn.pt (report entry 096)
   it9 CRNN  artifacts/models/final_crnn_none_simdist_crnn.pt (report entry 096)
   it10 CNN  artifacts/it10_clean/clean_s0_dscnn.pt (seed 0, trained on synthetic drones only)
+  it11 CNN  artifacts/it11_soundscapes/it11_s0_dscnn.pt (seed 0, synthetic drones in random soundscapes)
+  it11r CNN artifacts/it11r_realism/it11r_s0_dscnn.pt (seed 0, as it11 with make_scenes.py --realism)
+  it11r CRNN artifacts/it11r_crnn/it11r_crnn_s0_crnn.pt (seed 0, it11r's scenes with the CRNN of it9)
+  it11r CRNN 600k artifacts/it11r_crnn600k/it11r_crnn600k_s0_crnn.pt (seed 0, the same trained on 600 000 windows)
+  itG-A CNN artifacts/itG/A_s0_dscnn.pt (seed 0; itG = the Glasgow experiment: A = Pd drones only, the
+            comparison run, with the Glasgow room recording in every scene)
+  itG-B CNN artifacts/itG/B_s0_dscnn.pt (seed 0; as A, but half the drones are real Glasgow recordings, d1-d16)
 comb keeps model 6's frozen threshold whichever model is picked.
 
 War noise (optional): tick "add war noise" before opening files, pick its source and type one or
@@ -64,6 +71,7 @@ The table is written to artifacts/detect_gui/results.csv after every batch.
 from __future__ import annotations
 
 import csv
+import importlib.util
 import queue
 import subprocess
 import sys
@@ -120,9 +128,15 @@ b_next = Button(fig.add_axes([0.145, 0.737, 0.12, 0.04]), "Next >")
 b_play = Button(fig.add_axes([0.015, 0.692, 0.12, 0.04]), "Play")
 b_hush = Button(fig.add_axes([0.145, 0.692, 0.12, 0.04]), "Stop sound")
 status = fig.text(0.015, 0.677, "Open one or more audio files.", fontsize=8, color=TEXT, va="top", wrap=True)
-ax_list = fig.add_axes([0.015, 0.15, 0.26, 0.49])
-ax_model = fig.add_axes([0.015, 0.01, 0.25, 0.12], frameon=False)
+ax_list = fig.add_axes([0.015, 0.20, 0.26, 0.44])   # room below for 10 models
+ax_model = fig.add_axes([0.015, 0.005, 0.25, 0.17], frameon=False)
 ax_model.set_title("model, for the next batch opened", fontsize=8, color=TEXT, loc="left")
+MODEL_NOTE = ("it11: Pd drones in soundscapes\n"
+              "it11r: it11 + realism (rotors, mic, room)\n"
+              "it11r CRNN: it11r with it9's CRNN (600k: 3x trained)\n"
+              "itG-A: Pd drones only (Glasgow test)\n"
+              "itG-B: half real Glasgow drones")
+fig.text(0.135, 0.125, MODEL_NOTE, fontsize=6.5, color="#777777", va="top")   # what the names mean
 r_model = RadioButtons(ax_model, list(MODELS), active=0)
 for lbl in r_model.labels:
     lbl.set_fontsize(8)
@@ -531,6 +545,9 @@ def poll():
             draw_list()
             if x["group"] == state["files"][state["cur"]]["group"]:   # the shown file got another SNR graph
                 draw_file()
+        elif kind == "picked":                              # the macOS dialog closed (pick_files_macos)
+            start_batch(*x)
+            status.set_text("" if x[0] else "no files chosen")
         elif kind == "done":
             state["thread"] = None
             write_csv()
@@ -541,9 +558,23 @@ def poll():
         fig.canvas.draw_idle()
 
 
+def pick_files_macos():
+    """The macOS file dialog through osascript, for a Python without Tk (Homebrew's has none by default)."""
+    script = ('activate\n'                                # osascript's dialog in front, not behind the window
+              'set fs to choose file with prompt "Audio files to search for drones" with multiple selections allowed\n'
+              'set out to ""\nrepeat with f in fs\nset out to out & POSIX path of f & linefeed\nend repeat\nreturn out')
+    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    return [line for line in r.stdout.splitlines() if line]       # cancel: exit code 1, no output
+
+
 def pick_files():
     """A multi-select file dialog on top of the window (the Tk backend's own root when there is one)."""
-    from tkinter import Tk, filedialog
+    try:
+        from tkinter import Tk, filedialog
+    except ImportError:
+        if sys.platform == "darwin":
+            return pick_files_macos()
+        raise
     get_widget = getattr(fig.canvas, "get_tk_widget", None)
     root = None if get_widget else Tk()
     if root is not None:
@@ -589,13 +620,32 @@ def on_open(_):
             status.set_text(str(e))
             fig.canvas.draw_idle()
             return
-    paths = pick_files()
+    args = (snr, SOURCES[r_source.value_selected], c_dummy.get_status()[0], r_model.value_selected)
+    if sys.platform == "darwin" and importlib.util.find_spec("_tkinter") is None:
+        # No Tk: the macOS dialog runs in a thread, so the window stays live; poll() starts the batch.
+        state["thread"] = threading.Thread(target=lambda: events.put(("picked", (pick_files_macos(), *args))),
+                                           daemon=True)
+        state["thread"].start()
+        status.set_text("choose the audio files in the dialog (it may sit behind this window)")
+        fig.canvas.draw_idle()
+        return
+    try:
+        paths = pick_files()
+    except Exception as e:                                  # a failing dialog must not fail silently
+        status.set_text(f"could not open a file dialog: {e}")
+        fig.canvas.draw_idle()
+        return
+    start_batch(paths, *args)
+
+
+def start_batch(paths, snr, source, dummy, model):
+    """Listen to paths with the settings of the moment Open was pressed; no paths (cancelled): nothing."""
+    state["thread"] = None
     if not paths:
         return
-    state.update(files=[], cur=0, top=0, model=r_model.value_selected)
+    state.update(files=[], cur=0, top=0, model=model)
     redraw()
-    state["thread"] = threading.Thread(target=worker, args=(paths, snr, SOURCES[r_source.value_selected],
-                                                            c_dummy.get_status()[0]), daemon=True)
+    state["thread"] = threading.Thread(target=worker, args=(paths, snr, source, dummy), daemon=True)
     state["thread"].start()
 
 

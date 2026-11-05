@@ -16,12 +16,17 @@ if not _found:
 PD = _found[0]
 
 
-def render_dry(throttle, pscale=1.0, step_ms=20, falloff=None):
+def render_dry(throttle, pscale=1.0, step_ms=20, falloff=None, detune=None):
     """throttle: array of slider values 0..127, one per step_ms.
-    falloff: motor low-pass at falloff x f0 (DroneSoundHarm.pd); None renders DroneSound.pd."""
+    falloff: motor low-pass at falloff x f0 (DroneSoundHarm.pd); None renders DroneSound.pd.
+    detune: 4 offsets in Hz, one per motor (DroneSoundHarm.pd's det0..det3); None keeps the
+    patch's fixed 0, +2.3, -3.7, +5.1 Hz."""
     lines = ["0;", f"pscale {pscale:.3f};"]
     if falloff is not None:
         lines.append(f"falloff {falloff:.3f};")
+    if detune is not None:
+        assert falloff is not None and len(detune) == 4, "detune needs DroneSoundHarm.pd (falloff) and 4 values"
+        lines += [f"det{k} {d:.3f};" for k, d in enumerate(detune)]
     patch = PATCH if falloff is None else HARM_PATCH
     for v in throttle:
         lines.append(f"{step_ms};")
@@ -36,7 +41,7 @@ def render_dry(throttle, pscale=1.0, step_ms=20, falloff=None):
 
     out = HERE / "out.wav"
     want = len(throttle) * step_ms * 44100 // 1000          # the patch adds 300 ms after the last step
-    for attempt in range(3):
+    for attempt in range(6):                                # Pd can fall short under load (report entry 109)
         out.unlink(missing_ok=True)
         try:
             res = subprocess.run([PD, "-nogui", "-nosound", "-batch", "-r", "44100",
@@ -57,7 +62,7 @@ def render_dry(throttle, pscale=1.0, step_ms=20, falloff=None):
             return x, fs
         # "pd quit" can also beat writesf~'s disk thread, losing the last buffer (about 0.6 s)
         print(f"Pd render {len(x) / 44100:.2f} s, want {want / 44100:.2f} s: rendering again")
-    raise SystemExit(f"Pd render stayed short after 3 attempts ({len(x)} of {want} samples)")
+    raise SystemExit(f"Pd render stayed short after 6 attempts ({len(x)} of {want} samples)")
 
 
 def make_throttle(rng, n, base=60, wobble=6.0, dive_start=0.7, dive_gain=80):

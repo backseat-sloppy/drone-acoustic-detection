@@ -20,7 +20,11 @@ and the baselines `comb` (no training) and `lgbm` (--lgbm-windows from the same 
 Validation: every 1 s window at --eval-hop inside the validation drone labels, and every 1 s
 window of the validation rig's clips. Threshold at 5% false alarms on validation.
 
-Writes <out>/<name>.json, <name>_dscnn.pt, <name>_lgbm.pkl. There is no real drone here, so
+--arch picks the network from dad.models.zoo (dscnn by default; crnn: conv blocks, a bidirectional
+GRU over time and attention pooling, as master's entry 096 trained on real rigs). It is stored under
+its own name: <name>_<arch>.pt and models.<arch> in the JSON.
+
+Writes <out>/<name>.json, <name>_<arch>.pt, <name>_lgbm.pkl. There is no real drone here, so
 nothing in this file is a test result (CLAUDE.md section 5: synthetic scaffolding).
 """
 from __future__ import annotations
@@ -142,10 +146,12 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--drones", type=Path, nargs="+", required=True,
                    help="one or more scene folders (make_scenes.py --out), e.g. it11/drone it11/nodrone")
-    p.add_argument("--nodrone", type=Path, required=True)
+    p.add_argument("--nodrone", type=Path, default=None,
+                   help="real no-drone clips (recordings.csv, stems.csv); without it only no-drone scenes are negatives")
     p.add_argument("--name", required=True)
     p.add_argument("--out", type=Path, default=REPO / "artifacts" / "runs")
     p.add_argument("--device", default="cpu")
+    p.add_argument("--arch", default="dscnn", choices=("dscnn", "crnn"), help="the network (dad.models.zoo)")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--windows", type=int, default=200_000)
     p.add_argument("--lgbm-windows", type=int, default=40_000)
@@ -158,7 +164,7 @@ def main() -> None:
     log = lambda m: print(time.strftime("%H:%M:%S"), m, flush=True)  # noqa: E731
 
     d_train, d_val, w_train, w_val = (sum(z, []) for z in zip(*(load_drones(r, a.val_seed, a.limit) for r in a.drones)))
-    n_train, n_val = load_nodrone(a.nodrone, a.val_rig, a.limit)
+    n_train, n_val = load_nodrone(a.nodrone, a.val_rig, a.limit) if a.nodrone else ([], [])
     n_train, n_val = n_train + w_train, n_val + w_val       # no-drone scenes, if any, are no-drone too
     if not (d_train and d_val and n_train and n_val):
         raise SystemExit(f"empty split: drones {len(d_train)}/{len(d_val)}, no-drone {len(n_train)}/{len(n_val)}")
@@ -169,7 +175,7 @@ def main() -> None:
                train=dict(drone_scenes=len(d_train), nodrone_clips=len(n_train),
                           nodrone_groups=sorted({g for _, g in n_train})),
                val=dict(drone_scenes=len(d_val), drone_windows=len(pos), nodrone_clips=len(n_val),
-                        nodrone_windows=len(neg), rig=a.val_rig), models={})
+                        nodrone_windows=len(neg), rig=a.val_rig if a.nodrone else None), models={})
     log(f"train: {len(d_train)} drone scenes, {len(n_train)} no-drone clips; "
         f"validation: {len(pos)} drone and {len(neg)} no-drone windows")
 
@@ -182,11 +188,11 @@ def main() -> None:
     res["models"]["lgbm"] = scores(lg, pos, neg)
     log(f"lgbm: {res['models']['lgbm']}")
     t0 = time.time()
-    net = rr.NetScorer("dscnn", variant, DEFAULT, a.device).fit(sampler, a.windows, log=log)
-    net.save(a.out / f"{a.name}_dscnn.pt")
-    res["models"]["dscnn"] = dict(scores(net, pos, neg), train_seconds=round(time.time() - t0, 1),
+    net = rr.NetScorer(a.arch, variant, DEFAULT, a.device).fit(sampler, a.windows, log=log)
+    net.save(a.out / f"{a.name}_{a.arch}.pt")
+    res["models"][a.arch] = dict(scores(net, pos, neg), train_seconds=round(time.time() - t0, 1),
                                   history=net.history)
-    log(f"dscnn: { {k: v for k, v in res['models']['dscnn'].items() if k != 'history'} }")
+    log(f"{a.arch}: { {k: v for k, v in res['models'][a.arch].items() if k != 'history'} }")
     (a.out / f"{a.name}.json").write_text(json.dumps(res, indent=1))
     log(f"wrote {a.out / (a.name + '.json')}")
 

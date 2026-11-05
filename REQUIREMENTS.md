@@ -109,7 +109,7 @@ held-out-source false-alarm rate is the one that predicts field behaviour.
 | Training sources | DDL (real), FSD50K-dev (licence-filtered) | PROPOSED |
 | Held-out test sources | DroneNoise, Halmstad, FSD50K-eval | PROPOSED |
 | Only real recordings, no synthetic training data | yes. Summing two real recordings (a drone window plus a real background) is allowed as training augmentation. Generated or rendered audio is not. | WITHDRAWN by Mads, 2026-11-03 (entry 087); was LOCKED (decided by Mads, 2026-10-10) |
-| Synthetic training data | allowed: training may use only synthetic drones (randomised harmonic synth, approaches and fly-bys) mixed into labelled soundscapes; real drone recordings are used to validate and test, with the real FPV clips as test | Decided by Mads, 2026-11-03 (entry 087), after the supervisor's feedback and the spot check of drone labels without audible drone |
+| Synthetic training data | allowed: training may use synthetic drones (randomised harmonic synth, approaches and fly-bys) and real drone recordings from the Glasgow set (drones d1-d16; d17-d20 validate, d21-d24 test), placed in labelled soundscapes; other real drone recordings are used to validate and test, with the real FPV clips as test | Decided by Mads, 2026-11-04 (entry 107); was synthetic drones only (Mads, 2026-11-03, entry 087) |
 | Pitch or speed perturbation | allowed: a real drone recording may be resampled (played faster or slower, about +-20%) to imitate the Doppler shift and higher motor speed of a fast drone | Decided by Mads, 2026-10-14 (amends the row above) |
 | Acoustic UAV Field Recordings (FPV, Zenodo) | may be fetched | Decided by Mads, 2026-10-14 |
 | Licences allowed | CC0 and CC BY | PROPOSED |

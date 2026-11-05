@@ -92,6 +92,11 @@
 #X obj 1530 1075 * 4;
 #X obj 853 1015 lop~ 1500;
 #X text 1600 1040 harmonic falloff: motor low-pass at falloff x f0 \, two poles, f 30;
+#X obj 729 455 r det0;
+#X obj 935 455 r det1;
+#X obj 1072 455 r det2;
+#X obj 1209 455 r det3;
+#X text 1183 520 detN (render.py) replaces motor N's offset for this drone, f 30;
 #X connect 0 0 1 0;
 #X connect 0 1 2 0;
 #X connect 0 2 3 0;
@@ -185,3 +190,7 @@
 #X connect 90 0 91 1;
 #X connect 5 0 91 0;
 #X connect 91 0 6 0;
+#X connect 93 0 1 1;
+#X connect 94 0 2 1;
+#X connect 95 0 3 1;
+#X connect 96 0 4 1;
