@@ -6825,6 +6825,41 @@ staged deletion of `Dummy.wav`, so git records a rename. Not committed or
 pushed by Claude. Its ITU ARIS origin and CC BY 4.0 attribution are as in
 entries 101 and 106.
 
+Committed afterwards as 6f37520 on `NicolaiBranchGUI`, with entries 101 to
+119 and the code changes of entries 107 and 111 to 118; git records
+`Dummy.wav => Fugle.wav` as a rename (R100). The push failed from Claude's
+shell (no GitHub login); Nicolai pushes from GitHub Desktop.
+
+## 120 - Detection window: the list shows mean confidence, not the share of alarmed windows
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 6f37520 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked for the list's percentages to be the area under the
+confidence curve, as a percentage: the average confidence.
+
+**What.** `scripts/detect_gui.py`: each detector's summary gets `mean`, the
+mean of its confidence over all decisions. The decisions are evenly spaced
+(0.125 s), so this is the area under the confidence curve divided by the
+scored time. comb is averaged as drawn, s/(s+threshold), so 50 % is its
+threshold. The list shows it in place of the share of alarmed windows; the
+DRONE / "*" verdict is unchanged (any window at or above threshold). The
+graph titles keep the share of alarmed windows. `results.csv` gets a
+`mean_confidence` column before `flagged_share`.
+
+**Checks.** Headless, two made-up files, it6 CNN and comb: the tone file
+gives it6 CNN mean 1.2 % (0 % of windows alarmed) and comb 99.95 % (100 %);
+the white-noise file it6 CNN 6.4 % (0 %), comb 0 %. `uv run pytest`: all
+pass. Made-up audio, not a detection figure. Not checked: a live window.
+
+A mean confidence is not a probability of a drone and is not comparable
+between networks: each has its own threshold (it6 0.297, it9 CNN 0.380, it9
+CRNN 0.483, it10 5.7e-6), so the same mean can sit far above one network's
+threshold and below another's.
+
+**Next.** None. A tool change.
+
 ## 101 - How well does war-shaped noise stand in for war audio?
 
 - Date: 2026-11-04

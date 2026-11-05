@@ -46,7 +46,9 @@ window; "< SNR" / "SNR >" or the Left / Right keys step through the file's SNRs 
 slide shown), Previous / Next and the list still change file, and Escape or the button goes back.
 
 The list on the left gives each file's verdict per detector: DRONE if any window alarmed, with the
-share of windows that alarmed, the first alarm and the longest unbroken alarm. Click a file in the
+mean confidence in % (the area under its confidence curve over the scored time; comb as drawn,
+s/(s+threshold)). The graph titles keep the share of windows that alarmed, the first alarm and the
+longest unbroken alarm; results.csv has both mean_confidence and flagged_share. Click a file in the
 list, or use Previous / Next, to see its spectrogram and each detector's confidence over time
 (dashed = threshold; comb is shown as s/(s+threshold), so its threshold sits at 0.5). Play plays the
 file as the detectors hear it, normalised to be audible.
@@ -241,14 +243,17 @@ def add_noise(audio: np.ndarray, snr_db: float, seed: int, source: str = "wsn",
 
 
 def score(clip, thr, scorers) -> tuple[dict, dict]:
-    """Every detector over clip: decisions and a summary per detector."""
+    """Every detector over clip: decisions and a summary per detector. "mean" is the area under the
+    confidence curve over the scored time, as a share: the mean confidence over all decisions (comb
+    as drawn, s/(s+threshold))."""
     dec, summary = {}, {}
     for k, sc in scorers.items():
         d = stream(clip, sc, DEFAULT, thr[k])
         first = d.t_end[d.drone]
         p = peaks(d.drone)
         dec[k] = d
-        summary[k] = dict(drone=bool(d.drone.any()), flagged=float(d.drone.mean()),
+        conf = dwg.squash(d.score, thr[k]) if k == "comb" else d.score
+        summary[k] = dict(drone=bool(d.drone.any()), flagged=float(d.drone.mean()), mean=float(np.mean(conf)),
                           first_alarm_s=float(first[0]) if len(first) else None,
                           longest_s=max((b - a + 1 for a, b in p), default=0) * HOP_S,
                           peaks=p, above_s=int(d.drone.sum()) * HOP_S)
@@ -365,10 +370,10 @@ def draw_list():
         if "error" in f:
             cols = f"  {f['error']}"
         elif compact:
-            cols = "".join(f"{100 * f['summary'][k]['flagged']:6.0f}%{'*' if f['summary'][k]['drone'] else ' '}"
+            cols = "".join(f"{100 * f['summary'][k]['mean']:6.0f}%{'*' if f['summary'][k]['drone'] else ' '}"
                            for k in ks)
         else:
-            cols = "".join(f"{('DRONE' if f['summary'][k]['drone'] else 'none'):>6s}{100 * f['summary'][k]['flagged']:4.0f}%"
+            cols = "".join(f"{('DRONE' if f['summary'][k]['drone'] else 'none'):>6s}{100 * f['summary'][k]['mean']:4.0f}%"
                            for k in ks)
         y = 1 - (row + 1.3) / (LIST_ROWS + 3)
         hit = is_hit(f)
@@ -376,8 +381,8 @@ def draw_list():
                      fontsize=8, color=RED if hit else TEXT, weight="bold" if i == state["cur"] else "normal",
                      va="top", picker=True).file_index = i
     more = len(files) - state["top"] - LIST_ROWS
-    note = ("click a file to show it, a red one opens its stats; % = windows alarmed, * = alarmed" if compact
-            else "click a file to show it, a red one also opens its stats; % = windows that alarmed")
+    note = ("click a file to show it, a red one opens its stats; % = mean confidence, * = alarmed" if compact
+            else "click a file to show it, a red one also opens its stats; % = mean confidence (area under curve)")
     if state["top"] or more > 0:
         note = f"files {state['top'] + 1}-{min(state['top'] + LIST_ROWS, len(files))} of {len(files)}; scroll here. " + note
     ax_list.text(0, 1 - (LIST_ROWS + 2) / (LIST_ROWS + 3), note, fontsize=7, color=GREY, va="top", wrap=True)
@@ -548,7 +553,8 @@ def write_csv():
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with OUT.open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["file", "seconds", "detector", "threshold", "verdict", "flagged_share", "first_alarm_s",
+        w.writerow(["file", "seconds", "detector", "threshold", "verdict", "mean_confidence", "flagged_share",
+                    "first_alarm_s",
                     "longest_alarm_s", "peaks_above_threshold", "time_above_threshold_s", "noise_snr_db",
                     "noise_seed", "noise_source", "noise_offset_s", "mix_file", "dummy", "error"])
         thr = state.get("thr", {})
@@ -556,7 +562,8 @@ def write_csv():
             for k in keys():
                 s = f.get("summary", {}).get(k, {})
                 w.writerow([f["path"], round(f["seconds"], 3) if "seconds" in f else "", shown_as(k), thr.get(k, ""),
-                            verdict(f, k), s.get("flagged", ""), s.get("first_alarm_s", ""), s.get("longest_s", ""),
+                            verdict(f, k), s.get("mean", ""), s.get("flagged", ""), s.get("first_alarm_s", ""),
+                            s.get("longest_s", ""),
                             len(s["peaks"]) if s else "", s.get("above_s", ""), f.get("snr_db", ""),
                             f.get("noise_seed", ""), f.get("noise_source", ""),
                             "" if f.get("noise_offset_s") is None else f["noise_offset_s"],
