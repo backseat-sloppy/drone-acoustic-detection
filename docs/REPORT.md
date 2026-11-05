@@ -27,7 +27,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 7 | 055 to 058 | Edge Impulse model (MFE + small CNN) on upload-licensed data, scored locally next to model 6 | Mads asked to try Edge Impulse; deployment hardware still open | **Negative result.** On the shared windows the EI model detects nothing off its training rig (Halmstad recall 0 at the frozen threshold, test AUC 0.36); model 6 0.55 at 4.8% false positives on Halmstad. Small on Cortex-M4F (12 ms, 20 KB RAM), but its MFE is too slow at FFT 1024. Model 6 stays the candidate. |
 | Iteration 8 | 059 to 061 | Edge Impulse on the pool, d3set held out, clips scaled to -30 dBFS | Mads asked for leave-one-dataset-out in Edge Impulse; iteration 7 failed on a 50 dB level gap between rigs | **Hypothesis rejected.** In-distribution AUC rose to 0.92, but on unseen d3set AUC 0.12 (background ranked above drones), worse than the untrained comb (0.53). Microcontroller out of scope (entry 060); Edge Impulse stopped. |
 | Iteration 9 | 090 to 094 | Iteration 5's recipe on real data, with the frontend as the only change: MFE (log-mel), MFCC, linear spectrogram | The supervisor's feedback (entry 086) and Mads's choice to compare frontends on real data, after dropping synthetic training (entries 087-089) | **Hypothesis rejected for both.** FPV mean at 10% own false alarms: MFE 0.669, MFCC 0.485, linear 0.692 (+2.3 against +5 required). Linear gains near the rigs (+23-26 points within 50 m) but loses on d3set at 100-200 m (-6.7), on Lund (-18) and alarms 12 points more on mower audio. MFE stays. |
-| Iteration 11 | 100 to | Steady-noise family (random slopes, random-phase copies of rig no-drone windows) as negatives and maskers; no war audio in training. Judged on unseen real noise stems and the mower session, with recall guards | All networks alarm on 99-100% of war-shaped noise and on pink/brown noise, but on 0% of the war track: the failure is steady noise, not war (entry 100) | In progress. Council held (entry 100); step 0 next. |
+| Iteration 11 | 100 to 105 | Steady-noise family (random slopes, random-phase copies of rig no-drone windows) as negatives and maskers; no war audio in training. Judged on unseen real noise stems and the mower session, with recall guards | All networks alarm on 99-100% of war-shaped noise and on pink/brown noise, but on 0% of the war track: the failure is steady noise, not war (entry 100) | In progress. Council held (entry 100). War-shaped noise matches war audio only in its long-term spectrum; real tank clips alarm 45-57% (entry 101). Step 0 (entry 102): the networks rely on the harmonic lines; steadiness pushes toward drone; noise alarms only at -3 to -6 dB/octave. Step 1 (entry 103): generators and the `simdist_steady` recipe in the sampler, tested. War-shaped noise dropped on Mads's decision; war is tested on real war audio only (entry 104). 36 of 97 FSD50K stems are from FSD50K dev, which training draws from: reported apart (entry 105). Step 2 next. |
 
 ## Templates
 
@@ -6824,3 +6824,381 @@ ARIS background clip of entry 106 (`aris_peek_background_01` in
 staged deletion of `Dummy.wav`, so git records a rename. Not committed or
 pushed by Claude. Its ITU ARIS origin and CC BY 4.0 attribution are as in
 entries 101 and 106.
+
+## 101 - How well does war-shaped noise stand in for war audio?
+
+- Date: 2026-11-04
+- Iteration: 11 (diagnostic)
+- Type: Evaluation
+- Commit: 791d95e plus the uncommitted entries 096-100 and the new `scripts/noise_stationarity.py`
+
+**What changed.** New `scripts/noise_stationarity.py`. It compares
+war-shaped noise (60 s, seed 1000) with the war track
+(`data/processed/war/war_track.wav`, 600 s) and with the 23 FSD50K war
+clips it was built from (201.6 s, each measured on its own). All three are
+read at the frontend's 16 kHz. Measures:
+- L10/L50/L90: levels of 125 ms frames, dBFS.
+- Crest factor of each 1 s window.
+- Within: spread inside a 1 s window of each level-normalised log-mel band.
+- Between: spread from window to window of each band's window mean.
+- To-shaped: RMS distance of each window's level-normalised mean spectrum
+  from the shaped noise's.
+- Alarm shares of the three networks at their frozen thresholds, for the
+  clips also per class.
+
+A sanity check in the session confirmed that the measures separate steady
+noise from the same noise in bursts: L10-L90 1.5 dB at most, a lower
+within-window spread and a crest factor under 15 dB for the steady noise.
+
+**Why.** Mads asked whether war-shaped noise can misrepresent random war
+sound, and whether that can be checked.
+
+**How.**
+```
+uv run python scripts/noise_stationarity.py
+```
+Output: `artifacts/noise_stationarity/stationarity.csv`.
+
+**Result.** Medians. For the clips: the median over clips, with the range
+in brackets.
+
+| | War-shaped noise | War track | 23 war clips |
+|---|---|---|---|
+| L10 - L90 (dB) | 1.1 | 32.7 | 44.2 |
+| Crest factor per 1 s window (dB) | 11.9 | 12.3 | 13.4 (9.3-21.3) |
+| Within a window, per band (dB) | 3.1 | 3.0 | 5.6 (1.1-17.1) |
+| Between windows, per band (dB) | 0.4 | 10.5 | 5.7 (0.6-15.2) |
+| Window spectrum to the shaped noise's (dB RMS) | 0.4 | 29.6 | 16.9 (4.6-35.4) |
+| Alarms it6 / it9 CNN / it9 CRNN | 100 / 100 / 100% | 1.2 / 0.6 / 0.7% | 8.4 / 7.8 / 7.2% |
+
+Alarms on the clips, per class (it6 / it9 CNN / it9 CRNN):
+- tank (2 clips): 56.8 / 52.3 / 45.0%
+- small arms (3 clips): 20.5 / 17.4 / 20.5%
+- jet (3 clips): 6.7 / 8.1 / 4.3%
+- siren, far explosion, machine gun, mortar/artillery, shout: 0% for all three
+
+What it shows:
+- **War-shaped noise matches the war audio only in its long-term average
+  spectrum.** Over time it is steady: its level spreads 1 dB against 33-44
+  dB, and its spectrum changes 0.4 dB from window to window against 6-10
+  dB.
+- **No real window looks like it.** The median real window's spectrum sits
+  17 dB (clips) to 30 dB (track) from the shaped noise's. An average of very
+  different sounds (shouts, sirens, gunfire, engines) is a spectrum that
+  none of them has. That spectrum is what triggers the 100% alarms.
+- **Inside a single window the median track window is as steady as the
+  shaped noise** (3.0 against 3.1 dB): most of the track is steady
+  background between events. The difference is its spectrum, not its
+  steadiness within a window.
+- **Correction to entry 100.** Entry 100 accepted the Devil's Advocate's
+  point that "real war audio already gives under 1%". That holds for the
+  war track, not for the clips. The tank clips (a steady engine) give
+  45-57% alarms, and small arms about 20%. Real war audio is therefore not
+  at the floor. The tank result fits the steady-noise reading of entry 100.
+  The entry 100 decision stands: no war audio goes into training. The
+  iteration 11 steady suite adds the 23 war clips, per class, as real
+  test-only audio, beside the noise stems and the mower session.
+
+**Limits.**
+- One shaped-noise seed.
+- The war track is built from war sound effects; it is not a field
+  recording.
+- The clips are short sound effects, many recorded close.
+- None of this says how a real battlefield sounds at a microphone hundreds
+  of metres away. Only field recordings would.
+- Synthetic noise numbers are diagnostics, not detection performance.
+
+**Next.** Step 0 of iteration 11, with the war clips added to the steady
+suite.
+
+## 102 - Step 0: the networks use the harmonic lines, and steadiness pushes them toward "drone"
+
+- Date: 2026-11-04
+- Iteration: 11 (step 0, diagnostic)
+- Type: Evaluation
+- Commit: 791d95e plus the uncommitted entries 096-101 and the new `scripts/phase_probe.py`
+
+**What changed.** New `scripts/phase_probe.py`. It takes real 1 s windows
+from the processed store, up to 300 per source and label:
+- sources Nightjar, d3set, FPV, Halmstad and Lund;
+- drone windows from recordings labelled 1, no-drone windows from those
+  labelled 0;
+- the mower session and Lund's suspect recording left out;
+- random positions, seed 0.
+
+Each window is scored as it is and in two copies, both with the window's
+own RMS:
+- **phase:** the window's FFT magnitude with random phases. The fine
+  spectrum, harmonic lines included, is kept; the time structure (blade
+  modulation, onsets) is not.
+- **envelope:** the magnitude smoothed over about one octave (at least
+  300 Hz) before the random phases. Only the coarse spectral shape is left:
+  no harmonic lines and no time structure.
+
+Plus Gaussian noise with slopes from -12 to +6 dB/octave, 20 s each,
+-30 dBFS. Checked in the session on a 200 Hz harmonic comb with amplitude
+modulation:
+- the phase copy keeps the magnitude spectrum, with a peak-to-median ratio
+  of 3054, as the original;
+- the envelope copy removes the lines, with a ratio of 1.1;
+- measured slopes of -6.0 and +2.98 dB/octave for -6 and +3 requested.
+
+**Why.** Entry 100's step 0: before any GPU time, find out what in a
+window makes the networks say "drone". Mads asked whether drones simply
+are pink or brown noise to the networks.
+
+**How.**
+```
+uv run python scripts/phase_probe.py
+```
+Output: `artifacts/phase_probe/phase_probe.csv`. Every network at its frozen
+threshold.
+
+**Result.** These windows come from rigs the networks trained on (Lund
+excepted). This is a diagnostic of what they use, not detection
+performance.
+
+Drone windows the network detects as they are: the share still detected
+as a copy (it6 / it9 CNN / it9 CRNN):
+
+| Source | Phase copy (harmonics kept) | Envelope copy (shape only) |
+|---|---|---|
+| Nightjar | 95 / 94 / 93% | 42 / 37 / 24% |
+| d3set | 99 / 98 / 97% | 23 / 7 / 13% |
+| FPV | 91 / 93 / 89% | 48 / 32 / 28% |
+| Halmstad | 98 / 98 / 96% | 66 / 71 / 54% |
+| Lund (never trained on) | 80 / 76 / 93% | 1 / 3 / 0% |
+
+No-drone windows, alarm share as they are, as a phase copy and as an
+envelope copy:
+
+| Source | it6 CNN | it9 CNN | it9 CRNN |
+|---|---|---|---|
+| Nightjar | 33 / 49 / 20% | 28 / 40 / 17% | 14 / 28 / 11% |
+| d3set | 32 / 67 / 19% | 17 / 56 / 16% | 4 / 42 / 4% |
+| FPV | 28 / 52 / 27% | 19 / 45 / 10% | 11 / 31 / 9% |
+| Halmstad | 37 / 69 / 48% | 34 / 64 / 29% | 22 / 51 / 35% |
+
+Noise slope sweep, alarm share (it6 / it9 CNN / it9 CRNN):
+- -12 and -9 dB/octave: 0% for all three
+- -6 dB/octave (brown): 97 / 14 / 42%
+- -3 dB/octave (pink): 97 / 99 / 71%
+- 0, +3 and +6 dB/octave: 0% for all three, except it9 CNN with 5% at 0
+
+What it shows:
+- **The harmonic lines carry the decision.** Removing the time structure
+  keeps 76-99% of detections. Removing the lines as well keeps 0-3% on
+  Lund, 7-23% on d3set, 24-48% on Nightjar and FPV, and 54-71% on Halmstad.
+  The networks are not detecting "pink noise". On Halmstad, and partly on
+  Nightjar and FPV, the coarse shape alone still carries a good part.
+- **Steadiness pushes toward "drone".** The phase copy of a no-drone window
+  has the same spectrum, only steadier. It alarms 1.4 to 10 times as often
+  as the window itself: for example d3set in the CRNN, 4% to 42%. That is
+  the shortcut behind entries 075 and 101, and generator (b) of iteration
+  11 (random-phase copies of rig no-drone windows as negatives) targets it
+  directly.
+- **The noise alarms sit in a narrow band of slopes:** -3 and -6
+  dB/octave, which is pink and brown. Steeper or flatter noise does not
+  alarm. Generator (a), with slopes from -12 to +3, covers that band.
+- **No-drone windows drawn at random alarm far above 5%:** 4-37% as they
+  are, against a threshold frozen at 5% on validation. Some of these
+  recordings hold handling sounds or other events, and the windows are not
+  the validation set, so this is not a false-alarm figure. Not looked into
+  further here.
+
+**Decision on (c)** (entry 100 left it to step 0). Random-phase copies of
+drone windows are **not** added as negatives. They keep the harmonic
+lines, which are the networks' main evidence, and a hovering drone is
+itself steady and harmonic, so they would teach the networks to reject
+real drones. Envelope copies of drone windows (shape without lines) would
+target the Halmstad shape reliance. They are noted as a candidate for a
+later step, not added now, so that iteration 11 changes one thing.
+
+**Not done.** Entry 100 also asked step 0 to score the steady suite as
+the baseline. The war clips were scored in entry 101; the noise stems and
+the mower session are not scored yet. That goes with step 2's suite
+script.
+
+**Next.** Step 1: generators (a) and (b) in `src/dad/`, wired into
+`RangeSampler`, with a flag in `run_range.py` and a test. Then the steady
+suite script, and the 3 + 3 seed runs on JupyterLab.
+
+## 103 - Step 1: steady-noise generators in the training sampler
+
+- Date: 2026-11-04
+- Iteration: 11 (step 1, code)
+- Type: Data preparation
+- Commit: c0187b0 plus uncommitted work: entries 096-102, `src/dad/steady.py`, the change to
+  `src/dad/rangerun.py`, `tests/test_steady.py`
+
+**What changed.** New `src/dad/steady.py` with three functions:
+- `slope_noise`: generator (a). Gaussian noise with a spectral slope drawn from -12 to +3
+  dB/octave. The box's "random smooth EQ" is not added here. Every training window, these
+  included, already gets the random smooth EQ of `realrun._eq_curve` (±3 dB tilt plus a
+  5-point shape, σ 2 dB), so a second EQ would double it.
+- `phase_copy`: generator (b). A rig no-drone window's FFT magnitude with random phases, at
+  the window's RMS.
+- `wobble`: a sinusoidal level change of 0.2-2 Hz with a depth drawn from 0 to 3 dB.
+
+`RangeSampler.steady` draws a training-rig background window (the same draw the
+simulated-distance positives use, so the background is from the training sources only). Then:
+- **Half the time** it returns the phase copy of that window (b).
+- **The other half** it returns slope noise (a) at that window's in-band level.
+- **Either way** it applies the wobble.
+
+`Recipe` has two new fields, `steady_neg` and `steady_mask`, both 0 by default. The new recipe
+`simdist_steady` is `simdist` with `steady_neg=0.15` and `steady_mask=0.30`. With the new recipe:
+- **Negatives:** 15% are steady noise alone, with no FSD50K mixing.
+- **Positives:** 30% get steady noise added. The drone over the noise is drawn from -5 to +15 dB
+  in-band SNR, the `buried` range.
+  - Simulated-distance positive: the "drone" is the scaled near drone, before the rig background
+    is added.
+  - Real positive: it is the drawn window, before any FSD50K burial.
+
+All other recipes draw nothing new: the test checks that. No war audio and no noise stem is
+read.
+
+Entry 102 planned a flag in `run_range.py`. A recipe does the same with no change to the
+script. It also lets both arms of the iteration run in one call on the same seed:
+`--recipes simdist simdist_steady`. The checkpoint names already carry the recipe.
+
+**Why.** Entry 100's design and entry 102's step 0.
+
+**How.**
+```
+uv run pytest -p no:cacheprovider
+uv run python <scratchpad>/smoke_steady.py
+uv run python <scratchpad>/time_steady.py
+```
+The two smoke scripts are not in the repo. They build the iteration 9 sampler
+(`make_pool_arm(manifest, "none")`, speed 0.8-1.25) for both recipes and draw batches. This
+machine's processed store has no FSD50K clips (`fsd_train` is empty), so `simdist` itself fails
+here. The smoke scripts replace the FSD50K background with the rig background on this machine
+only. The FSD50K branch was therefore not exercised on real data, only in the unit test's stub.
+
+**Result.**
+- Tests: 105 passed, among them six new ones in `tests/test_steady.py`. They check:
+  - **slope_noise:** the slope within 0.5 dB/octave of the one asked for, from -12 to +3, and
+    unit RMS;
+  - **phase_copy:** the same magnitude spectrum and RMS, with the waveform correlation under 0.5;
+  - **wobble:** within ±3 dB;
+  - **shares:** the shares of steady negatives and masked positives (15% and 30%, 4,000 draws
+    each);
+  - **masker SNR:** within -5 to +15 dB;
+  - **old recipes:** no steady noise drawn.
+- Smoke run on real rig data: both recipes give (64, 64, 98) float32 batches, all finite, with
+  32/32 labels. `describe()` names the steady shares.
+- Steady draws over 200 draws: median in-band level -58.7 dBFS, 5-95% from -87.5 to -29.4
+  dBFS, the spread of the rig backgrounds.
+- CPU time of `raw_batch` (64 windows, mean of 30 batches, one process): 44 ms for `simdist`,
+  82 ms for `simdist_steady`. Most of the extra time is FFTs at the 20,032-sample drawn length,
+  which has a prime factor of 313. Training draws batches in parallel workers (`prefetch`), and
+  iteration 9 took about 77 ms per step on the GPU, so this should not slow training much. Not
+  measured on JupyterLab.
+
+**Not done.** The steady suite script (step 2) and the 3 + 3 seed runs.
+
+**Next.** Step 2: a script that scores a checkpoint on the steady suite. It scores false alarms on:
+- the FSD50K distracter, background and wind stems, pooled, with the aircraft classes apart;
+- the mower session;
+- the 23 war clips per class;
+- the tripwires: war-shaped, white, pink and brown noise, and the war track.
+
+It also scores the iteration 6 and 9 models as the baseline. Then the runs on JupyterLab:
+```
+uv run python scripts/run_range.py --name it11_s<k> --pool --arms none --speed 0.8 1.25 --recipes simdist simdist_steady --models dscnn --deploy-fa 0.05 --device cuda --seed <k>
+```
+for k = 0, 1, 2.
+
+## 104 - War-shaped noise dropped; real war audio is the war test
+
+- Date: 2026-11-04
+- Iteration: 11
+- Type: Evaluation
+- Commit: c0187b0 plus uncommitted work (entries 096-103 and their code)
+
+**What changed.** Mads decided to drop war-shaped noise. It goes out of iteration 11's verdict,
+and out of future tests. War is tested with real war audio only:
+- **Now:** the 23 FSD50K war clips per class, and soundscapes mixed from them.
+- **Distracters:** helicopters and tanks are kept as distracters in future tests. The stems hold
+  3 helicopter, 3 aircraft and 3 prop-plane clips, and the war stems hold 2 tank clips.
+- **Later:** field recordings when they exist.
+
+The rest of the iteration 11 box is unchanged:
+- **Pass criteria:** unseen FSD50K stems at least halved, mower session at most 20%, the recall
+  guards.
+- **Tripwires:** white, pink and brown noise stay as synthetic tripwires. The war track stays at
+  at most 1%.
+
+**Why.** Mads's reasoning: war-shaped noise is not what a microphone in the field hears, and the
+real soundscapes are. The evidence agrees:
+- **Real windows look nothing like it.** War-shaped noise matches war audio only in its long-term
+  average spectrum. Real windows sit 17-30 dB from it, and it is steady where war audio swings
+  33-44 dB (entry 101).
+- **It has done its job.** It exposed the steady-noise failure, and entries 101-102 pinned that
+  failure down without it.
+- **Real audio already shows the problem.** The real tank clips alarm on 45-57% of windows
+  (entry 101), and the mower session alarms on 55% for model 6. Iteration 11 therefore keeps its
+  purpose without war-shaped noise.
+
+**What is lost.** War-shaped noise was unlimited and reproducible, and it could be set to any
+level. The real war audio is 201.6 s in 23 clips, with 2 tank clips and 1 air-raid siren.
+Soundscapes mixed from them vary the timing and the levels, not the sounds. A result on them
+rests on few sources, and that goes with every number reported.
+
+**No council.** Before any run, this removes one synthetic tripwire from the verdict. The real
+test sets were already the deciding ones, and nothing about the primary metric or the split
+changes. The scripts and GUIs that can make war-shaped noise (`drone_war_grid.py`, the GUIs) are
+left as they are. They are no longer used to judge models.
+
+**Next.** Step 2's suite script scores the real audio only: stems, mower, war clips per class,
+helicopters and aircraft apart, and the war track. White, pink and brown noise are scored as
+tripwires.
+
+## 105 - Correction: part of the steady suite comes from FSD50K dev, which training draws from
+
+- Date: 2026-11-05
+- Iteration: 11
+- Type: Correction
+- Commit: c0187b0 plus uncommitted work (entries 096-104 and their code)
+
+**What changed.** Nothing in the code. The stem manifest
+(`data/processed/stems/manifest.csv`) was checked against how training draws its FSD50K
+negatives.
+
+**Why.** Mads asked whether cars should be labelled no-drone. Answering that meant checking
+which FSD50K audio training already holds.
+
+**Result.**
+- **Training already holds FSD50K.** It draws FSD50K negatives from `fsd_train`, which is FSD50K
+  dev with split `train` (`realrun.make_splits`, `prepare_data.py`). It holds every licence-cleared
+  dev clip without a drone keyword, cars, engines and aircraft included.
+- **36 of the 97 FSD50K stems come from FSD50K dev, not eval.**
+
+  | Stems | From dev | Classes |
+  |---|---|---|
+  | Distracter | 18 of 61 | buzzing_insect 2, chainsaw 3, generator 2, helicopter 1, mosquito 2, mower 3, prop_plane 2, scooter 3 |
+  | War | 18 of 23 | both tank clips, all mortar/artillery, machine gun, far explosion and shout clips, the air-raid siren, 1 jet |
+  | Background and wind | 0 | all from eval |
+
+  Only small arms (3) and 2 jet clips among the war clips are from eval.
+- **The dev stems may have been training negatives** for models 6 and 9. That is the case unless
+  their dev split is `val`, or they were excluded by licence or drone keyword. This is **not
+  verified**: this machine has neither the FSD50K ground truth nor the FSD50K store.
+- **Corrections.** Entry 100 said that no it6 or it9 model trained on the stems. That holds for
+  the stem files, not for the FSD50K clips they were cut from. Entry 104 used the war clips as
+  the war test, so the same applies there.
+- **Entry 101's reading still stands.** If the tank clips were training negatives, their 45-57%
+  alarms happened despite that, which strengthens the steady-noise reading rather than weakening
+  it.
+
+**Decision.** In iteration 11's verdict:
+- "Unseen real noise" means the eval stems only: 43 distracter, 10 background and 3 wind clips.
+- The dev stems are reported apart, as "possibly seen".
+- The war clips are reported per class with their subset.
+- No criterion in the iteration 11 box changes. Its stem criterion is narrowed to the stems that
+  are unseen.
+
+**Next.** Check the dev stems' splits against `FSD50K.ground_truth/dev.csv`: the 334,701-byte
+ground-truth zip from Zenodo record 4060432, or the copy on JupyterLab. Also check whether eval
+uploaders also appear in dev `train`.
