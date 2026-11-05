@@ -118,11 +118,19 @@ class CleanSampler:
                 return w
         raise RuntimeError("could not draw a non-silent no-drone window")
 
-    def batch(self, index: int, batch_size: int):
+    def raw_batch(self, index: int, batch_size: int):
+        """batch()'s windows before the frontend, as gpufront.GpuFrontend.train_features takes them: no
+        speed change (SPEED_UP), no EQ. With it, NetScorer runs the frontend on a CUDA device and the
+        CPU only draws windows (report entry 119)."""
+        from dad.rangerun import SPEED_UP
         rng = np.random.default_rng([self.seed, index])
         y = (np.arange(batch_size) % 2).astype(np.int64)
-        L = np.stack([self.fe.frames(self._drone(rng) if t else self._nodrone(rng)) for t in y])
-        return rr.level_normalise(L), y
+        audio = np.stack([self._drone(rng) if t else self._nodrone(rng) for t in y]).astype(np.float32)
+        return audio, np.full(batch_size, SPEED_UP), np.zeros((batch_size, self.fe._fb.shape[0]), np.float32), y
+
+    def batch(self, index: int, batch_size: int):
+        audio, _, _, y = self.raw_batch(index, batch_size)       # the same draws as the GPU path
+        return rr.level_normalise(np.stack([self.fe.frames(x) for x in audio])), y
 
 
 def eval_windows(clips, hop: int):
