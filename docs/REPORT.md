@@ -6860,6 +6860,30 @@ threshold and below another's.
 
 **Next.** None. A tool change.
 
+## 121 - Detection window: the log-mel the networks see, in place of the spectrogram
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 6f37520 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked to see the log-mel, since that is what the networks
+look at, instead of the linear spectrogram.
+
+**What.** `scripts/detect_gui.py`: the top panel draws
+`dad.features.LogMel(DEFAULT).frames(audio)`, the frozen frontend itself (64
+mel bands 50-8000 Hz, 25 ms frames, 10 ms stride, Slaney-normalised
+filters), converted to dB and shown over an 80 dB range from its maximum. One
+row per band; the axis is labelled with band centre frequencies (79 Hz to
+7678 Hz), so the low bands take as much height as the high ones. It is the
+log-mel before the level normalisation and training EQ each model applies,
+so absolute colours are not what the network gets, the pattern is.
+
+**Checks.** Headless: a made-up 8 s 180 Hz tone with war track at 0 dB gives
+a 64 x 798 log-mel whose strongest band is band 4 (centre 206 Hz); rendered
+to PNG and looked at. `uv run pytest`: all pass. Not checked: a live window.
+
+**Next.** None. A tool change.
+
 ## 101 - How well does war-shaped noise stand in for war audio?
 
 - Date: 2026-11-04
@@ -7237,3 +7261,70 @@ which FSD50K audio training already holds.
 **Next.** Check the dev stems' splits against `FSD50K.ground_truth/dev.csv`: the 334,701-byte
 ground-truth zip from Zenodo record 4060432, or the copy on JupyterLab. Also check whether eval
 uploaders also appear in dev `train`.
+
+
+## 122 - Complete_Test_Gui: a control panel for large grids of test rounds
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 1fb0db7 (`NicolaiBranchGUI`), uncommitted
+
+Numbering: entries 101 to 105 just above are Mads's (iteration 11), written
+on another branch; Nicolai's entries 101 to 121 sit further up. Both sets
+are kept as they are; this entry continues Nicolai's numbers.
+
+**Why.** Nicolai asked for one GUI with complete control over a test, built
+for 1000+ rounds: two pages in a slide show (real drone test, synthetic drone
+test, working like `detect_gui.py` and `drone_war_gui.py`), every background
+layer settable, the soundscape length setting the rounds (the drone starts at
+every second until it ends with the soundscape), no graphs on the front, and
+results in a separate window and a CSV. His answers to the questions asked
+first: as many starts as fit (length - 10 + 1, so his example of 20 s, 3
+drones and 3 war levels is 11 x 3 x 3 = 99 rounds, not 90); levels are real
+levels in dB SPL for every layer and the drone, no SNR; all combinations of
+the layers' levels; CSV plus a results window.
+
+**What.**
+- `scripts/complete_test_engine.py`: `Plan` (the grid: starts, drones, drone
+  levels, every combination of the ticked layers' levels, optional no-drone
+  rounds per background), `Layer` (war soundscape, war-shaped noise, wind;
+  cars, helicopter and insects listed as not set up), `Drones` (real files cut
+  to their first 10 s, or Pure Data drones per speed through
+  `drone_war_grid.render_drones`, 10 s to impact), `mix_round`, `score_round`,
+  `hop_levels` and `Test.run` (rounds.csv appended round by round, Stop
+  between rounds, scores.npz, config.json, summary.csv). Levels: full scale is
+  110 dB SPL; a drone level is the RMS over its sound; a background layer's
+  level is its long-term RMS over the whole source (all 600 s of the war
+  track), so calm and loud stretches keep their difference. The war track
+  stretch has one start per batch (seed 1000 unless set). Windows are
+  labelled as in `dad.wavio.window_labels` (straddling windows left out). Per
+  round and detector: counts, recall, false-positive rate, precision, first
+  alarm and delay after the drone starts, lead before impact (synthetic), mean
+  confidence in drone and no-drone windows. Mixes are rebuilt on demand, not
+  stored.
+- `scripts/Complete_Test_Gui.py` (Tkinter): the two pages behind arrows,
+  page buttons and Ctrl+Left/Right; sections Drones, Background layers
+  (collapsible), Test rounds, Detectors (networks and comb), Run (live round
+  count and its breakdown, problems in words, Start/Stop, progress, time
+  left). The results window: summary table, a sortable and filterable table
+  of every round and detector (false alarms in red), and for the selected
+  round its log-mel, each detector's confidence with the drone's span and the
+  dB SPL of every layer and the mix over time (1 s windows), with Play mix,
+  Play drone, Play background (one gain for all three). "Open results..."
+  reopens an earlier run folder.
+
+**Checks.** Engine, made-up 10 s harmonic files: the example plan counts 99;
+12 s gives starts 0, 1, 2; a 26-round plan (2 drones x 2 drone levels x 3
+starts x 2 backgrounds + 2 no-drone) ran in 16 s with it6 CNN and comb
+(about 0.6 s a round); measured levels: drone 60.0 dB SPL as asked,
+war-shaped noise 40.0 over its loop, war track 55.0 over the whole track
+(60.1 in that 12 s stretch); rounds.csv 52 rows, scores.npz 52 arrays,
+summary.csv 22 rows; a synthetic 150 km/h round (cached render) has its
+truth from first arrival (1.21 s) to impact (10 s). GUI, driven by a script:
+the counts and problem messages update live (102 rounds for the example with
+no-drone rounds, 99 without); a 14-round run filled the progress bar,
+opened the results window (18 summary rows, 28 table rows; filter, search,
+sort, selection, plotting and Play work) and reopened from its folder.
+Screenshots looked at. `uv run pytest`: all pass. The made-up run folder was
+deleted. Made-up audio and synthetic mixes: not detection figures (section
+5). Not checked by a person: the live window, mouse use, sound.
