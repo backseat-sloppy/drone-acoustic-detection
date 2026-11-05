@@ -8454,3 +8454,35 @@ not lifting.
 
 Separately, the CNNs' better separation in war contradicts entry 127's suite. It should be checked on
 validation and the leave-one-unit-out folds before it steers anything.
+
+## 134 - Mads: run the complete test on the server, split over the GPUs
+
+- Date: 2026-11-05
+- Iteration: 15 (infrastructure, no new result)
+- Type: Infrastructure
+- Commit: uncommitted (on top of 2ffffcc): new `scripts/complete_test_run.py`; small changes to
+  `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`, `scripts/drone_war_grid.py`
+
+**What changed.** Mads asked to run `Complete_Test_Gui.py`'s mixing and scoring on the JupyterLab server,
+split over its GPUs the way the training runs are (`CUDA_VISIBLE_DEVICES=k`, one process per GPU, entry
+123). The GUI itself cannot start there: it is Tkinter and the server's terminal has no display.
+- `complete_test_run.py PLAN.json [--gpus N]`: deals the plan's rounds round-robin to N worker processes,
+  worker k with `CUDA_VISIBLE_DEVICES=k` and the networks on `cuda` (comb and the mixing stay on the
+  CPU). Each writes `OUT/shard_k/`; the shards are then merged into `OUT/` (rounds.csv, scores.npz,
+  summary.csv, config.json), which the GUI's "Open results..." opens like any run.
+- GUI: a "Save plan..." button writes the plan as JSON. The config.json of an earlier run also works as
+  a plan.
+- Engine: `Test(..., device=)` and `load_detectors(..., device)`, passed to `drone_war_grid._detectors`
+  (was always CPU). `portable()`: a drone file that does not exist at its path is looked up from its
+  `data/` folder on, under this clone, so a plan saved on Windows runs on the server and the merged run
+  opens on the PC. The rounds.csv reader moved from the GUI to `complete_test_engine.read_results`.
+
+**Checks (on the PC, CPU only).** A 17-round plan (two `data/extracted/static_drone` files, one given as
+a Windows path to another clone and one as a server path; 60 and 70 dB SPL; war soundscape 60, wind 50;
+it9 CRNN and comb; no-drone round on):
+`uv run python scripts/complete_test_run.py plan.json --gpus 0`, against the same plan run as two shards
+(`--shard 0/1 --of 2`) and merged. rounds.csv and summary.csv are byte-identical, and all 34 per-hop
+score arrays are equal. `Complete_Test_Gui.load_test` opens the merged folder and rebuilds a round.
+`uv run pytest`: 34 pass. **Not checked:** the `cuda` path and a run on the server (needs the code
+there; the server clone is on `Automatic-iteration(Mads)`, which does not have the complete test).
+These mixes are synthetic scaffolding (CLAUDE.md section 5); no number here is detection performance.

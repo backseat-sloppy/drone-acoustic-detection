@@ -43,6 +43,7 @@ import tempfile
 import threading
 import time
 import tkinter as tk
+from dataclasses import asdict
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -283,6 +284,7 @@ class Page(ttk.Frame):
         self.b_stop.grid(row=2, column=2, padx=2)
         self.b_results = ttk.Button(f, text="Results window", command=self.open_results, state="disabled")
         self.b_results.grid(row=2, column=3, padx=2)
+        ttk.Button(f, text="Save plan...", command=self.save_plan).grid(row=2, column=4, padx=2)
         self.l_status = ttk.Label(f, text="Set up the test, then Start.", style="Muted.TLabel")
         self.l_status.grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
 
@@ -387,15 +389,34 @@ class Page(ttk.Frame):
         self.l_layers_sum.configure(text="  ·  ".join(bits) if bits else "no background layer ticked")
 
     # ---------- run
-    def start(self):
+    def checked_plan(self) -> E.Plan | None:
+        """The plan, or None after saying what is wrong with it."""
         try:
             p = self.plan()
         except ValueError as e:
             messagebox.showerror(TITLE, str(e), parent=self)
-            return
+            return None
         probs = p.check()
         if probs:
             messagebox.showerror(TITLE, "\n".join(probs), parent=self)
+            return None
+        return p
+
+    def save_plan(self):
+        """The plan as JSON, for scripts/complete_test_run.py (the same test without the GUI, on the server)."""
+        p = self.checked_plan()
+        if p is None:
+            return
+        f = filedialog.asksaveasfilename(parent=self, title="Plan for complete_test_run.py", defaultextension=".json",
+                                         initialfile=f"plan_{p.kind}.json", filetypes=[("JSON", "*.json")],
+                                         initialdir=str(E.OUT_ROOT) if E.OUT_ROOT.exists() else None)
+        if f:
+            Path(f).write_text(json.dumps(dict(plan=asdict(p)), indent=1), encoding="utf-8")
+            self.l_status.configure(text=f"plan saved: {f}")
+
+    def start(self):
+        p = self.checked_plan()
+        if p is None:
             return
         self.test = E.Test(p)
         self.stop_flag.clear()
@@ -931,7 +952,6 @@ def stop_sound():
 
 def load_test(folder: Path) -> E.Test:
     """An earlier run from its folder: plan and start from config.json, results from rounds.csv."""
-    import csv
     cfg = json.loads((folder / "config.json").read_text(encoding="utf-8"))
     p = cfg["plan"]
     plan = E.Plan(**{k: p[k] for k in ("kind", "length_s", "drones", "drone_levels", "layers", "detectors", "step_s",
@@ -939,14 +959,7 @@ def load_test(folder: Path) -> E.Test:
     t = E.Test(plan, folder)
     t.start_s = cfg["soundscape_start_s"]
     t.prepare(progress=lambda s: None)
-    num = lambda v: None if v in ("", "None") else (v == "True") if v in ("True", "False") else float(v)  # noqa: E731
-    with open(folder / "rounds.csv", encoding="utf-8") as fh:
-        for row in csv.DictReader(fh):
-            t.results.setdefault(int(row["round"]), {})[row["detector"]] = {
-                k: num(row.get(k, "")) for k in ("tp", "fn", "fp", "tn", "left_out", "recall", "false_positive_rate",
-                                                 "precision", "first_alarm_s", "delay_s", "lead_s", "any_alarm",
-                                                 "any_false_alarm", "mean_conf_drone", "mean_conf_no_drone",
-                                                 "snr_db", "signal_share", "drone_db")}   # older runs lack these
+    t.results = E.read_results(folder)
     E.write_summary(t)
     return t
 

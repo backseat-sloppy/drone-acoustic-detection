@@ -198,7 +198,7 @@ class Drones:
         self.plan, self.sig, self.span = plan, {}, {}
         if plan.kind == "real":
             for p in plan.drones:
-                x = read_wav(p, DEFAULT).audio.astype(np.float64)
+                x = read_wav(portable(p), DEFAULT).audio.astype(np.float64)
                 if len(x) < DRONE_S * SR:
                     raise ValueError(f"{Path(p).name} is {len(x) / SR:.1f} s; drone files must be at least {DRONE_S:g} s")
                 self.sig[p] = x[: int(DRONE_S * SR)]
@@ -226,19 +226,28 @@ class Drones:
         return x * (rms_for(level_db) / r)
 
 
+def portable(p: str) -> str:
+    """A drone file path that also works on the other machine: if `p` does not exist, the same path
+    from its "data/" folder on, under this clone (a plan saved on Windows runs on the server and back)."""
+    # shortcut: only files under data/ travel, others must exist at their path; upgrade if drones live elsewhere.
+    s = p.replace("\\", "/")
+    i = s.find("/data/")
+    return str(dwg.ROOT / s[i + 1:]) if i >= 0 and not Path(p).exists() else p
+
+
 def drone_label(d) -> str:
     return Path(d).name if isinstance(d, str) else f"{float(d):g} km/h"
 
 
 # ------------------------------------------------------------------ detectors
 
-def load_detectors(names: list[str]) -> tuple[dict, dict]:
+def load_detectors(names: list[str], device: str = "cpu") -> tuple[dict, dict]:
     thr, sc = {}, {}
     for m in names:
         if m == "comb":
             thr[m], sc[m] = dwg.comb_threshold(), load_scorer("comb", DEFAULT, "cpu")
         else:
-            t, s = dwg._detectors(m)
+            t, s = dwg._detectors(m, device)
             thr[m], sc[m] = t["CNN"], s["CNN"]
     return thr, sc
 
@@ -338,8 +347,8 @@ class Test:
     """One run of a plan. `run()` goes round by round (stop() between rounds), appends to rounds.csv,
     keeps every round's per-hop scores in memory and in scores.npz, and writes config.json."""
 
-    def __init__(self, plan: Plan, out_dir: Path | None = None):
-        self.plan = plan
+    def __init__(self, plan: Plan, out_dir: Path | None = None, device: str = "cpu"):
+        self.plan, self.device = plan, device
         self.out = Path(out_dir or OUT_ROOT / f"{time.strftime('%Y%m%d_%H%M%S')}_{plan.kind}")
         self.layers = make_layers()
         self.rounds = plan.rounds()
@@ -355,7 +364,7 @@ class Test:
             self.start_s = float(np.random.default_rng(dwg.WSN_SEED).integers(0, int(span) + 1)) if span else 0.0
         self.drones = Drones(self.plan, progress)
         progress("loading detectors")
-        self.thr, self.scorers = load_detectors(self.plan.detectors)
+        self.thr, self.scorers = load_detectors(self.plan.detectors, self.device)
         self.out.mkdir(parents=True, exist_ok=True)
         cfg = dict(plan=asdict(self.plan), soundscape_start_s=self.start_s, thresholds=self.thr,
                    count=self.plan.count(), drone_spans={drone_label(k): v for k, v in self.drones.span.items()})
@@ -443,3 +452,17 @@ def write_summary(test: Test) -> Path:
             w.writerows(rows)
     test.summary = rows
     return p
+
+
+def read_results(folder: Path) -> dict:
+    """round -> detector -> numbers, read back from a run folder's rounds.csv."""
+    num = lambda v: None if v in ("", "None") else (v == "True") if v in ("True", "False") else float(v)  # noqa: E731
+    out: dict[int, dict] = {}
+    with open(Path(folder) / "rounds.csv", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            out.setdefault(int(row["round"]), {})[row["detector"]] = {
+                k: num(row.get(k, "")) for k in ("tp", "fn", "fp", "tn", "left_out", "recall", "false_positive_rate",
+                                                 "precision", "first_alarm_s", "delay_s", "lead_s", "any_alarm",
+                                                 "any_false_alarm", "mean_conf_drone", "mean_conf_no_drone",
+                                                 "snr_db", "signal_share", "drone_db")}   # older runs lack these
+    return out
