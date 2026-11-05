@@ -31,6 +31,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 12 | 125 to 127 | Real FSD50K confusers (engine, vehicle, power tool, fan, insect, water) as 25% of negatives and under 30% of positives | Iteration 11's synthetic steady noise cost real-drone recall; the worst unseen false alarms are engines, vehicles, insects and water | **Fails its guards.** Unseen confuser stems 31% to 18% (target met), but validation -2.3 and Lund -13 points. At matched false alarms it separates exactly like `simdist` (AUC 0.932 against 0.930): the recipes move the operating point, not the separation (entry 127). |
 | Iteration 13 | 127 to 128 | Frozen PANNs Cnn14_16k embedding plus logistic regression (entry 053's modified B) | Training-data levers ran out: every CRNN recipe reaches about the same separation (entry 127) | **Failed** (entry 053's rule). Mower false alarms 46% (> 40%); Lund recall 0.545 (CRNN 0.342), but suite AUC 0.84 against the CRNN's 0.93, brown noise 100%; fusing with the CRNN does not help. Folds: mean 0.466 against 0.527 (entry 130). |
 | Iteration 14 | 129 to 130 | Cnn14_16k fine-tuned end to end (LP-FT), after a council (entry 129) | The frozen embedding underfits (training accuracy 0.81) | **Failed at its go/no-go** (seed 0): validation recall at 10% FA 0.594 (gate 0.768), Lund 0.000 (gate 0.30). One untuned setup. The it9 CRNN stays the best model. |
+| Iteration 15 | 132 to 133 | Decision stage on the it9 CRNN, no training: a causal 1 s median, and the mean of several networks; a new war-coupling readout (score of drone + war minus drone alone) through `Complete_Test_Gui`'s engine | Mads saw war spikes lift the drone's score; iterations 11-14 changed the training data or the model without better separation | **Hypothesis rejected.** The war mostly *lowers* the CRNN's drone score (more than 0.1 on 37-51% of drone hops, lifts on 5-6%). A median leaves the coupling unchanged; averaging cuts it by 17-21% (30% required). Both CNNs separate drone-in-war better than the CRNN on this readout (AUC 0.91-0.92 against 0.86 at 65 dB SPL). |
 
 ## Templates
 
@@ -8247,3 +8248,209 @@ some processing texture. The level is constant; the pitch is not: the
 drone's harmonics dip between about 7 and 8.5 s (a manoeuvre), as in the
 recording. It is processed sealed-set audio: not a test file for a sealed
 score.
+# Iteration 15 - Decision stage on the it9 CRNN: model averaging and a causal median
+
+> **Changed from iteration 14:** no network is trained. The networks stay as they are, and what changes is
+> the decision stage after them:
+> - a causal median over the last 8 scores (1 s at the 0.125 s hop);
+> - the mean of several networks' scores (the it9 CRNN with the it9 CNN, and with both CNNs), at the mean
+>   of their frozen thresholds;
+> - both together.
+>
+> A new readout, the **war coupling**, also measures how much the war soundscape moves the drone's score:
+> d = score(drone + war) - score(drone alone), on drone windows, hop by hop. Script:
+> `scripts/war_influence.py`, which runs `scripts/complete_test_engine.py` (the engine of
+> `Complete_Test_Gui.py`).
+>
+> **Why:** Mads (2026-11-05). In the war soundscape without a drone the it9 CRNN's score has spikes, below
+> about 0.5. When a drone is present, those spikes visibly lift its score. The CRNN's frozen threshold is
+> 0.483 (entry 096), so "below 0.5" sits at the alarm line. Two facts from iterations 11-14 point at
+> the decision stage rather than the training data:
+> - training-data recipes move the operating point, not the separation (entry 127);
+> - the false responses differ wildly between seeds of the same recipe (pink/brown noise 5-76%,
+>   entry 125), while the drone response is shared, which is what averaging models removes.
+>
+> War events are short (shots, blasts) next to a drone, which a median over 1 s removes. Entry 127 showed
+> a causal mean over 16 hops lifting matched recall from 0.77 to 0.83. The CRNN seeds of iteration 11 are
+> on the server only, so the local ensemble uses the networks on this PC (it9 CRNN, it9 CNN, it6 CNN).
+>
+> **Departure from entry 129:** the council said B (smoothing) is not an iteration, and that a span is
+> chosen on validation. Mads asked to try it (2026-11-05). The span is fixed here, before any run, at
+> 1 s (one window length), and is not tuned. No validation check of the span is run in this iteration.
+>
+> **Kept the same:** the networks and their frozen thresholds (CRNN 0.483), MFE, 1 s window, 0.125 s hop.
+> Comb and lgbm (it6) are reported raw.
+>
+> **Test (fixed before any run):**
+> - the ten ITU ARIS excerpts at 50 and 60 dB SPL;
+> - mixed into 20 s stretches of the war track at 55 and 65 dB SPL (long-term level);
+> - drone starts every 2 s (0-10 s);
+> - four stretches drawn with seed 15;
+> - plus the same drones with no background, and one war-only round per stretch and level.
+>
+> **Hypothesis:** the war's spikes are short and model-specific, so a median and model averaging shrink
+> the coupling without losing drone recall.
+>
+> **Judged by** (each decision variant against the raw it9 CRNN, on this test):
+> - mean |d| falls by at least 30% at both war levels;
+> - the war-only false-alarm share at the variant's threshold is not higher at either war level;
+> - drone recall at the threshold drops at most 2 points, in war (both levels) and with no background;
+> - AUC (drone + war hops against war-only hops) drops at most 0.005.
+>
+> Reported without a rule: corr(d, war-only score), the war-only 99th percentile, and recall at 5%
+> matched false alarms.
+>
+> Limits fixed in advance:
+> - this is a readout, not detection performance (CLAUDE.md section 5);
+> - ARIS has been a readout since entry 123;
+> - the war track is built from FSD50K stems, some from FSD50K dev, which training draws from (entry 105);
+> - judging four variants on one readout is a mild selection;
+> - a causal median of 8 needs at least 4 alarmed windows, so it delays the first alarm by about 0.5 s
+>   (R5's cost, not measured here).
+
+## 132 - Mads: try the decision stage on the it9 CRNN with Complete_Test_Gui's engine
+
+- Date: 2026-11-05
+- Iteration: 15
+- Type: Requirements, Evaluation
+- Commit: uncommitted (on top of 6f454d4): new `scripts/war_influence.py`
+
+**What changed.** New `scripts/war_influence.py`: drives `complete_test_engine.Test` over the plan in the
+iteration 15 box, then computes the war coupling and the other readouts for each decision variant.
+
+**Why.** Mads asked how the it9 CRNN can be improved, given the war-soundscape spikes that lift the
+drone's score. The answer proposed:
+1. measure the coupling first;
+2. average models;
+3. a causal median;
+4. impulsive war sounds as negatives and maskers (needs training);
+5. a robust level normalisation (a frontend change, needs a council).
+
+Mads said to try it with `Complete_Test_Gui`'s engine. This iteration covers 1-3, which need no
+training.
+
+**Next.** Run the test (entry 133).
+
+## 133 - Iteration 15 result: the war mostly lowers the drone's score; median and averaging do not fix it
+
+- Date: 2026-11-05
+- Iteration: 15
+- Type: Evaluation
+- Commit: uncommitted (on top of 7ac6b5a): `scripts/war_influence.py` (with `--reuse` and the d_up / d_down
+  columns added after the run; the second pass reproduced every first-pass figure)
+
+**What changed.** Nothing new. The iteration 15 test ran as boxed.
+
+**How.** On Mads's PC, CPU, 1,088 rounds of 20 s, about 40 min:
+```
+uv run python scripts/war_influence.py --stretches 4 --out artifacts/war_influence/it15
+uv run python scripts/war_influence.py --stretches 4 --out artifacts/war_influence/it15 --reuse
+```
+Run details:
+- War track stretches start at 401, 409, 473 and 540 s (seed 15). The first two overlap by 12 s, so the
+  war material is about 68 s, not 80 s. This was noticed after the draw, and the plan was kept.
+- Thresholds frozen on validation: it9 CRNN 0.483, it9 CNN 0.380, it6 CNN 0.297, lgbm 0.612, and comb 1.91
+  (comb squashed to 0-1, threshold at 0.5).
+- Outputs: `artifacts/war_influence/it15/` (per-test `rounds.csv` and `scores.npz`, `summary.json`) and
+  `it15_table.md`.
+- During the run, Nicolai's d3ade00 (SNR fields in `complete_test_engine.py`, scoring unchanged) and
+  7ac6b5a landed in the working copy. Nicolai's report entries 123-129 sit above iteration 15, with
+  numbers that again clash with Mads's 123-131. This entry continues after 131.
+
+**Result.** Data: the ten ITU ARIS excerpts at 50 and 60 dB SPL, starting every 2 s, in 20 s of the war
+track at 55 or 65 dB SPL long-term. 1 s window, 0.125 s hop.
+- Drone hops: 4,800 per war level, windows straddling the drone's start or end left out.
+- War-only hops: 612 per war level.
+- d = score(drone + war) - score(drone alone) on the same hop.
+- "Lifts" / "lowers" = the share of drone hops where d > +0.1 / d < -0.1.
+
+War at 55 dB SPL:
+
+| Variant | War-only FA | War p99 | Mean d | Mean \|d\| | Lifts | Lowers | corr(d, war score) | Recall | AUC | Recall at 5% matched FA |
+|---|---|---|---|---|---|---|---|---|---|---|
+| it9 CRNN | 0.0% | 0.279 | -0.138 | 0.166 | 4.6% | 37.3% | 0.265 | 0.546 | 0.957 | 0.824 |
+| it9 CRNN + median | 0.0% | 0.255 | -0.129 | 0.164 | 5.5% | 36.3% | 0.277 | 0.534 | 0.954 | 0.837 |
+| mean CRNN, it9 CNN | 0.0% | 0.302 | -0.085 | 0.132 | 7.8% | 31.3% | 0.206 | 0.596 | 0.979 | 0.873 |
+| mean CRNN, it9 CNN + median | 0.0% | 0.259 | -0.078 | 0.132 | 8.9% | 30.6% | 0.219 | 0.586 | 0.979 | 0.862 |
+| mean of 3 nets | 0.0% | 0.308 | -0.072 | 0.131 | 9.9% | 28.9% | 0.195 | 0.692 | 0.980 | 0.882 |
+| mean of 3 nets + median | 0.0% | 0.271 | -0.066 | 0.131 | 11.0% | 28.3% | 0.204 | 0.682 | 0.982 | 0.877 |
+| it9 CNN | 1.3% | 0.384 | -0.033 | 0.126 | 15.5% | 23.2% | 0.274 | 0.643 | 0.969 | 0.796 |
+| it6 CNN | 3.1% | 0.349 | -0.045 | 0.148 | 15.7% | 25.0% | 0.181 | 0.791 | 0.973 | 0.819 |
+| lgbm (it6) | 0.0% | 0.297 | -0.048 | 0.095 | 7.9% | 22.7% | 0.001 | 0.049 | 0.842 | 0.371 |
+| comb | 17.6% | 0.998 | +0.207 | 0.241 | 23.8% | 2.0% | 0.595 | 0.298 | 0.847 | 0.079 |
+
+War at 65 dB SPL:
+
+| Variant | War-only FA | War p99 | Mean d | Mean \|d\| | Lifts | Lowers | corr(d, war score) | Recall | AUC | Recall at 5% matched FA |
+|---|---|---|---|---|---|---|---|---|---|---|
+| it9 CRNN | 1.8% | 0.501 | -0.241 | 0.272 | 5.5% | 50.9% | 0.260 | 0.419 | 0.857 | 0.532 |
+| it9 CRNN + median | 2.0% | 0.498 | -0.229 | 0.270 | 6.9% | 49.7% | 0.278 | 0.412 | 0.855 | 0.512 |
+| mean CRNN, it9 CNN | 2.1% | 0.463 | -0.185 | 0.225 | 6.8% | 50.1% | 0.186 | 0.441 | 0.910 | 0.542 |
+| mean CRNN, it9 CNN + median | 1.3% | 0.452 | -0.176 | 0.224 | 8.4% | 49.2% | 0.210 | 0.433 | 0.910 | 0.500 |
+| mean of 3 nets | 3.9% | 0.480 | -0.180 | 0.222 | 7.0% | 48.6% | 0.167 | 0.497 | 0.918 | 0.536 |
+| mean of 3 nets + median | 3.9% | 0.445 | -0.171 | 0.222 | 8.6% | 47.9% | 0.189 | 0.486 | 0.918 | 0.508 |
+| it9 CNN | 4.7% | 0.501 | -0.130 | 0.199 | 11.9% | 42.7% | 0.200 | 0.476 | 0.907 | 0.490 |
+| it6 CNN | 7.7% | 0.523 | -0.168 | 0.231 | 10.2% | 45.3% | 0.141 | 0.593 | 0.915 | 0.549 |
+| lgbm (it6) | 0.0% | 0.390 | -0.088 | 0.122 | 5.7% | 32.3% | 0.070 | 0.034 | 0.777 | 0.213 |
+| comb | 17.6% | 0.998 | +0.162 | 0.223 | 20.7% | 3.5% | 0.717 | 0.254 | 0.834 | 0.052 |
+
+Drone alone (no background), recall at the threshold:
+
+| Variant | Recall |
+|---|---|
+| it9 CRNN | 0.738 |
+| + median | 0.714 |
+| mean CRNN, it9 CNN | 0.740 |
+| + median | 0.717 |
+| mean of 3 | 0.823 |
+| + median | 0.798 |
+| it9 CNN | 0.692 |
+| it6 CNN | 0.857 |
+| lgbm | 0.091 |
+| comb | 0.082 |
+
+Comb is level-invariant: its war-only scores are the same at both levels.
+
+**Assessment against the box.**
+
+| Variant | Mean \|d\| -30% at both levels | War FA not higher | Recall within 2 points (war 55 / 65 / alone) | AUC within 0.005 | Verdict |
+|---|---|---|---|---|---|
+| + median | **no** (-1%, -1%) | **no** at 65 (1.8% to 2.0%) | **no** (-1.2 / -0.7 / -2.4) | yes | fails |
+| mean CRNN, it9 CNN | **no** (-20%, -17%) | **no** at 65 (2.1%) | yes (+5.0 / +2.2 / +0.2) | yes (+0.022 / +0.053) | fails |
+| mean CRNN, it9 CNN + median | **no** (-20%, -18%) | yes (0.0%, 1.3%) | **no** alone (-2.1) | yes | fails |
+| mean of 3 nets (+ median) | **no** (-21%, -18%) | **no** at 65 (3.9%) | yes | yes | fails |
+
+**The hypothesis is rejected:** every variant fails the coupling rule. What the test shows instead:
+- **For the it9 CRNN, the war mostly lowers the drone's score; it seldom lifts it.**
+  - A drone hop loses more than 0.1 on 37% (55 dB) and 51% (65 dB) of hops.
+  - It gains more than 0.1 on only 5% and 6%.
+  - The lift Mads sees is real: d rises with the war's own score at that hop (corr +0.26). But it is the
+    smaller effect. The larger one is masking: the drone's score drops while war is present.
+  - At 65 dB SPL, drone recall falls from 0.74 (alone) to 0.42.
+- **The coupling is not short spikes.** A 1 s median leaves |d| unchanged (-1%). Whatever the war does
+  to the score lasts as long as a window or longer.
+- **Averaging helps less than its AUC suggests.** The mean of the three networks reaches AUC
+  0.980 / 0.918 against the CRNN's 0.957 / 0.857. But the it6 CNN alone already reaches 0.973 / 0.915, and
+  the it9 CNN 0.969 / 0.907. Most of the gain is that both CNNs separate drone-in-war from war better
+  than the CRNN on this test. The ensemble beats the best single network by only 0.007 / 0.003. The CNNs
+  are lifted by the war more often (10-16% of hops) and alarm more on war alone (it6 CNN 7.7% at 65 dB).
+- On this test, the it9 CRNN is not the best network; on the suite of entries 124-127 it was. The two
+  readouts disagree. Neither is detection performance: one source of drones, a war track built from
+  FSD50K stems, and ARIS used as a readout since entry 123.
+- Baselines: lgbm hardly detects the drones (recall 0.03-0.09). Comb alarms on 18% of war-only hops, is
+  lifted by the war on 21-24% of drone hops, and its score follows the war's (corr 0.60-0.72).
+
+**Verdict for iteration 15.** Fails as boxed: neither a causal median nor averaging networks removes the
+war's effect on the drone's score. The effect that matters is masking (the war lowers the drone's score),
+not lifting.
+
+**Next.** Two levers act on masking. Both need Mads:
+- (a) **War-like maskers under the positives in training:** impulsive FSD50K dev sounds (explosion,
+  gunshot, machine gun, artillery), not the war-track stems. Iteration 12 did this for engines, which are
+  not impulsive. It needs the server's GPUs and its uncommitted iteration 12 code.
+- (b) **A level normalisation that one loud event cannot dominate:** today each window is normalised by
+  its mean power (`realrun.level_normalise`). This is a frontend change, so a council comes first
+  (CLAUDE.md section 4).
+
+Separately, the CNNs' better separation in war contradicts entry 127's suite. It should be checked on
+validation and the leave-one-unit-out folds before it steers anything.
