@@ -95,6 +95,7 @@ from matplotlib.widgets import Button, CheckButtons, RadioButtons, TextBox  # no
 from scipy.signal import resample_poly  # noqa: E402
 
 from dad.config import DEFAULT  # noqa: E402
+from dad.features import LogMel, hz_to_mel, mel_to_hz  # noqa: E402
 from dad.wavio import Clip, read_wav, stream  # noqa: E402
 
 OUT = dwg.ROOT / "artifacts/detect_gui/results.csv"
@@ -105,6 +106,8 @@ NOISE_LOOP_S = 60.0                                          # longer files repe
 WAR_TRACK = dwg.es.WAR / "war_track.wav"                     # 600 s, 44.1 kHz (scripts/war_track.py)
 SOURCES = {"war-shaped noise": "wsn", "war track (600 s)": "track"}   # radio label -> source
 AUDIO_TYPES = [("Audio files", "*.wav *.flac *.ogg *.mp3"), ("All files", "*.*")]
+LOGMEL = LogMel(DEFAULT)                                      # what the networks see (before level normalisation)
+BAND_HZ = mel_to_hz(np.linspace(hz_to_mel(DEFAULT.fmin), hz_to_mel(DEFAULT.fmax), DEFAULT.n_mels + 2))[1:-1]
 HOP_S = DEFAULT.samples_per_hop / DEFAULT.sample_rate
 TEXT, GREY, RED = "#333333", "#777777", "#c0392b"
 NAMES = {"CNN": "CNN", "comb": "DSP (comb)"}                 # detector -> name in the stats window
@@ -401,7 +404,7 @@ def draw_list():
                      va="top", picker=True).file_index = i
     more = len(files) - state["top"] - LIST_ROWS
     note = ("click a file to show it, a red one opens its stats; % = mean confidence, * = alarmed" if compact
-            else "click a file to show it, a red one also opens its stats; % = mean confidence (area under curve)")
+            else "click a file to show it, a red one also opens its stats; % = mean confidence")
     if state["top"] or more > 0:
         note = f"files {state['top'] + 1}-{min(state['top'] + LIST_ROWS, len(files))} of {len(files)}; scroll here. " + note
     ax_list.text(0, 1 - (LIST_ROWS + 2) / (LIST_ROWS + 3), note, fontsize=7, color=GREY, va="top", wrap=True)
@@ -494,6 +497,19 @@ def draw_conf(ax, f, thr, selected, legend, size=9, sep="   |   "):
             side.set(linewidth=1.6, color=TEXT)
 
 
+def draw_logmel(ax, audio):
+    """The log-mel the networks get (dad.features.LogMel, the frozen frontend: 64 mel bands 50-8000 Hz,
+    25 ms frames, 10 ms stride), in dB, 80 dB range; before the level normalisation each model does.
+    One row per band, labelled with the band's centre frequency."""
+    lm = 10 / np.log(10) * LOGMEL.frames(audio)              # natural log -> dB
+    top = float(lm.max()) if lm.size else 0.0
+    ax.imshow(lm, origin="lower", aspect="auto", cmap="magma", vmin=top - 80, vmax=top, interpolation="nearest",
+              extent=(0, len(audio) / DEFAULT.sample_rate, 0, lm.shape[0]))
+    ticks = [0, 8, 16, 24, 32, 40, 48, 56, 63]
+    ax.set_yticks([t + 0.5 for t in ticks], [f"{BAND_HZ[t]:.0f}" for t in ticks])
+    ax.set_ylabel("Hz (log-mel band centre)")
+
+
 def draw_slide():
     """Slide show: the current row's confidence graph alone, filling the right side, with the
     file and its place among the file's SNRs above it."""
@@ -543,8 +559,7 @@ def draw_file():
         return
     f = files[state["cur"]]
     if "audio" in f:
-        ax_spec.specgram(f["audio"], NFFT=1024, Fs=DEFAULT.sample_rate, noverlap=768, cmap="magma", vmin=-160)
-    ax_spec.set_ylabel("Hz")
+        draw_logmel(ax_spec, f["audio"])
     ax_spec.set_title(f"{state['cur'] + 1}/{len(files)}  {describe(f)}", fontsize=10, color=TEXT, loc="left")
     rows = siblings(state["cur"])
     axes = conf_axes(len(rows))
