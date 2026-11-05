@@ -6806,3 +6806,69 @@ in-band power to 0. Check with the it11r CRNN 600k:
   (about 170 m at 200 km/h) sits far below its noise.
 **Also.** In `drone_war_gui.py` the model-name note overlapped the
 results table. It moved to y 0.17 at font size 6.
+
+## 116 - Two arms against entry 115's failures: steady noise, and steady noise with fainter drones
+- Date: 2026-11-05
+- Iteration: the soundscape line (see entry 101)
+- Type: Data
+- Commit: accf0e4 (pushed; the server pulled it)
+
+**What changed.** `make_scenes.py --steady P --steady-db LO HI` (default
+-6 to +12 dB): with probability P (rng `[seed, 7]`), a scene gets a
+steady broadband noise bed made of:
+- Gaussian noise with a random spectral slope, U(-12, +3) dB/octave;
+- a smooth random EQ, U(-6, +6) dB at 6 log-even points over 50-8000 Hz;
+- a slow level wobble, 0.2-2 Hz and +-3 dB.
+
+The noise is rng `[seed, 6]` and the level rng `[seed, 8]`, so the drone
+and no-drone scenes of a seed get the same noise. It is part of the SNR
+reference. It is never the war spectrum, which stays the test background
+(entry 097). Master's iteration 11 (entry 100) uses the same family.
+New test `test_steady_noise_slope_is_seeded`: the noise is seeded and has
+unit RMS, and a slope below -9 dB/octave puts more than 10 times the
+power at 100-400 Hz than at 3-6 kHz.
+**The arms.** Both start from the it11r recipe (`--realism --sources
+fsd50k_dev`, seeds 0-2159) and both get `--steady 0.5`. Both share
+`it11s/nodrone`, because a no-drone scene does not depend on the SNR range.
+- Arm 1 (`it11s/drone`): SNR -20 to +10 dB, as before.
+- Arm 2 (`it11sl/drone`): SNR -30 to +10 dB, so far drones are seen
+  (entry 115's second failure). This stays above the supervisor's
+  -40 dB floor.
+
+Both train as the it11r CRNN 600k (entry 113), 3 seeds each, so arm 1
+against entry 113 measures the steady noise, and arm 2 against arm 1
+measures the SNR range.
+**Where it runs.** Mads asked for everything to be tested on the server.
+The server has no Pd: no sudo, and conda-forge does not respond, while
+PyPI does. The numpy port `pdsynth` would change the renderer, a second
+change. So scenes are rendered on the Mac, and training and all tests run
+on the server.
+**Server tests so far.** After `git pull` to accf0e4,
+`~/dad/.venv/bin/python -m pytest -q tests` on the server: all passed, 1
+skipped (the Glasgow split test; Glasgow is not on the server).
+
+## 117 - Both arms rendered, uploaded and training on JupyterLab (no tests, Mads's instruction)
+- Date: 2026-11-05
+- Iteration: the soundscape line (see entry 101)
+- Type: Data, Model
+- Commit: accf0e4 (server and Mac)
+
+**Render (Mac).** Started at 10:30, done by 10:47. Each set holds every
+seed 0-2159 once, none heldout, and 1063 scenes (49%) with steady noise:
+- `it11s/nodrone`;
+- `it11s/drone`, SNR -20.0 to +10.0 dB;
+- `it11sl/drone`, SNR -30.0 to +10.0 dB.
+
+In both arms, all 2160 drone scenes share their bed and chain with
+`it11s/nodrone`. `throttle.txt` was restored.
+**Upload.** One uncompressed zip of 2 090 502 342 bytes, MD5
+323100f53ef3b4beee3e33cde83c58c2, in 250 chunks of 8 MB (150 s). The MD5
+on the server matches, and 2160 WAVs and 2160 labels per set are in place.
+**Training.** At about 10:52 the six runs started:
+`it11s_crnn600k_s{0,1,2}` and `it11sl_crnn600k_s{0,1,2}`. The command is
+entry 113's (`--arch crnn --windows 600000 --nodrone ~/nodrone`), with
+`--drones <arm>/drone it11s/nodrone`, two runs per TITAN X. Another
+user's jobs held about 5.4 GB on each GPU at the time.
+**Tests.** Mads said "Only train dont test": no drone-war test or other
+scoring runs on the server for these models. Mads tests them himself in
+the GUIs.
