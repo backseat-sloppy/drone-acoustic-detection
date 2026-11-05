@@ -34,6 +34,7 @@ import numpy as np
 
 from . import chains as ch
 from . import realrun as rr
+from . import steady
 from .config import DEFAULT, FrontendConfig
 from .features import LogMel
 from .realdata import Recording
@@ -127,12 +128,15 @@ class Recipe:
     sim_snr_db: tuple[float, float] = (-10.0, 5.0)
     cap: float = 8.0
     near_bury: bool = True                       # near positives buried in FSD50K, as iteration 2
+    steady_neg: float = 0.0                      # share of negatives that are steady noise alone (iteration 11)
+    steady_mask: float = 0.0                     # share of positives with steady noise under the drone
 
 
 RECIPES = {
     "near": Recipe("near", {(0, 50): 1.0}),
     "range": Recipe("range", {(0, 50): 0.20, (50, 100): 0.25, (100, 150): 0.30, (150, 200): 0.25}),
     "simdist": Recipe("simdist", {(0, 50): 1.0}, sim_share=0.80),
+    "simdist_steady": Recipe("simdist_steady", {(0, 50): 1.0}, sim_share=0.80, steady_neg=0.15, steady_mask=0.30),
 }
 
 
@@ -275,6 +279,9 @@ class RangeSampler:
             parts.append(f"{s} negatives share {sh:.3f} ({len(idx) * self._grid / 16_000 / 60:.1f} min)")
         if self.speed:
             parts.append(f"speed {self.speed[0]:g}-{self.speed[1]:g}")
+        if self.recipe.steady_neg or self.recipe.steady_mask:
+            parts.append(f"steady noise: {self.recipe.steady_neg:.0%} of negatives, "
+                         f"under {self.recipe.steady_mask:.0%} of positives")
         return "; ".join(parts)
 
     def _norm(self) -> float:
@@ -299,6 +306,18 @@ class RangeSampler:
         snr = rng.uniform(*self.variant.snr_db)
         return d + b * math.sqrt(rr.inband_power(d) / (pb * 10.0 ** (snr / 10.0)))
 
+    def steady(self, rng: np.random.Generator) -> tuple[np.ndarray, float]:
+        """Iteration 11: generator (a) or (b), each half the time, with a slow level wobble.
+        Returns the noise and its in-band power; (a) is at the level of a rig background."""
+        a, pa = self._rig_background(rng)
+        if rng.random() < 0.5:
+            x = steady.slope_noise(len(a), rng.uniform(*steady.SLOPE_DB_PER_OCT), rng, self.cfg.sample_rate)
+            x = x * math.sqrt(pa / max(rr.inband_power(x), 1e-20))
+        else:
+            x = steady.phase_copy(a, rng)
+        x = steady.wobble(x, rng, self.cfg.sample_rate)
+        return x, rr.inband_power(x)
+
     def positive(self, rng: np.random.Generator) -> np.ndarray:
         k = int(np.searchsorted(self._cell_cdf, rng.random(), side="right"))
         if k == len(self.cells):            # simulated distance
@@ -306,14 +325,24 @@ class RangeSampler:
             d = near[int(rng.integers(0, len(near)))].draw(rng)
             a, pa = self._rig_background(rng)
             snr = rng.uniform(*self.recipe.sim_snr_db)
-            return a + d * math.sqrt(pa * 10.0 ** (snr / 10.0) / max(rr.inband_power(d), 1e-20))
-        c = self.cells[k]
-        d = c.draw(rng)
-        if c.lo == 0 and self.recipe.near_bury:
-            d = self._bury(d, rng)
-        return d
+            pd = pa * 10.0 ** (snr / 10.0)
+            x = a + d * math.sqrt(pd / max(rr.inband_power(d), 1e-20))
+        else:
+            c = self.cells[k]
+            x = c.draw(rng)
+            pd = rr.inband_power(x)
+            if c.lo == 0 and self.recipe.near_bury:
+                x = self._bury(x, rng)
+        if self.recipe.steady_mask and rng.random() < self.recipe.steady_mask:
+            # Steady noise under the drone at the buried range of in-band SNR, drone over noise.
+            m, pm = self.steady(rng)
+            snr = rng.uniform(*self.variant.snr_db)
+            x = x + m * math.sqrt(pd / (max(pm, 1e-20) * 10.0 ** (snr / 10.0)))
+        return x
 
     def negative(self, rng: np.random.Generator) -> np.ndarray:
+        if self.recipe.steady_neg and rng.random() < self.recipe.steady_neg:
+            return self.steady(rng)[0]
         u = rng.random()
         if u < self.rig_neg_share:
             k = min(int(np.searchsorted(np.cumsum(self._rig_share), u, side="right")), len(self._rig_names) - 1)

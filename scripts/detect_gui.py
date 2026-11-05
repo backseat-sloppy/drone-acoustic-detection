@@ -7,8 +7,10 @@ dad.wavio reads it (channel 0, resampled to 16 kHz) and every detector scores it
 would run live: a 1 s window every 0.125 s, a decision stamped at the window's end, drone when the
 score reaches the model's frozen threshold. Nothing else is set: no sliders.
 
-Model: the radio buttons at the bottom left pick the network that runs next to comb, for the next
-batch opened. Each uses the threshold its own run froze at 5% false alarms on validation:
+Detectors: the tick boxes at the bottom left pick the networks and comb ("DSP (comb)", last) that
+run, any one or more, for the next batch opened. Each ticked model gets its own column in the list (with more than one, a
+compact "38%*" column, * = alarmed) and its own colour in the graphs, with its own dashed
+threshold. Each uses the threshold its own run froze at 5% false alarms on validation:
   it6 CNN   artifacts/models/it6_final_none_simdist_dscnn.pt (model 6, as scripts/drone_war_gui.py)
   it9 CNN   artifacts/models/final_dscnn_none_simdist_dscnn.pt (report entry 096)
   it9 CRNN  artifacts/models/final_crnn_none_simdist_crnn.pt (report entry 096)
@@ -20,7 +22,7 @@ batch opened. Each uses the threshold its own run froze at 5% false alarms on va
   itG-A CNN artifacts/itG/A_s0_dscnn.pt (seed 0; itG = the Glasgow experiment: A = Pd drones only, the
             comparison run, with the Glasgow room recording in every scene)
   itG-B CNN artifacts/itG/B_s0_dscnn.pt (seed 0; as A, but half the drones are real Glasgow recordings, d1-d16)
-comb keeps model 6's frozen threshold whichever model is picked.
+comb, when ticked, keeps model 6's frozen threshold whichever models are picked.
 
 War noise (optional): tick "add war noise" before opening files, pick its source and type one or
 more SNRs in dB, separated by spaces, commas or semicolons (each -20 to +30, at most 6, default
@@ -51,7 +53,9 @@ window; "< SNR" / "SNR >" or the Left / Right keys step through the file's SNRs 
 slide shown), Previous / Next and the list still change file, and Escape or the button goes back.
 
 The list on the left gives each file's verdict per detector: DRONE if any window alarmed, with the
-share of windows that alarmed, the first alarm and the longest unbroken alarm. Click a file in the
+mean confidence in % (the area under its confidence curve over the scored time; comb as drawn,
+s/(s+threshold)). The graph titles keep the share of windows that alarmed, the first alarm and the
+longest unbroken alarm; results.csv has both mean_confidence and flagged_share. Click a file in the
 list, or use Previous / Next, to see its spectrogram and each detector's confidence over time
 (dashed = threshold; comb is shown as s/(s+threshold), so its threshold sits at 0.5). Play plays the
 file as the detectors hear it, normalised to be audible.
@@ -104,6 +108,10 @@ TEXT, GREY, RED = "#333333", "#777777", "#c0392b"
 NAMES = {"CNN": "CNN", "comb": "DSP (comb)"}                 # detector -> name in the stats window
 LIST_ROWS = 16                                               # files shown in the list at once
 MODELS = dwg.MODELS
+MODEL_COLORS = dict(zip(MODELS, ["#2a78d6", "#e8710a", "#9334e6", "#d93025", "#6b4e16", "#0b8a8a",
+                                  "#c2185b", "#5f6368", "#f9ab00", "#3949ab"]))   # one per model; comb is green
+assert len(MODEL_COLORS) == len(MODELS), "add a colour for the new model"
+COMB_COLOR = dwg.COLORS["comb"]
 
 fig = plt.figure(figsize=(15, 9))
 fig.canvas.manager.set_window_title("Find drones in audio files")
@@ -128,18 +136,20 @@ b_next = Button(fig.add_axes([0.145, 0.737, 0.12, 0.04]), "Next >")
 b_play = Button(fig.add_axes([0.015, 0.692, 0.12, 0.04]), "Play")
 b_hush = Button(fig.add_axes([0.145, 0.692, 0.12, 0.04]), "Stop sound")
 status = fig.text(0.015, 0.677, "Open one or more audio files.", fontsize=8, color=TEXT, va="top", wrap=True)
-ax_list = fig.add_axes([0.015, 0.20, 0.26, 0.44])   # room below for 10 models
+ax_list = fig.add_axes([0.015, 0.20, 0.26, 0.44])   # room below for 11 detectors
 ax_model = fig.add_axes([0.015, 0.005, 0.25, 0.17], frameon=False)
-ax_model.set_title("model, for the next batch opened", fontsize=8, color=TEXT, loc="left")
+ax_model.set_title("detectors, for the next batch opened (one or more)", fontsize=8, color=TEXT, loc="left")
 MODEL_NOTE = ("it11: Pd drones in soundscapes\n"
               "it11r: it11 + realism (rotors, mic, room)\n"
               "it11r CRNN: it11r with it9's CRNN (600k: 3x trained)\n"
               "itG-A: Pd drones only (Glasgow test)\n"
               "itG-B: half real Glasgow drones")
 fig.text(0.135, 0.125, MODEL_NOTE, fontsize=6.5, color="#777777", va="top")   # what the names mean
-r_model = RadioButtons(ax_model, list(MODELS), active=0)
-for lbl in r_model.labels:
+DETECTOR_BOXES = [*MODELS, NAMES["comb"]]                    # the networks, then comb last
+c_models = CheckButtons(ax_model, DETECTOR_BOXES, [i == 0 or b == NAMES["comb"] for i, b in enumerate(DETECTOR_BOXES)])
+for lbl, b in zip(c_models.labels, DETECTOR_BOXES):
     lbl.set_fontsize(8)
+    lbl.set_color(COMB_COLOR if b == NAMES["comb"] else MODEL_COLORS[b])
 ax_list.axis("off")
 ax_spec = fig.add_axes([0.33, 0.62, 0.65, 0.30])
 CONF_BOX = (0.33, 0.07, 0.65, 0.50)                          # left, bottom, width, height of the graphs
@@ -153,21 +163,49 @@ ax_sprev.set_visible(False)
 ax_snext.set_visible(False)
 slide_head = fig.text(0.33, 0.905, "", fontsize=11, weight="bold", color=TEXT, va="bottom")
 
-state = dict(thread=None, files=[], cur=0, top=0, model=next(iter(MODELS)), loaded={}, conf_axes=[], slides=False)
+state = dict(thread=None, files=[], cur=0, top=0, models=[next(iter(MODELS))], comb=True, loaded={}, conf_axes=[],
+             slides=False)
 events: queue.Queue = queue.Queue()
 
 
 def detectors():
-    """(thresholds, scorers) of the batch's model and comb, loaded on first use: a network takes a few seconds."""
-    m = state["model"]
-    if m not in state["loaded"]:
-        state["loaded"][m] = dwg._detectors(m)
-    return state["loaded"][m]
+    """(thresholds, scorers) of the batch's ticked models, each under its own name, and comb if
+    ticked; a network is loaded on first use (a few seconds) and kept."""
+    thr, scorers = {}, {}
+    for m in state["models"]:
+        if m not in state["loaded"]:
+            state["loaded"][m] = dwg._detectors(m)
+        t, s = state["loaded"][m]
+        thr[m], scorers[m] = t["CNN"], s["CNN"]
+    if state["comb"]:                                        # model 6's frozen comb threshold, as before
+        if "comb" not in state["loaded"]:
+            state["loaded"]["comb"] = (dwg.comb_threshold(), dwg.load_scorer("comb", DEFAULT, "cpu"))
+        thr["comb"], scorers["comb"] = state["loaded"]["comb"]
+    state["thr"] = thr
+    return thr, scorers
+
+
+def loading() -> bool:
+    return any(m not in state["loaded"] for m in state["models"])
+
+
+def keys() -> list[str]:
+    """The batch's detectors in display order: the ticked models, then comb if ticked."""
+    return [*state["models"], *(["comb"] if state["comb"] else [])]
+
+
+def comb_note(thr) -> str:
+    """How comb is drawn, for the notes under the graphs; empty without comb."""
+    return f", comb shown as s/(s+{thr['comb']:.2f})" if "comb" in thr else ""
+
+
+def color(k) -> str:
+    return COMB_COLOR if k == "comb" else MODEL_COLORS[k]
 
 
 def shown_as(k):
-    """Detector k as shown: the picked model's name for the network."""
-    return state["model"] if k == "CNN" else NAMES[k]
+    """Detector k as shown: the model's name, or "DSP (comb)"."""
+    return NAMES["comb"] if k == "comb" else k
 
 
 def peaks(drone: np.ndarray) -> list[tuple[int, int]]:
@@ -221,14 +259,17 @@ def add_noise(audio: np.ndarray, snr_db: float, seed: int, source: str = "wsn",
 
 
 def score(clip, thr, scorers) -> tuple[dict, dict]:
-    """Every detector over clip: decisions and a summary per detector."""
+    """Every detector over clip: decisions and a summary per detector. "mean" is the area under the
+    confidence curve over the scored time, as a share: the mean confidence over all decisions (comb
+    as drawn, s/(s+threshold))."""
     dec, summary = {}, {}
     for k, sc in scorers.items():
         d = stream(clip, sc, DEFAULT, thr[k])
         first = d.t_end[d.drone]
         p = peaks(d.drone)
         dec[k] = d
-        summary[k] = dict(drone=bool(d.drone.any()), flagged=float(d.drone.mean()),
+        conf = dwg.squash(d.score, thr[k]) if k == "comb" else d.score
+        summary[k] = dict(drone=bool(d.drone.any()), flagged=float(d.drone.mean()), mean=float(np.mean(conf)),
                           first_alarm_s=float(first[0]) if len(first) else None,
                           longest_s=max((b - a + 1 for a, b in p), default=0) * HOP_S,
                           peaks=p, above_s=int(d.drone.sum()) * HOP_S)
@@ -300,13 +341,13 @@ def worker(paths, snrs=None, source="wsn", dummy=False):
         start = track_start(max(lengths)) if (dummy or (snrs and source == "track")) else 0.0
         if dummy:
             events.put(("status", "listening to the dummy (war track alone)"
-                                  + (" (this also loads the detectors)" if state["model"] not in state["loaded"] else "")))
+                                  + (" (this also loads the detectors)" if loading() else "")))
             events.put(("file", dummy_row(lengths[0], start)))
         for i, p in enumerate(paths):
             for snr in snrs or [None]:
                 events.put(("status", f"listening to file {i + 1} of {len(paths)}: {Path(p).name}"
                                       + ("" if snr is None else f" at SNR {snr:+g} dB")
-                                      + (" (the first file also loads the detectors)" if state["model"] not in state["loaded"] else "")))
+                                      + (" (the first file also loads the detectors)" if loading() else "")))
                 events.put(("file", detect(p, None if snr is None else (snr, dwg.WSN_SEED, source, start), group=i)))
         events.put(("status", f"done: {len(paths)} file(s). " + (f"Table in {OUT.relative_to(dwg.ROOT).as_posix()}"
                               if snrs is None else f"Table, mixes in {OUT.parent.relative_to(dwg.ROOT).as_posix()}")))
@@ -331,8 +372,11 @@ def draw_list():
     files = state["files"]
     if not files:
         return
-    ax_list.text(0, 1, f"{'':3s}{'file':16s}{shown_as('CNN'):>11s}{'comb':>11s}", family="monospace", fontsize=8,
-                 weight="bold", color=TEXT, va="top")
+    ks = keys()
+    compact = len(ks) > 2                                    # several models: "38%*" columns, * = alarmed
+    head = "".join(f"{k.replace(' ', ''):>8s}" if compact else f"{k:>11s}" for k in ks)
+    ax_list.text(0, 1, f"{'':3s}{'file':16s}{head}", family="monospace", fontsize=8, weight="bold", color=TEXT,
+                 va="top")
     ax_list.cell_rows = {}
     for row, i in enumerate(range(state["top"], min(state["top"] + LIST_ROWS, len(files)))):
         f = files[i]
@@ -341,16 +385,20 @@ def draw_list():
         name += tag
         if "error" in f:
             cols = f"  {f['error']}"
+        elif compact:
+            cols = "".join(f"{100 * f['summary'][k]['mean']:6.0f}%{'*' if f['summary'][k]['drone'] else ' '}"
+                           for k in ks)
         else:
-            cols = "".join(f"{('DRONE' if f['summary'][k]['drone'] else 'none'):>6s}{100 * f['summary'][k]['flagged']:4.0f}%"
-                           for k in dwg.DETECTORS)
+            cols = "".join(f"{('DRONE' if f['summary'][k]['drone'] else 'none'):>6s}{100 * f['summary'][k]['mean']:4.0f}%"
+                           for k in ks)
         y = 1 - (row + 1.3) / (LIST_ROWS + 3)
         hit = is_hit(f)
         ax_list.text(0, y, f"{'>' if i == state['cur'] else ' '}{i + 1:<2d}{name:16s}{cols}", family="monospace",
                      fontsize=8, color=RED if hit else TEXT, weight="bold" if i == state["cur"] else "normal",
                      va="top", picker=True).file_index = i
     more = len(files) - state["top"] - LIST_ROWS
-    note = "click a file to show it, a red one also opens its stats; % = windows that alarmed"
+    note = ("click a file to show it, a red one opens its stats; % = mean confidence, * = alarmed" if compact
+            else "click a file to show it, a red one also opens its stats; % = mean confidence (area under curve)")
     if state["top"] or more > 0:
         note = f"files {state['top'] + 1}-{min(state['top'] + LIST_ROWS, len(files))} of {len(files)}; scroll here. " + note
     ax_list.text(0, 1 - (LIST_ROWS + 2) / (LIST_ROWS + 3), note, fontsize=7, color=GREY, va="top", wrap=True)
@@ -397,7 +445,7 @@ def plot_score(ax, d, y, k):
     one, at 1.00 s), and a line through one point draws nothing, so few decisions get dots and
     each alarmed one shades the 1 s window it heard."""
     few = len(d.t_end) < 20
-    ax.plot(d.t_end, y, color=dwg.COLORS[k], lw=1.2, label=shown_as(k), marker="o" if few else None, ms=5,
+    ax.plot(d.t_end, y, color=color(k), lw=1.2, label=shown_as(k), marker="o" if few else None, ms=5,
             clip_on=not few)                                 # the last dot sits on the right edge
     if few:                                                  # overlapping windows merged, shaded once
         spans = []
@@ -408,9 +456,9 @@ def plot_score(ax, d, y, k):
             else:
                 spans.append([a, t])
         for a, b in spans:
-            ax.axvspan(a, b, color=dwg.COLORS[k], alpha=0.10, lw=0)
+            ax.axvspan(a, b, color=color(k), alpha=0.10, lw=0)
     else:
-        ax.fill_between(d.t_end, 0, 1, where=d.drone, color=dwg.COLORS[k], alpha=0.10, step="pre", lw=0)
+        ax.fill_between(d.t_end, 0, 1, where=d.drone, color=color(k), alpha=0.10, step="pre", lw=0)
 
 
 def draw_conf(ax, f, thr, selected, legend, size=9, sep="   |   "):
@@ -424,10 +472,14 @@ def draw_conf(ax, f, thr, selected, legend, size=9, sep="   |   "):
     for k, d in f["dec"].items():
         y = dwg.squash(d.score, thr[k]) if k == "comb" else d.score
         plot_score(ax, d, y, k)
-        ax.axhline(0.5 if k == "comb" else thr[k], color=dwg.COLORS[k], lw=0.8, ls="--")
+        ax.axhline(0.5 if k == "comb" else thr[k], color=color(k), lw=0.8, ls="--")
         s = f["summary"][k]
-        lines.append(f"{shown_as(k)}: " + (f"DRONE  first alarm {s['first_alarm_s']:.2f} s, longest alarm {s['longest_s']:.2f} s, "
-                                 f"{100 * s['flagged']:.0f}% of windows" if s["drone"] else "no drone heard"))
+        if len(f["dec"]) > 2:                                # several models: short, so the title fits
+            lines.append(f"{shown_as(k)}: " + (f"DRONE {100 * s['flagged']:.0f}%" if s["drone"] else "none"))
+        else:
+            lines.append(f"{shown_as(k)}: " + (f"DRONE  first alarm {s['first_alarm_s']:.2f} s, longest alarm "
+                                               f"{s['longest_s']:.2f} s, {100 * s['flagged']:.0f}% of windows"
+                                               if s["drone"] else "no drone heard"))
     ax.set(ylim=(0, 1), xlim=(0, f["seconds"]), ylabel="confidence")
     ax.set_title(head + sep.join(lines), fontsize=size, color=TEXT, loc="left",
                  weight="bold" if selected else "normal")
@@ -452,7 +504,7 @@ def draw_slide():
     ax.tick_params(labelsize=10)
     slide_head.set_text(f"slide {rows.index(state['cur']) + 1} of {len(rows)}:  {describe(f)}")
     if thr:
-        ax.text(0.005, 0.015, f"dashed = threshold, shaded = alarm, comb shown as s/(s+{thr['comb']:.2f}); "
+        ax.text(0.005, 0.015, f"dashed = threshold, shaded = alarm{comb_note(thr)}; "
                               "< SNR / SNR > or Left / Right keys step; Play plays this slide; Esc goes back",
                 fontsize=8, color=GREY, transform=ax.transAxes)
 
@@ -501,7 +553,7 @@ def draw_file():
             ax.tick_params(labelbottom=False)
     axes[-1].set_xlabel("time (s), each decision stamped at the end of its 1 s window")
     if thr:
-        note = f"dashed = threshold, shaded = alarm, comb shown as s/(s+{thr['comb']:.2f})"
+        note = f"dashed = threshold, shaded = alarm{comb_note(thr)}"
         if len(rows) > 1:
             note += "; bold = the row shown above and played; click a graph to select it"
         axes[-1].text(0.005, 0.03, note, fontsize=7, color=GREY, transform=axes[-1].transAxes)
@@ -517,15 +569,17 @@ def write_csv():
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with OUT.open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["file", "seconds", "detector", "threshold", "verdict", "flagged_share", "first_alarm_s",
+        w.writerow(["file", "seconds", "detector", "threshold", "verdict", "mean_confidence", "flagged_share",
+                    "first_alarm_s",
                     "longest_alarm_s", "peaks_above_threshold", "time_above_threshold_s", "noise_snr_db",
                     "noise_seed", "noise_source", "noise_offset_s", "mix_file", "dummy", "error"])
-        thr = state["loaded"].get(state["model"], ({},))[0]
+        thr = state.get("thr", {})
         for f in state["files"]:
-            for k in dwg.DETECTORS:
+            for k in keys():
                 s = f.get("summary", {}).get(k, {})
                 w.writerow([f["path"], round(f["seconds"], 3) if "seconds" in f else "", shown_as(k), thr.get(k, ""),
-                            verdict(f, k), s.get("flagged", ""), s.get("first_alarm_s", ""), s.get("longest_s", ""),
+                            verdict(f, k), s.get("mean", ""), s.get("flagged", ""), s.get("first_alarm_s", ""),
+                            s.get("longest_s", ""),
                             len(s["peaks"]) if s else "", s.get("above_s", ""), f.get("snr_db", ""),
                             f.get("noise_seed", ""), f.get("noise_source", ""),
                             "" if f.get("noise_offset_s") is None else f["noise_offset_s"],
@@ -612,6 +666,12 @@ def on_open(_):
         status.set_text("still listening: wait for this batch to finish")
         fig.canvas.draw_idle()
         return
+    ticked = [b for b, on in zip(DETECTOR_BOXES, c_models.get_status()) if on]
+    models, comb = [b for b in ticked if b in MODELS], NAMES["comb"] in ticked
+    if not ticked:
+        status.set_text("tick at least one detector at the bottom left")
+        fig.canvas.draw_idle()
+        return
     snr = None
     if c_noise.get_status()[0]:
         try:
@@ -620,7 +680,7 @@ def on_open(_):
             status.set_text(str(e))
             fig.canvas.draw_idle()
             return
-    args = (snr, SOURCES[r_source.value_selected], c_dummy.get_status()[0], r_model.value_selected)
+    args = (snr, SOURCES[r_source.value_selected], c_dummy.get_status()[0], models, comb)
     if sys.platform == "darwin" and importlib.util.find_spec("_tkinter") is None:
         # No Tk: the macOS dialog runs in a thread, so the window stays live; poll() starts the batch.
         state["thread"] = threading.Thread(target=lambda: events.put(("picked", (pick_files_macos(), *args))),
@@ -638,12 +698,12 @@ def on_open(_):
     start_batch(paths, *args)
 
 
-def start_batch(paths, snr, source, dummy, model):
+def start_batch(paths, snr, source, dummy, models, comb):
     """Listen to paths with the settings of the moment Open was pressed; no paths (cancelled): nothing."""
     state["thread"] = None
     if not paths:
         return
-    state.update(files=[], cur=0, top=0, model=model)
+    state.update(files=[], cur=0, top=0, models=models, comb=comb)
     redraw()
     state["thread"] = threading.Thread(target=worker, args=(paths, snr, source, dummy), daemon=True)
     state["thread"].start()
@@ -659,7 +719,7 @@ def show(i):
 
 
 def is_hit(f) -> bool:
-    return "error" not in f and any(f["summary"][k]["drone"] for k in dwg.DETECTORS)
+    return "error" not in f and any(s["drone"] for s in f["summary"].values())
 
 
 def open_stats(i):
@@ -667,7 +727,8 @@ def open_stats(i):
     confidence over time with each peak shaded and numbered, and a table of the peaks."""
     f = state["files"][i]
     thr = detectors()[0]
-    win, axs = plt.subplots(len(f["dec"]), 1, figsize=(14, 3.6 * len(f["dec"])), sharex=True, squeeze=False)
+    win, axs = plt.subplots(len(f["dec"]), 1, figsize=(14, min(3.6 * len(f["dec"]), 10.5)), sharex=True,
+                            squeeze=False)
     win.canvas.manager.set_window_title(f"Stats: {f['name']}")
     win.suptitle(f"{f['name']}  ({f['seconds']:.1f} s)", fontsize=11, weight="bold", color=TEXT, x=0.01, ha="left")
     win.subplots_adjust(left=0.05, right=0.62, top=0.9, bottom=0.12, hspace=0.3)
@@ -679,18 +740,18 @@ def open_stats(i):
         s, line = f["summary"][k], (0.5 if k == "comb" else thr[k])
         y = dwg.squash(d.score, thr[k]) if k == "comb" else d.score
         few = len(d.t_end) < 20                              # see plot_score
-        ax.plot(d.t_end, y, color=dwg.COLORS[k], lw=1.2, marker="o" if few else None, ms=5, clip_on=not few)
-        ax.axhline(line, color=dwg.COLORS[k], lw=0.8, ls="--")
+        ax.plot(d.t_end, y, color=color(k), lw=1.2, marker="o" if few else None, ms=5, clip_on=not few)
+        ax.axhline(line, color=color(k), lw=0.8, ls="--")
         rows = []
         for n, (a, b) in enumerate(s["peaks"], 1):
             t0, t1 = d.t_end[a], min(d.t_end[b] + HOP_S, f["seconds"])
             j = a + int(np.argmax(y[a:b + 1]))
-            ax.axvspan(t0, t1, color=dwg.COLORS[k], alpha=0.12, lw=0)
+            ax.axvspan(t0, t1, color=color(k), alpha=0.12, lw=0)
             ax.annotate(str(n), (d.t_end[j], y[j]), textcoords="offset points", xytext=(0, 4), ha="center",
                         fontsize=7, color=TEXT)
             rows.append(f"{n:3d} {t0:8.2f} {t1:8.2f} {(b - a + 1) * HOP_S:7.2f} {y[j]:6.2f}")
         ax.set(ylim=(0, 1.08), xlim=(0, f["seconds"]), ylabel="confidence")
-        ax.set_title(shown_as(k), fontsize=10, weight="bold", color=dwg.COLORS[k], loc="left")
+        ax.set_title(shown_as(k), fontsize=10, weight="bold", color=color(k), loc="left")
         ax.grid(color="#e5e5e5", lw=0.5)
         scored = len(d.score) * HOP_S
         lines = [shown_as(k),
@@ -707,7 +768,7 @@ def open_stats(i):
     axs[-1, 0].set_xlabel("time (s), each decision stamped at the end of its 1 s window")
     win.text(0.01, 0.02, f"A peak = an unbroken stretch of decisions at or above the threshold (dashed). Each decision "
                          f"holds for one hop ({HOP_S:g} s), so time above threshold = alarmed decisions x {HOP_S:g} s. "
-                         f"max = the highest confidence in the peak; comb (DSP) shown as s/(s+{thr['comb']:.2f}).",
+                         f"max = the highest confidence in the peak{comb_note(thr)}.",
              fontsize=7, color=GREY, wrap=True)
     win.show()
 
