@@ -12,8 +12,10 @@ On each page:
     Drones               the files or speeds, and the drone level(s) in dB SPL (synthetic: "as rendered"
                          keeps the physical level of the render)
     Background layers    (open with the arrow) war soundscape, war-shaped noise, wind, and cars,
-                         helicopter, insects (listed, not set up yet). Tick a layer and give one or more
-                         levels in dB SPL; every combination of the ticked layers' levels is a background
+                         helicopter, insects (listed, not set up yet). Tick a layer and give its levels in
+                         dB SPL as min, max and # (as drone_war_gui: # values from min to max, both
+                         included, evenly spaced; # 1 needs min = max); every combination of the ticked
+                         layers' levels is a background
     Test rounds          soundscape length: the drone starts at every step (1 s) from 0 until it ends with
                          the soundscape (length - 10 + 1 starts); optional no-drone rounds per background
     Detectors            any of the networks and comb
@@ -39,6 +41,7 @@ import queue
 import sys
 import tempfile
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -58,8 +61,8 @@ from dad.features import LogMel, hz_to_mel, mel_to_hz  # noqa: E402
 
 TITLE = "Complete Test"
 PAGES = [("real", "Real drone test"), ("synthetic", "Synthetic drone test")]
-DEFAULT_LEVELS = {"war soundscape": "60", "war-shaped noise": "50", "wind": "50", "cars": "", "helicopter": "",
-                  "insects": ""}
+DEFAULT_LEVELS = {"war soundscape": ("60", "60", "1"), "war-shaped noise": ("50", "50", "1"), "wind": ("50", "50", "1"),
+                  "cars": ("", "", ""), "helicopter": ("", "", ""), "insects": ("", "", "")}
 COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it10 CNN": "#d93025",
           "comb": "#1baf7a"}
 PART_COLORS = {"drone": "#d93025", "war soundscape": "#6b4e16", "war-shaped noise": "#7a7a7a", "wind": "#2a9d8f",
@@ -69,20 +72,26 @@ LOGMEL = LogMel(DEFAULT)
 BAND_HZ = E.np.asarray(mel_to_hz(np.linspace(hz_to_mel(DEFAULT.fmin), hz_to_mel(DEFAULT.fmax), DEFAULT.n_mels + 2))[1:-1])
 
 
-def parse_levels(text: str, what: str) -> list[float]:
-    """'40 50, 60' -> [40, 50, 60]; ValueError says what is wrong."""
-    parts = text.replace(",", " ").replace(";", " ").split()
-    out = []
-    for p in parts:
-        try:
-            v = float(p)
-        except ValueError:
-            raise ValueError(f"{what}: '{p}' is not a number") from None
+def layer_steps(name: str, lo: str, hi: str, n: str) -> list[float]:
+    """A layer's levels from its min, max and # boxes, by drone_war_gui's rule (drone_war_grid.steps):
+    # values from min to max, both included, evenly spaced; # 1 needs min = max. ValueError says what."""
+    try:
+        lo_, hi_ = float(lo), float(hi)
+    except ValueError:
+        raise ValueError(f"{name}: min and max must be numbers of dB SPL") from None
+    try:
+        n_ = int(n)
+    except ValueError:
+        raise ValueError(f"{name}: # must be a whole number") from None
+    if not 1 <= n_ <= 50:
+        raise ValueError(f"{name}: # must be 1 to 50")
+    for v in (lo_, hi_):
         if not -20 <= v <= 140:
-            raise ValueError(f"{what}: {v:g} dB SPL is outside -20 to 140")
-        if v not in out:
-            out.append(v)
-    return out
+            raise ValueError(f"{name}: {v:g} dB SPL is outside -20 to 140")
+    try:
+        return E.dwg.steps(lo_, hi_, n_, f"{name} level")
+    except ValueError as e:                                  # its words, with the box's name
+        raise ValueError(str(e).replace("the count", "#").replace("count 1", "# 1")) from None
 
 
 def detector_names() -> list[str]:
@@ -155,21 +164,30 @@ class Page(ttk.Frame):
                 ttk.Entry(sub, textvariable=var, width=6).grid(row=0, column=2 * i + 1)
             self.v_speeds.trace_add("write", lambda *_: self.update_count())
             r = 2
-        ttk.Label(f, text="Drone level(s), dB SPL:").grid(row=r, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(f, text="Drone level, dB SPL:").grid(row=r, column=0, sticky="w", pady=(8, 0))
         lv = ttk.Frame(f)
         lv.grid(row=r, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
-        self.e_drone_levels = ttk.Entry(lv, textvariable=self.v_drone_levels, width=22)
-        self.e_drone_levels.pack(side="left")
+        self.v_drone_levels = (tk.StringVar(value="60"), tk.StringVar(value="60"), tk.StringVar(value="1"))
+        self.e_drone_levels = []
+        for lbl, v, w in zip(("min", "max", "#"), self.v_drone_levels, (7, 7, 4)):
+            ttk.Label(lv, text=lbl, style="Muted.TLabel").pack(side="left", padx=(0 if lbl == "min" else 8, 3))
+            e = ttk.Entry(lv, textvariable=v, width=w)
+            e.pack(side="left")
+            self.e_drone_levels.append(e)
+            v.trace_add("write", lambda *_: self.update_count())
+        self.l_drone_preview = ttk.Label(lv, text="", style="Muted.TLabel", width=26)
+        self.l_drone_preview.pack(side="left", padx=(10, 0))
         self.v_as_rendered = tk.BooleanVar(value=self.kind == "synthetic")
         if self.kind == "synthetic":
             ttk.Checkbutton(lv, text="as rendered (physical level)", variable=self.v_as_rendered,
                             command=self._as_rendered).pack(side="left", padx=(10, 0))
             self._as_rendered()
-        ttk.Label(lv, text="RMS over the drone's sound; one or more", style="Muted.TLabel").pack(side="left", padx=(10, 0))
-        self.v_drone_levels.trace_add("write", lambda *_: self.update_count())
+        ttk.Label(f, text="RMS over the drone's sound; # values from min to max, both included, evenly spaced; "
+                          "# 1 needs min = max", style="Muted.TLabel").grid(row=r + 1, column=1, sticky="w", padx=(8, 0))
 
     def _as_rendered(self):
-        self.e_drone_levels.configure(state="disabled" if self.v_as_rendered.get() else "normal")
+        for e in self.e_drone_levels:
+            e.configure(state="disabled" if self.v_as_rendered.get() else "normal")
         self.update_count()
 
     def _build_layers(self, f):
@@ -184,27 +202,39 @@ class Page(ttk.Frame):
         self.f_layers = ttk.Frame(f)
         self.f_layers.grid(row=1, column=0, sticky="ew", pady=(6, 0))
         g = self.f_layers
-        g.columnconfigure(3, weight=1)
-        for c, h in enumerate(("", "layer", "levels (dB SPL)", "about")):
+        g.columnconfigure(6, weight=1)
+        for c, h in enumerate(("", "layer", "min (dB SPL)", "max (dB SPL)", "#", "", "about")):
             ttk.Label(g, text=h, style="Head.TLabel").grid(row=0, column=c, sticky="w", padx=4)
         self.v_layer_on, self.v_layer_lv = {}, {}
         for r, (name, L) in enumerate(self.layers.items(), 1):
             on = tk.BooleanVar(value=name == "war soundscape" and L.available)
-            lv = tk.StringVar(value=DEFAULT_LEVELS.get(name, ""))
-            self.v_layer_on[name], self.v_layer_lv[name] = on, lv
+            lo, hi, n = DEFAULT_LEVELS.get(name, ("", "", ""))
+            vs = (tk.StringVar(value=lo), tk.StringVar(value=hi), tk.StringVar(value=n))
+            self.v_layer_on[name], self.v_layer_lv[name] = on, vs
             cb = ttk.Checkbutton(g, variable=on, command=self.update_count)
             cb.grid(row=r, column=0, padx=4, pady=2)
             ttk.Label(g, text=name, style="Bold.TLabel" if L.available else "Muted.TLabel").grid(row=r, column=1, sticky="w", padx=4)
-            e = ttk.Entry(g, textvariable=lv, width=18)
-            e.grid(row=r, column=2, sticky="w", padx=4)
-            ttk.Label(g, text=L.note, style="Muted.TLabel" if not L.available else "TLabel").grid(row=r, column=3, sticky="w", padx=4)
+            entries = [ttk.Entry(g, textvariable=v, width=7 if i < 2 else 4) for i, v in enumerate(vs)]
+            for i, e in enumerate(entries):
+                e.grid(row=r, column=2 + i, sticky="w", padx=4)
+            preview = ttk.Label(g, text="", style="Muted.TLabel", width=26)
+            preview.grid(row=r, column=5, sticky="w", padx=4)
+            ttk.Label(g, text=L.note, style="Muted.TLabel" if not L.available else "TLabel").grid(row=r, column=6, sticky="w", padx=4)
             if not L.available:
                 cb.state(["disabled"])
-                e.state(["disabled"])
-            lv.trace_add("write", lambda *_: self.update_count())
+                for e in entries:
+                    e.state(["disabled"])
+            for v in vs:
+                v.trace_add("write", lambda *_: self.update_count())
+            self.layer_preview = getattr(self, "layer_preview", {})
+            self.layer_preview[name] = preview
+        r += 1
+        ttk.Label(g, text="# values from min to max, both included, evenly spaced; # 1 needs min = max "
+                          "(as in drone_war_gui)", style="Muted.TLabel").grid(row=r, column=1, columnspan=6, sticky="w",
+                                                                             padx=4, pady=(4, 0))
         r += 1
         st = ttk.Frame(g)
-        st.grid(row=r, column=1, columnspan=3, sticky="w", padx=4, pady=(6, 0))
+        st.grid(row=r, column=1, columnspan=6, sticky="w", padx=4, pady=(6, 0))
         ttk.Label(st, text="soundscape start in the war track (s):").pack(side="left")
         self.v_sc_start = tk.StringVar(value="")
         ttk.Entry(st, textvariable=self.v_sc_start, width=8).pack(side="left", padx=6)
@@ -294,16 +324,11 @@ class Page(ttk.Frame):
             if any(not 0 < v <= 1000 for v in drones):
                 raise ValueError("drone speeds must be above 0 and at most 1000 km/h")
         levels = None if (self.kind == "synthetic" and self.v_as_rendered.get()) else \
-            parse_levels(self.v_drone_levels.get(), "drone level")
-        if levels == []:
-            raise ValueError("give at least one drone level in dB SPL")
+            layer_steps("drone", *(v.get() for v in self.v_drone_levels))
         layers = {}
         for name, on in self.v_layer_on.items():
             if on.get() and self.layers[name].available:
-                lv = parse_levels(self.v_layer_lv[name].get(), name)
-                if not lv:
-                    raise ValueError(f"{name}: give at least one level in dB SPL, or untick it")
-                layers[name] = lv
+                layers[name] = layer_steps(name, *(v.get() for v in self.v_layer_lv[name]))
         start = self.v_sc_start.get().strip()
         synth = {}
         if self.kind == "synthetic":
@@ -320,6 +345,26 @@ class Page(ttk.Frame):
     def update_count(self, *_):
         if not hasattr(self, "l_count"):
             return
+        if self.kind == "synthetic" and self.v_as_rendered.get():   # the drone's levels, or what is wrong
+            self.l_drone_preview.configure(text="physical level of each render", style="Muted.TLabel")
+        else:
+            try:
+                vals = layer_steps("drone", *(v.get() for v in self.v_drone_levels))
+                txt = ", ".join(f"{v:g}" for v in vals)
+                self.l_drone_preview.configure(text=(txt if len(txt) <= 24 else txt[:22] + "…") + " dB",
+                                               style="Muted.TLabel")
+            except ValueError as e:
+                self.l_drone_preview.configure(text=str(e).split(": ", 1)[-1][:26], style="Warn.TLabel")
+        for name, lbl in self.layer_preview.items():         # each layer's values, or what is wrong
+            if not (self.v_layer_on[name].get() and self.layers[name].available):
+                lbl.configure(text="", style="Muted.TLabel")
+                continue
+            try:
+                vals = layer_steps(name, *(v.get() for v in self.v_layer_lv[name]))
+                txt = ", ".join(f"{v:g}" for v in vals)
+                lbl.configure(text=(txt if len(txt) <= 24 else txt[:22] + "…") + " dB", style="Muted.TLabel")
+            except ValueError as e:
+                lbl.configure(text=str(e).split(": ", 1)[-1][:26], style="Warn.TLabel")
         try:
             p = self.plan()
         except ValueError as e:
@@ -431,6 +476,8 @@ class Results(tk.Toplevel):
                             f"soundscape {self.test.plan.length_s:g} s from {self.test.start_s:g} s in the war track",
                   style="H2.TLabel").pack(side="left")
         ttk.Button(top, text="Open folder", command=lambda: os.startfile(self.test.out)).pack(side="right")
+        ttk.Button(top, text="Conclusions", style="Accent.TButton",
+                   command=lambda: Conclusions(self, self.test)).pack(side="right", padx=6)
         ttk.Button(top, text="Open rounds.csv", command=lambda: os.startfile(self.test.out / "rounds.csv")).pack(side="right", padx=6)
 
         pw = ttk.PanedWindow(self, orient="horizontal")
@@ -495,12 +542,13 @@ class Results(tk.Toplevel):
         self.l_round.pack(side="left")
         for txt, what in (("Play background", "background"), ("Play drone", "drone"), ("Play mix", "mix")):
             ttk.Button(ctl, text=txt, command=lambda w=what: self._play(w)).pack(side="right", padx=2)
-        ttk.Button(ctl, text="Stop sound", command=stop_sound).pack(side="right", padx=(2, 8))
+        ttk.Button(ctl, text="Stop sound", command=self._stop_play).pack(side="right", padx=(2, 8))
         self.fig = Figure(figsize=(9, 8), dpi=100, facecolor="white")
         self.canvas = FigureCanvasTkAgg(self.fig, master=right)
         NavigationToolbar2Tk(self.canvas, right, pack_toolbar=True)
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
         self.cur = None
+        self.axes, self._head, self._head_job = [], [], None   # the playhead: one line per graph
 
     def _row_values(self, rnd: int, det: str, res: dict) -> tuple:
         r = self.by_round[rnd]
@@ -546,8 +594,10 @@ class Results(tk.Toplevel):
         n = len(m["mix"])
         starts = np.arange(0, n - DEFAULT.samples_per_window + 1, DEFAULT.samples_per_hop)
         t_end = (starts + DEFAULT.samples_per_window) / E.SR
+        self._stop_play()
         self.fig.clear()
         ax1, ax2, ax3 = self.fig.subplots(3, 1, sharex=True, gridspec_kw=dict(height_ratios=[1.1, 1, 1]))
+        self.axes = [ax1, ax2, ax3]
         lm = 10 / np.log(10) * LOGMEL.frames(m["mix"].astype(np.float32))
         top = float(lm.max())
         ax1.imshow(lm, origin="lower", aspect="auto", cmap="magma", vmin=top - 80, vmax=top, interpolation="nearest",
@@ -600,7 +650,244 @@ class Results(tk.Toplevel):
         drone = m["parts"].get("drone", np.zeros_like(m["mix"]))
         x = {"mix": m["mix"], "drone": drone, "background": m["mix"] - drone}[what]
         g = 0.9 / max(float(np.max(np.abs(m["mix"]))), 1e-12)   # the mix's gain for all three: levels stay comparable
+        self._stop_play()
         self._wav = play(np.clip(x * g, -1, 1), self._wav)
+        self._start_head(len(x) / E.SR, time.perf_counter())   # the clock starts with the sound
+
+    def _start_head(self, seconds: float, t0: float):
+        """A vertical line across the log-mel and the graphs that follows the sound as it plays. Only
+        the line is redrawn (blitting over a saved background), so it moves smoothly."""
+        self._head = [ax.axvline(0, color="#00e5ff" if i == 0 else "#111111", lw=1.6, alpha=0.9, zorder=10,
+                                 animated=True) for i, ax in enumerate(self.axes)]
+        self.canvas.draw()                                   # the figure without the (animated) line
+        self._head_bg = self.canvas.copy_from_bbox(self.fig.bbox)
+        self._head_cid = self.canvas.mpl_connect("draw_event", self._new_head_bg)   # resized: save it again
+        self._head_t0, self._head_len = t0, seconds
+        self._tick_head()
+
+    def _new_head_bg(self, _):
+        self._head_bg = self.canvas.copy_from_bbox(self.fig.bbox)
+
+    def _tick_head(self):
+        t = time.perf_counter() - self._head_t0
+        if t > self._head_len or not self._head:
+            self._remove_head()
+            return
+        self.canvas.restore_region(self._head_bg)
+        for ln in self._head:
+            ln.set_xdata([t, t])
+            ln.axes.draw_artist(ln)
+        self.canvas.blit(self.fig.bbox)
+        self._head_job = self.after(30, self._tick_head)
+
+    def _remove_head(self):
+        if self._head_job:
+            self.after_cancel(self._head_job)
+            self._head_job = None
+        if self._head:
+            self.canvas.mpl_disconnect(self._head_cid)
+            for ln in self._head:
+                ln.remove()
+            self._head = []
+            self.canvas.draw_idle()
+
+    def _stop_play(self):
+        stop_sound()
+        self._remove_head()
+
+
+# ------------------------------------------------------------------ conclusions
+
+CURVE_ABOVE = 4                                              # more values than this: a curve, not bars
+
+
+def parameter_values(test: E.Test) -> dict[str, list]:
+    """Every setting that takes more than one value in the test, with its values in order."""
+    names = {"drone": "drone", "drone_level_db": "drone level (dB SPL)", "start_s": "drone start (s)",
+             **{n: f"{n} (dB SPL)" for n in test.plan.layers}}
+    out = {}
+    for key, label in names.items():
+        vals = {setting(r, key) for r in test.rounds if setting(r, key) is not None}
+        if len(vals) > 1:
+            out[key] = (label, sorted(vals, key=lambda v: (isinstance(v, str), v)))
+    return out
+
+
+def setting(r: dict, key: str):
+    if key in r["background"]:
+        return r["background"][key]
+    if r["drone"] is None:                                   # a no-drone round has no drone setting
+        return None
+    return E.drone_label(r["drone"]) if key == "drone" else r[key]
+
+
+def confidences(test: E.Test, det: str, key: str, value) -> dict:
+    """Mean confidence of `det` over the rounds where `key` = value: true = over every drone window,
+    false = over every no-drone window (no-drone rounds included), each window counted once."""
+    sums = new_sums()
+    for rnd, res in test.results.items():
+        r = test.by_round[rnd]                               # set by Conclusions
+        if det in res and setting(r, key) == value:
+            add_conf(sums, res[det])
+    return final_conf(sums)
+
+
+def new_sums() -> dict:
+    return dict(true=0.0, nt=0, false=0.0, nf=0, rounds=0)
+
+
+def add_conf(sums: dict, x: dict):
+    """One round's detector row into window-weighted sums of true and false confidence."""
+    sums["rounds"] += 1
+    n_t, n_f = int(x["tp"] + x["fn"]), int(x["fp"] + x["tn"])
+    if n_t and x["mean_conf_drone"] is not None:
+        sums["true"] += x["mean_conf_drone"] * n_t
+        sums["nt"] += n_t
+    if n_f and x["mean_conf_no_drone"] is not None:
+        sums["false"] += x["mean_conf_no_drone"] * n_f
+        sums["nf"] += n_f
+
+
+def final_conf(sums: dict) -> dict:
+    return dict(true=sums["true"] / sums["nt"] if sums["nt"] else None,
+                false=sums["false"] / sums["nf"] if sums["nf"] else None, rounds=sums["rounds"])
+
+
+def level_ratio_points(test: E.Test, det: str, layer: str) -> list[tuple[float, dict]]:
+    """Nicolai's x-axis: the drone's level over the layer's level, both in dB SPL (drone 30 dB and war
+    60 dB -> 0.5; the same level -> 1). Drone rounds are grouped by that ratio (3 decimals) and give
+    true and false confidence as in confidences(); a layer at 0 dB SPL or below has no ratio. A drone
+    "as rendered" uses its measured level (rebuilt for runs made before it was stored)."""
+    groups = {}
+    for rnd, res in test.results.items():
+        r = test.by_round[rnd]
+        lv = r["background"].get(layer)
+        if r["drone"] is None or det not in res or lv is None or lv <= 0:
+            continue
+        d_db = r["drone_level_db"]
+        if d_db is None:
+            d_db = res[det].get("drone_db")
+            if d_db is None:
+                d_db = E.snr(test.rebuild(r))["drone_db"]
+                for x in res.values():
+                    x["drone_db"] = d_db
+        if d_db is None:
+            continue
+        add_conf(groups.setdefault(round(d_db / lv, 3), new_sums()), res[det])
+    return [(x, final_conf(s)) for x, s in sorted(groups.items())]
+
+
+def ratio_layer(test: E.Test, key: str) -> str | None:
+    """The layer a setting's graph is drawn against on the dB-ratio axis: the layer itself, or for the
+    drone level the first ticked layer; None for other settings or without layers."""
+    if key in test.plan.layers:
+        return key
+    if key == "drone_level_db" and test.plan.layers:
+        return next(iter(test.plan.layers))
+    return None
+
+
+class Conclusions(tk.Toplevel):
+    """One graph per varied setting: a detector's mean confidence on drone windows (true) and on
+    no-drone windows (false) for each value. Bars up to CURVE_ABOVE values, a curve above that for
+    numbers. The dashed line is the detector's threshold (comb: 0.5, as drawn)."""
+
+    def __init__(self, master, test: E.Test):
+        super().__init__(master)
+        self.test = test
+        test.by_round = {r["round"]: r for r in test.rounds}
+        self.params = parameter_values(test)
+        self.title(f"{TITLE} conclusions: {test.out.name}")
+        self.geometry("1300x900")
+        bar = ttk.Frame(self, padding=(12, 8))
+        bar.pack(fill="x")
+        ttk.Label(bar, text="Conclusions", style="H2.TLabel").pack(side="left")
+        ttk.Label(bar, text="detector").pack(side="left", padx=(20, 4))
+        self.v_det = tk.StringVar(value=test.plan.detectors[0])
+        ttk.Combobox(bar, textvariable=self.v_det, values=test.plan.detectors, state="readonly", width=12).pack(side="left")
+        ttk.Button(bar, text="Save PNG", command=self.save).pack(side="right")
+        self.l_text = ttk.Label(self, text="", style="Muted.TLabel", padding=(12, 0), justify="left")
+        self.l_text.pack(fill="x")
+        self.fig = Figure(figsize=(12, 8), dpi=100, facecolor="white")
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self)
+        NavigationToolbar2Tk(self.canvas, self, pack_toolbar=True)
+        self.canvas.get_tk_widget().pack(fill="both", expand=True)
+        self.v_det.trace_add("write", lambda *_: self.draw())
+        self.draw()
+
+    def draw(self):
+        det = self.v_det.get()
+        thr = 0.5 if det == "comb" else self.test.thr[det]
+        self.fig.clear()
+        if not self.params:
+            self.fig.text(0.5, 0.5, "No setting takes more than one value in this test: nothing to compare.",
+                          ha="center", va="center", color=MUTED)
+            self.canvas.draw_idle()
+            self.l_text.configure(text="")
+            return
+        n = len(self.params)
+        cols = 1 if n == 1 else 2
+        rows = (n + cols - 1) // cols
+        axes = self.fig.subplots(rows, cols, squeeze=False).ravel()
+        lines = []
+        for ax, (key, (label, vals)) in zip(axes, self.params.items()):
+            layer = ratio_layer(self.test, key)
+            if layer:                                        # x = drone dB / layer dB, per round
+                pts = level_ratio_points(self.test, det, layer)
+                vals, c = [p[0] for p in pts], [p[1] for p in pts]
+                title = f"{label} -> drone dB / {layer} dB"
+                xlabel = f"drone level / {layer} level, both in dB SPL (1 = same level, 0.5 = drone at half the dB)"
+            else:
+                c = [confidences(self.test, det, key, v) for v in vals]
+                title, xlabel = label, label
+            t = [np.nan if x["true"] is None else 100 * x["true"] for x in c]
+            f = [np.nan if x["false"] is None else 100 * x["false"] for x in c]
+            numeric = all(isinstance(v, (int, float)) for v in vals)
+            if not vals:
+                ax.text(0.5, 0.5, f"no ratio: {layer} is at 0 dB SPL or below in every round", ha="center",
+                        va="center", color=MUTED, transform=ax.transAxes)
+            elif len(vals) > CURVE_ABOVE and numeric:
+                ax.plot(vals, t, "-o", color="#2a78d6", lw=2, ms=4, label="true (drone windows)")
+                ax.plot(vals, f, "-o", color="#d93025", lw=2, ms=4, label="false (no-drone windows)")
+            else:
+                x = np.arange(len(vals))
+                bt = ax.bar(x - 0.2, t, 0.4, color="#2a78d6", label="true (drone windows)")
+                bf = ax.bar(x + 0.2, f, 0.4, color="#d93025", label="false (no-drone windows)")
+                for b in (*bt, *bf):
+                    h = b.get_height()
+                    if np.isfinite(h):
+                        ax.text(b.get_x() + b.get_width() / 2, h + 1.5, f"{h:.0f}%", ha="center", fontsize=8)
+                ticks = [(f"{v:.2f}" if layer else fmt(v)) if not isinstance(v, str)
+                         else (v if len(v) <= 14 else v[:13] + "~") for v in vals]
+                ax.set_xticks(x, ticks, rotation=20 if not numeric else 0, fontsize=8)
+            if layer and vals and 1.0 >= min(vals) and len(vals) > CURVE_ABOVE:
+                ax.axvline(1.0, color="#999", lw=0.8, ls=":")    # drone and layer at the same level
+            ax.set_xlabel(xlabel, fontsize=8 if layer else 10)
+            ax.axhline(100 * thr, color="#555", ls="--", lw=1, label=f"threshold {100 * thr:.0f}%")
+            ax.set(ylim=(0, 105), ylabel="mean confidence (%)")
+            ax.set_title(title, fontsize=10, loc="left", weight="bold")
+            ax.grid(axis="y", color="#e8e8e8", lw=0.5)
+            lines.append(f"{title}: " + ";  ".join(
+                f"at {(f'{v:.2f}' if layer else fmt(v)) if not isinstance(v, str) else v} true {pct(x['true'])}, "
+                f"false {pct(x['false'])}" for v, x in zip(vals, c)))
+        for ax in axes[n:]:
+            ax.set_visible(False)
+        self.fig.suptitle(f"{det if det != 'comb' else 'DSP (comb)'}: mean confidence on drone windows (true) "
+                          f"and no-drone windows (false), per setting", fontsize=11, x=0.01, ha="left")
+        handles, labels = axes[0].get_legend_handles_labels()   # one legend for all graphs, out of the bars' way
+        self.fig.legend(handles, labels, loc="upper right", ncol=3, fontsize=8, frameon=False)
+        self.fig.tight_layout(rect=(0, 0, 1, 0.94))
+        self.canvas.draw_idle()
+        self.l_text.configure(text="\n".join(lines))
+
+    def save(self):
+        p = self.test.out / f"conclusions_{self.v_det.get().replace(' ', '_')}.png"
+        self.fig.savefig(p, dpi=120)
+        messagebox.showinfo(TITLE, f"Saved {p}", parent=self)
+
+
+def pct(v) -> str:
+    return "-" if v is None else f"{100 * v:.0f}%"
 
 
 # ------------------------------------------------------------------ helpers
@@ -656,9 +943,10 @@ def load_test(folder: Path) -> E.Test:
     with open(folder / "rounds.csv", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             t.results.setdefault(int(row["round"]), {})[row["detector"]] = {
-                k: num(row[k]) for k in ("tp", "fn", "fp", "tn", "left_out", "recall", "false_positive_rate",
-                                         "precision", "first_alarm_s", "delay_s", "lead_s", "any_alarm",
-                                         "any_false_alarm", "mean_conf_drone", "mean_conf_no_drone")}
+                k: num(row.get(k, "")) for k in ("tp", "fn", "fp", "tn", "left_out", "recall", "false_positive_rate",
+                                                 "precision", "first_alarm_s", "delay_s", "lead_s", "any_alarm",
+                                                 "any_false_alarm", "mean_conf_drone", "mean_conf_no_drone",
+                                                 "snr_db", "signal_share", "drone_db")}   # older runs lack these
     E.write_summary(t)
     return t
 

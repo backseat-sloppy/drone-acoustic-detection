@@ -296,6 +296,22 @@ def score_round(m: dict, thr: dict, scorers: dict) -> dict:
     return out
 
 
+def snr(m: dict) -> dict:
+    """Drone against background over the drone's sound (its truth span): snr_db = 10 log10(P_drone /
+    P_background), signal_share = P_drone / (P_drone + P_background), 0 (only noise) to 1 (only drone),
+    0.5 at 0 dB. None without a drone; signal_share 1 with no background."""
+    if not m["truth"].drones or "drone" not in m["parts"]:
+        return dict(snr_db=None, signal_share=None, drone_db=None)
+    k = m["truth"].drones[0]
+    a, b = int(round(k["start_s"] * SR)), int(round(k["end_s"] * SR))
+    d = m["parts"]["drone"][a:b]
+    pd = float(np.mean(d ** 2))
+    pb = float(np.mean((m["mix"][a:b] - d) ** 2))
+    return dict(snr_db=10 * np.log10(pd / pb) if pb > 0 and pd > 0 else None,
+                signal_share=pd / (pd + pb) if pd + pb > 0 else None,
+                drone_db=db_spl(d) if pd > 0 else None)      # measured: also for "as rendered" drones
+
+
 def hop_levels(parts: dict, t_end: np.ndarray) -> dict:
     """dB SPL of every part (and the mix) in each 1 s window ending at t_end, as the detectors hear it."""
     n = int(DEFAULT.window_seconds * SR)
@@ -315,7 +331,7 @@ def row_fields(plan: Plan) -> list[str]:
     return (["round", "kind", "drone", "drone_level_db", "start_s", *[f"{n}_db" for n in plan.layers], "detector",
              "threshold", "tp", "fn", "fp", "tn", "left_out", "recall", "false_positive_rate", "precision",
              "first_alarm_s", "delay_s", "lead_s", "any_alarm", "any_false_alarm", "mean_conf_drone",
-             "mean_conf_no_drone"])
+             "mean_conf_no_drone", "snr_db", "signal_share", "drone_db"])
 
 
 class Test:
@@ -361,7 +377,11 @@ class Test:
                 if stop():
                     progress(f"stopped after {i - 1} of {len(self.rounds)} rounds")
                     break
-                res = score_round(self.rebuild(r), self.thr, self.scorers)
+                m = self.rebuild(r)
+                res = score_round(m, self.thr, self.scorers)
+                q = snr(m)                                       # the same for every detector of the round
+                for v in res.values():
+                    v["row"].update(q)
                 self.results[r["round"]] = {k: v["row"] for k, v in res.items()}
                 for k, v in res.items():
                     scores[f"{r['round']}|{k}"] = v["dec"].score

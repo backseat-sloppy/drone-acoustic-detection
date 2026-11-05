@@ -8027,3 +8027,223 @@ merge they were renumbered 123-130, cross-references included; nothing else in t
 
 **Next.** Iteration 15 waits for Mads: more real drone data (the six held-back datasets) and how R5
 is read (entry 129).
+## 123 - Complete_Test_Gui: a playhead over the graphs while sound plays
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 1fb0db7 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked for a line over the log-mel that shows where the
+sound being played is on the timeline.
+
+**What.** `scripts/Complete_Test_Gui.py`, results window: Play mix, Play drone
+and Play background start a vertical line across the log-mel (cyan) and the
+confidence and dB graphs (black) at the time being played. The clock starts
+when the sound starts. Only the line is redrawn, by blitting over a saved
+background (saved again if the figure is redrawn, for example on resize), so
+it moves smoothly. Stop sound, selecting another round, or the sound ending
+removes it.
+
+**Checks.** Driven by a script with the Tk event loop running, a made-up
+11 s round: the line was at 0.95 s about 1 s after Play and at 1.93 s about
+2 s after, the same on all three graphs; 22 updates a second; gone after
+Stop, after selecting another round and after the 11 s sound ended by itself.
+A first version that redrew the whole figure managed about 10 updates a
+second and lagged the sound by about 0.17 s; both fixed. `uv run pytest`: all
+pass. Not checked: the line seen on screen (the screenshot caught another
+window) and the sound heard.
+
+## 124 - Complete_Test_Gui: a Conclusions window, true and false confidence per setting
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 1fb0db7 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked for a button that plots the parameters: for each value
+of a setting (for example the soundscape at 80 dB, at 60 dB) the true and the
+false confidence, as bars, and as a curve when a setting has more than 4
+values.
+
+**What.** `scripts/Complete_Test_Gui.py`: "Conclusions" in the results
+window opens a window with one graph per setting that takes more than one
+value in the test (drone, drone level, drone start, each background layer).
+For the chosen detector and each value: true confidence = mean confidence
+over every drone window of the rounds with that value; false confidence =
+mean over every no-drone window, the no-drone rounds included where the
+setting applies (background layers), each window counted once (round means
+weighted by their window counts). Up to 4 values: grouped bars with their
+percentages; more than 4 numeric values: two curves. The dashed line is the
+detector's threshold (comb 50 %, as drawn). The same numbers are written
+below the title bar as text; "Save PNG" saves the figure into the run
+folder.
+
+**Checks.** Driven by a script, made-up files, a 108-round test (2 drones x
+2 drone levels x 2 starts x 6 war levels x 2 war-shaped-noise levels, plus 12
+no-drone rounds), it6 CNN and comb: five graphs, four as bars and war
+soundscape (6 values) as a curve; the war 80 dB values (true 18.7 %, false
+17.6 %, 18 rounds) equal a hand computation from rounds.csv; drone settings
+leave out the no-drone rounds (48 rounds at drone level 55), layer settings
+include them; switching to comb redraws; a test with nothing varied says so.
+Rendered to PNG and looked at; one shared legend, after a first version
+whose legends covered bar labels. `uv run pytest`: all pass. Made-up audio,
+not detection figures (section 5).
+
+## 125 - Complete_Test_Gui: SNR stored per round; the drone-level graph on a 0-1 signal-share axis
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 1fb0db7 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked for the x-axis of the drone-level conclusion graph to
+be the signal-to-noise ratio on a 0 to 1 scale.
+
+**What.**
+- `scripts/complete_test_engine.py`: `snr()` measures each drone round over
+  the drone's truth span: `snr_db` = 10 log10(P_drone / P_background) and
+  `signal_share` = P_drone / (P_drone + P_background), 0 (only noise) to 1
+  (only drone), 0.5 at 0 dB. Both go into every detector row of the round and
+  into rounds.csv. An SNR bounded to 0-1 has to be a share; a plain ratio is
+  not bounded.
+- `scripts/Complete_Test_Gui.py`, Conclusions: the drone-level graph places
+  each level at the mean signal share of its rounds (x from 0 to 1), each
+  point labelled with its dB SPL; with 4 levels or fewer the bars are
+  labelled "60 dB, share 0.21". Runs made before the columns existed are
+  measured by rebuilding their rounds.
+- The share is measured in the actual stretch of the background during the
+  drone, not from the long-term levels: a 60 dB drone against the war track
+  at 60 dB (long-term) had share 0.21 in the stretch used, because that
+  stretch is louder than the track's average.
+
+**Checks.** Made-up file, drone levels 30 to 90 dB against the war track at
+60 dB: round 1 share 0.0003 and SNR -35.87 dB, both equal to a hand
+computation from the rebuilt parts; graph x = 0.000, 0.003, 0.025, 0.205,
+0.720, 0.963, 0.996, increasing, axis 0 to 1; an older run without the
+columns gives a share (0.156 at 55 dB) by rebuilding. Rendered and looked
+at. `uv run pytest`: all pass. A share axis bunches low and high levels near
+0 and 1 (it is an S-curve in dB), so mid-range SNRs get most of the width.
+
+## 126 - Complete_Test_Gui: layer levels as min, max and #
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 1fb0db7 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked for each background layer's levels to be three boxes,
+min, max and # (how many), with drone_war_gui's logic, instead of a typed
+list.
+
+**What.** `scripts/Complete_Test_Gui.py`: every layer row has min (dB SPL),
+max (dB SPL) and # boxes; the levels come from `drone_war_grid.steps`, the
+same function drone_war_gui uses: # values from min to max, both included,
+evenly spaced; # 1 needs min = max, # above 1 needs min different from max,
+min not above max. # is 1 to 50, levels -20 to 140 dB SPL. Each row shows
+the levels it gives next to its boxes, or what is wrong; the round count
+and its breakdown update as the boxes change. Defaults: one level, 60 dB for
+the war soundscape, 50 dB for war-shaped noise and wind. The drone levels
+stay a typed list.
+
+**Checks.** Driven by a script, 20 s soundscape, 3 drones, no no-drone
+rounds: war 40 to 60, # 3 gives 40, 50, 60 dB and 99 rounds (Nicolai's
+example); 0 to 70, # 8 gives 264; 60, # 1 gives 33; # 1 with min != max,
+# 3 with min = max, min above max, a non-number and # 0 are each refused
+with a message and no count; adding war-shaped noise 30 to 50, # 2 gives 6
+backgrounds and 198 rounds. Screenshot looked at. `uv run pytest`: all pass.
+
+## 127 - Complete_Test_Gui: the drone level as min, max and # too
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 1fb0db7 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked for the drone level to use the same min, max and #
+boxes as the background layers (entry 126).
+
+**What.** `scripts/Complete_Test_Gui.py`: the drone level is three boxes on
+both pages, read by the same rule (`drone_war_grid.steps`), with the levels
+it gives, or what is wrong, beside them. On the synthetic page "as rendered"
+greys the three boxes out and keeps each render's physical level. The typed
+list and its parser are gone.
+
+**Checks.** Driven by a script: 60/60/1 gives 60 dB and 99 rounds in
+Nicolai's example; 40/80/5 gives 40, 50, 60, 70, 80 dB and 495 rounds; # 1
+with min != max and min above max are refused with a message; the synthetic
+page starts as rendered (boxes disabled, plan levels None) and unticking it
+enables the boxes (plan levels [60]). `uv run pytest`: all pass. Not looked
+at on screen (the screenshot caught another window and was deleted).
+
+## 128 - Complete_Test_Gui: level graphs on drone dB / layer dB, as Nicolai defined it (replaces 125's axis)
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 1fb0db7 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai: the x-axis he wanted is the ratio of the levels in dB, so a
+drone and a soundscape at the same level sit at 1, and a 30 dB drone in a
+60 dB war soundscape at 0.5. Entry 125's 0-1 power share was not that.
+
+**What.** `scripts/Complete_Test_Gui.py`, Conclusions: every background
+layer's graph, and the drone-level graph (against the first ticked layer),
+now have x = drone level (dB SPL) / layer level (dB SPL), per round; drone
+rounds are grouped by that ratio (3 decimals) and give window-weighted true
+and false confidence as before. Bars up to 4 ratios, a curve above (with a
+dotted line at 1). A layer at 0 dB SPL or below has no ratio and is left
+out. A drone "as rendered" uses its measured level: `snr()` in
+`scripts/complete_test_engine.py` now also stores `drone_db`, and older runs
+are rebuilt to measure it. The 0-1 share of entry 125 stays in rounds.csv
+(`signal_share`, `snr_db`) but is no longer drawn.
+
+Caveat, told to Nicolai: a ratio of dB values is not a signal-to-noise ratio
+in the usual sense. 30 dB against 60 dB (0.5) is a 30 dB difference, 1000
+times less power; 70 against 80 dB gives 0.875 for a 10 dB difference. The
+same ratio therefore means different SNRs at different absolute levels.
+
+**Checks.** Made-up file: war 0 to 90 dB (# 10) with a 60 dB drone gives x =
+0.667, 0.75, 0.857, 1, 1.2, 1.5, 2, 3, 6 (war 0 dB left out), drawn as a
+curve; drone 30 and 60 dB against war 60 gives 0.5 and 1 (bars); a
+synthetic drone as rendered, measured at 59.10 dB SPL, gives 0.985 and 1.182
+against 60 and 50 dB. Rendered and looked at. `uv run pytest`: all pass.
+
+## 129 - CleanDrone.wav: a steady, denoised drone from the opened ITU ARIS clips
+
+- Date: 2026-11-05
+- Type: Data
+- Commit: none (data/ is git-ignored)
+
+**Why.** Nicolai asked for a WAV made from the sealed test sounds with a
+constant drone level and no background noise, named CleanDrone, in
+`data/extracted/sealed_peek/`.
+
+**How.** A scratch script (not in the repo), on files already opened only,
+so no further sealed segments were opened: the ten drone excerpts and
+`Fugle.wav` (the background excerpt, entries 101, 106, 119).
+- Everything is high-passed at 90 Hz (4th-order Butterworth, zero phase):
+  85 % of the background's energy is below 100 Hz (wind and handling rumble
+  on the dynamic microphone), and so was the loudest "line" of the first
+  choice (82.6 Hz). The detectors' band starts at 50 Hz, so this removes a
+  little of what they can hear.
+- Source: the excerpt loudest over the background in that band and steadiest
+  over 1 s windows: `Drone_03.wav` (= `aris_peek_03`, interval 18), -38.2
+  dBFS against -40.4 for the background, 2.8 dB spread.
+- Background removal: two soft masks on a 1024-point STFT (hop 256),
+  multiplied: harmonic/percussive separation (median over about 0.5 s of
+  time against median over about 400 Hz of frequency) and a tonal-peak mask
+  (a bin 6 dB above the median of its +-15 bins); smoothed over 3 bins x 5
+  frames; floor -30 dB. A first try with a noise-profile gate from
+  `Fugle.wav` (as `build_stems.gate`) lowered the background only 1.1 dB,
+  because that clip has footsteps and voices in it.
+- Level: RMS in 100 ms frames smoothed over 0.5 s, gain to the median,
+  limited to +-12 dB.
+
+**Result.** `data/extracted/sealed_peek/CleanDrone.wav`, 10.0 s, 22.05 kHz,
+16-bit, -40.7 dBFS RMS, peak -25.5 dBFS. The same processing lowers
+`Fugle.wav` by 7.2 dB; the drone's strongest line (180 Hz) changes -0.6 dB;
+the 1 s level spread goes from 2.80 to 0.26 dB. Spectrograms before and
+after were looked at: the harmonic lines (about 620, 1250, 1900, 2400 Hz)
+are kept and the space between them is darker.
+
+**Limits.** The background is reduced, not gone: steady tonal background
+and noise right at the drone's lines pass the masks, and the masks leave
+some processing texture. The level is constant; the pitch is not: the
+drone's harmonics dip between about 7 and 8.5 s (a manoeuvre), as in the
+recording. It is processed sealed-set audio: not a test file for a sealed
+score.
