@@ -19,6 +19,8 @@ threshold. Each uses the threshold its own run froze at 5% false alarms on valid
   it11r CNN artifacts/it11r_realism/it11r_s0_dscnn.pt (seed 0, as it11 with make_scenes.py --realism)
   it11r CRNN artifacts/it11r_crnn/it11r_crnn_s0_crnn.pt (seed 0, it11r's scenes with the CRNN of it9)
   it11r CRNN 600k artifacts/it11r_crnn600k/it11r_crnn600k_s0_crnn.pt (seed 0, the same trained on 600 000 windows)
+  it11s CRNN artifacts/it11s_steady/it11s_crnn600k_s0_crnn.pt (seed 0, it11r CRNN 600k + steady broadband noise)
+  it11sl CRNN artifacts/it11s_steady/it11sl_crnn600k_s0_crnn.pt (seed 0, it11s with drones down to -30 dB SNR)
   itG-A CNN artifacts/itG/A_s0_dscnn.pt (seed 0; itG = the Glasgow experiment: A = Pd drones only, the
             comparison run, with the Glasgow room recording in every scene)
   itG-B CNN artifacts/itG/B_s0_dscnn.pt (seed 0; as A, but half the drones are real Glasgow recordings, d1-d16)
@@ -109,7 +111,7 @@ NAMES = {"CNN": "CNN", "comb": "DSP (comb)"}                 # detector -> name 
 LIST_ROWS = 16                                               # files shown in the list at once
 MODELS = dwg.MODELS
 MODEL_COLORS = dict(zip(MODELS, ["#2a78d6", "#e8710a", "#9334e6", "#d93025", "#6b4e16", "#0b8a8a",
-                                  "#c2185b", "#5f6368", "#f9ab00", "#3949ab"]))   # one per model; comb is green
+                                  "#c2185b", "#5f6368", "#f9ab00", "#3949ab", "#00897b", "#795548"]))   # one per model; comb is green
 assert len(MODEL_COLORS) == len(MODELS), "add a colour for the new model"
 COMB_COLOR = dwg.COLORS["comb"]
 
@@ -136,15 +138,16 @@ b_next = Button(fig.add_axes([0.145, 0.737, 0.12, 0.04]), "Next >")
 b_play = Button(fig.add_axes([0.015, 0.692, 0.12, 0.04]), "Play")
 b_hush = Button(fig.add_axes([0.145, 0.692, 0.12, 0.04]), "Stop sound")
 status = fig.text(0.015, 0.677, "Open one or more audio files.", fontsize=8, color=TEXT, va="top", wrap=True)
-ax_list = fig.add_axes([0.015, 0.20, 0.26, 0.44])   # room below for 11 detectors
-ax_model = fig.add_axes([0.015, 0.005, 0.25, 0.17], frameon=False)
+ax_list = fig.add_axes([0.015, 0.24, 0.26, 0.40])   # room below for 13 detectors
+ax_model = fig.add_axes([0.015, 0.005, 0.25, 0.21], frameon=False)
 ax_model.set_title("detectors, for the next batch opened (one or more)", fontsize=8, color=TEXT, loc="left")
 MODEL_NOTE = ("it11: Pd drones in soundscapes\n"
               "it11r: it11 + realism (rotors, mic, room)\n"
               "it11r CRNN: it11r with it9's CRNN (600k: 3x trained)\n"
+              "it11s: + steady noise; it11sl: + drones to -30 dB\n"
               "itG-A: Pd drones only (Glasgow test)\n"
               "itG-B: half real Glasgow drones")
-fig.text(0.135, 0.125, MODEL_NOTE, fontsize=6.5, color="#777777", va="top")   # what the names mean
+fig.text(0.155, 0.17, MODEL_NOTE, fontsize=6.5, color="#777777", va="top")   # what the names mean
 DETECTOR_BOXES = [*MODELS, NAMES["comb"]]                    # the networks, then comb last
 c_models = CheckButtons(ax_model, DETECTOR_BOXES, [i == 0 or b == NAMES["comb"] for i, b in enumerate(DETECTOR_BOXES)])
 for lbl, b in zip(c_models.labels, DETECTOR_BOXES):

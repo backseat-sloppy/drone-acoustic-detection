@@ -76,14 +76,15 @@ b_flush = Button(fig.add_axes([0.015, 0.06, 0.08, 0.04]), "Flush plots")
 ax_confirm = fig.add_axes([0.10, 0.06, 0.08, 0.04])
 b_confirm = Button(ax_confirm, "Confirm", color="#f4c7c3", hovercolor="#ee9a93")
 ax_confirm.set_visible(False)                                 # only shown after Flush plots
-fig.text(0.19, 0.22, "model", fontsize=8, color=TEXT, va="bottom")   # a column: a row no longer fits the names
+fig.text(0.19, 0.25, "model", fontsize=8, color=TEXT, va="bottom")   # a column: a row no longer fits the names
 MODEL_NOTE = ("it11: Pd drones in soundscapes\n"
               "it11r: it11 + realism (rotors, mic, room)\n"
               "it11r CRNN: it11r with it9's CRNN (600k: 3x trained)\n"
+              "it11s: + steady noise; it11sl: + drones to -30 dB\n"
               "itG-A: Pd drones only (Glasgow test)\n"
               "itG-B: half real Glasgow drones")
 fig.text(0.015, 0.17, MODEL_NOTE, fontsize=6, color="#777777", va="top")   # what the names mean, under the table
-r_model = RadioButtons(fig.add_axes([0.19, 0.005, 0.075, 0.21], frameon=False), list(dwg.MODELS), active=0,
+r_model = RadioButtons(fig.add_axes([0.19, 0.005, 0.075, 0.24], frameon=False), list(dwg.MODELS), active=0,
                        label_props=dict(fontsize=[7] * len(dwg.MODELS)))
 status = fig.text(0.015, 0.38, "Type the values and press Run.", fontsize=8, color=TEXT, va="top", wrap=True)
 table = fig.text(0.015, 0.34, "", fontsize=7, family="monospace", color=TEXT, va="top")

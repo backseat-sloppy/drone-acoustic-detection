@@ -8301,3 +8301,70 @@ The entries below were written on branch `NicolaiBranchGUI` as 095 to 104, and l
 600k", "it9 CRNN" and comb, then drew the window. `uv run pytest -q tests`
 is in the merge commit's log.
 
+
+## 119 - The arms restarted with the frontend on the GPU
+- Date: 2026-11-05
+- Iteration: the soundscape line
+- Type: Infrastructure
+- Commit: ce75020 (server and Mac)
+
+**What changed.** `train_clean.CleanSampler.raw_batch` returns a batch's
+windows before the frontend: no speed change (`SPEED_UP`), zero EQ, and
+the labels. `NetScorer` uses it on CUDA and runs the log-mel on the GPU
+(`gpufront`, master's entry 092). `batch()` now builds on the same draws.
+**Why.** At 11:03 the six runs of entry 117 trained at 110 windows/s,
+about 90 min for 600 000 windows. The server's load average was 68 on 24
+cores, with another user's jobs as well, while the GPUs were 17-45% busy.
+The CPU frontend was the bottleneck. Mads chose to switch at once ("No
+switch now i mean").
+**Check.** On a 16-window batch from the it11r scenes, `batch()` and
+`GpuFrontend("cpu").train_features(raw_batch())` agree to a maximum
+absolute difference of 1.9e-6 (mean |L| 3.2). So the switch changes speed,
+not what the model sees, and the comparison with the it11r CRNN 600k
+holds. `uv run pytest -q tests`: all passed.
+**What happened.** The six runs of entry 117 were stopped at about 50 000
+windows each and restarted at 11:06 with the same names and settings.
+Their earlier logs are overwritten.
+
+## 120 - The steady-noise arms: validation results; "it11s CRNN" and "it11sl CRNN" in the GUIs
+- Date: 2026-11-05
+- Iteration: the soundscape line
+- Type: Model
+- Commit: uncommitted (on top of ce75020)
+
+**Result.** Entry 119's six runs finished at 11:33-11:36: CRNN, 600 000
+windows, frontend on the GPU, 1288-1384 s of training each. The
+validation is each arm's own: scenes with seed >= 1800 and the real
+nightjar rig.
+
+| Arm | Seed | CRNN AUC | Recall at 5% FA | FA at 95% recall | Threshold | lgbm AUC | Final loss |
+|---|---|---|---|---|---|---|---|
+| 1, steady noise (`it11s`) | 0 / 1 / 2 | 0.788 / 0.800 / 0.807 | 0.409 / 0.412 / 0.413 | 0.805 / 0.735 / 0.670 | 0.618 / 0.626 / 0.622 | 0.670 / 0.734 / 0.682 | 0.539 / 0.536 / 0.542 |
+| 2, + drones to -30 dB (`it11sl`) | 0 / 1 / 2 | 0.748 / 0.720 / 0.742 | 0.307 / 0.306 / 0.306 | 0.793 / 0.892 / 0.839 | 0.623 / 0.645 / 0.619 | 0.640 / 0.729 / 0.604 | 0.583 / 0.579 / 0.584 |
+
+comb: AUC 0.589 (arm 1), 0.579 (arm 2).
+**Assessment.** Synthetic validation (CLAUDE.md section 5). The three
+validation sets (it11r, arm 1, arm 2) differ, so the arms cannot be ranked
+against it11r or against each other from these numbers:
+- arm 1's validation adds steady noise;
+- arm 2's validation also holds drones down to -30 dB, which are harder by
+  construction. That is why its AUC and recall are lower.
+
+What does compare:
+- in both arms the CRNN beats lgbm and comb on every seed;
+- arm 1's recall at 5% FA (0.41) is above the it11r CRNN 600k's (0.37),
+  even though its validation is harder.
+
+Whether either arm separates war-shaped noise from drones, and alarms
+earlier (entry 115's failures), is for Mads to test in `drone_war_gui.py`.
+Mads asked for no tests here.
+**Checkpoints and GUIs.** The 24 files are in `artifacts/it11s_steady/`.
+The combined MD5 over the 24 per-file MD5s matches the server's
+(750b8017d0165287637699d9eca44f4d).
+- "it11s CRNN" (threshold 0.6184) and "it11sl CRNN" (0.6233), seed 0, are
+  in `drone_war_grid.MODELS`, so both GUIs list them.
+- `detect_gui.py` has two more model colours, a taller detector box (21%
+  of the height, file list from 24%) and the note at x 0.155.
+- `drone_war_gui.py`'s model column is 0.24 tall.
+
+Offscreen renders of both windows show all 12 models.

@@ -70,6 +70,11 @@ MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file
                          ROOT / "artifacts/it11r_crnn/it11r_crnn_s0_crnn.pt"),
           "it11r CRNN 600k": (ROOT / "artifacts/it11r_crnn600k/it11r_crnn600k_s0.json",  # as above, 3x the training
                               ROOT / "artifacts/it11r_crnn600k/it11r_crnn600k_s0_crnn.pt"),
+          # it11s / it11sl = the steady-noise arms (report soundscape section, entries 116-120), seed 0
+          "it11s CRNN": (ROOT / "artifacts/it11s_steady/it11s_crnn600k_s0.json",
+                         ROOT / "artifacts/it11s_steady/it11s_crnn600k_s0_crnn.pt"),
+          "it11sl CRNN": (ROOT / "artifacts/it11s_steady/it11sl_crnn600k_s0.json",
+                          ROOT / "artifacts/it11s_steady/it11sl_crnn600k_s0_crnn.pt"),
           # itG = the Glasgow experiment (report entries 106-110), trained on the Mac, seed 0:
           #   A = Pd drones only (the comparison run), B = half the drones real Glasgow recordings
           "itG-A CNN": (ROOT / "artifacts/itG/A_s0.json", ROOT / "artifacts/itG/A_s0_dscnn.pt"),
