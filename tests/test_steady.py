@@ -92,3 +92,19 @@ def test_real_steady_draw_has_rig_level_and_the_window_length():
         x, p = rg.RangeSampler.steady(s, rng)
         assert len(x) == FS and np.isfinite(x).all()
         assert abs(10 * np.log10(p / 1e-4)) < 3.5   # white rig background at 0.01 RMS, wobble up to +-3 dB
+
+
+def test_confuser_negatives_and_maskers_come_at_the_recipe_shares():
+    rng = np.random.default_rng(6)
+    s, tone = _stub(rg.RECIPES["simdist_conf"].__class__("t", {(0, 50): 1.0}, near_bury=False,
+                                                         conf_neg=0.25, conf_mask=0.30))
+    s.conf = types.SimpleNamespace(_background=lambda rng: (np.full(FS, 7.0, np.float32), 49.0))
+    neg = [s.negative(rng) for _ in range(4000)]
+    # the scaled constant shifts the mean by 0.0056-0.056; white rig noise alone by about 1e-4
+    assert abs(np.mean([np.mean(x) > 0.003 for x in neg]) - 0.25) < 0.02
+    pos = [s.positive(rng) for _ in range(4000)]
+    masked = [x for x in pos if not np.allclose(x, tone)]
+    assert abs(len(masked) / len(pos) - 0.30) < 0.03
+    snr = [10 * np.log10(rr.inband_power(tone) / np.mean((x - tone) ** 2)) for x in masked]
+    assert -5.0 - 1e-6 <= min(snr) and max(snr) <= 15.0 + 1e-6
+    assert rg.RECIPES["simdist_steady"].conf_neg == rg.RECIPES["simdist_steady"].conf_mask == 0.0

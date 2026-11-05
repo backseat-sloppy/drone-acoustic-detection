@@ -130,6 +130,8 @@ class Recipe:
     near_bury: bool = True                       # near positives buried in FSD50K, as iteration 2
     steady_neg: float = 0.0                      # share of negatives that are steady noise alone (iteration 11)
     steady_mask: float = 0.0                     # share of positives with steady noise under the drone
+    conf_neg: float = 0.0                        # share of negatives that are a real confuser over a rig background
+    conf_mask: float = 0.0                       # share of positives with a real confuser under the drone (iteration 12)
 
 
 RECIPES = {
@@ -137,7 +139,14 @@ RECIPES = {
     "range": Recipe("range", {(0, 50): 0.20, (50, 100): 0.25, (100, 150): 0.30, (150, 200): 0.25}),
     "simdist": Recipe("simdist", {(0, 50): 1.0}, sim_share=0.80),
     "simdist_steady": Recipe("simdist_steady", {(0, 50): 1.0}, sim_share=0.80, steady_neg=0.15, steady_mask=0.30),
+    "simdist_conf": Recipe("simdist_conf", {(0, 50): 1.0}, sim_share=0.80, conf_neg=0.25, conf_mask=0.30),
+    "simdist_steady_conf": Recipe("simdist_steady_conf", {(0, 50): 1.0}, sim_share=0.80, steady_neg=0.15,
+                                  steady_mask=0.30, conf_neg=0.25, conf_mask=0.30),
 }
+# FSD50K labels (ancestors included) of the sounds the networks mistake for a drone (entry 121): engines,
+# vehicles (cars, trucks, motorcycles, aircraft, trains, boats), power tools, fans, insects, water.
+CONFUSER_LABELS = frozenset({"Vehicle", "Engine", "Power_tool", "Mechanical_fan", "Sawing", "Insect", "Buzz",
+                             "Water"})
 
 
 class Cell:
@@ -219,6 +228,9 @@ class RangeSampler:
         fsd = [r for r in splits.fsd_train if r.n_samples >= n]   # long enough for the drawn length
         self.fsd = rr.WindowSampler([rr.ddl_pool(splits.ddl_train, n, 50.0)], fsd, long_cfg,
                                     self.variant, seed)
+        if recipe.conf_neg or recipe.conf_mask:
+            conf = [r for r in fsd if CONFUSER_LABELS.intersection(r.labels.split(","))]
+            self.conf = rr.WindowSampler(self.fsd.pools, conf, long_cfg, self.variant, seed)
 
         by_src = collections.defaultdict(list)
         for r in arm.train:
@@ -282,6 +294,9 @@ class RangeSampler:
         if self.recipe.steady_neg or self.recipe.steady_mask:
             parts.append(f"steady noise: {self.recipe.steady_neg:.0%} of negatives, "
                          f"under {self.recipe.steady_mask:.0%} of positives")
+        if self.recipe.conf_neg or self.recipe.conf_mask:
+            parts.append(f"FSD50K confusers ({len(self.conf.neg)} clips): {self.recipe.conf_neg:.0%} of negatives, "
+                         f"under {self.recipe.conf_mask:.0%} of positives")
         return "; ".join(parts)
 
     def _norm(self) -> float:
@@ -338,11 +353,23 @@ class RangeSampler:
             m, pm = self.steady(rng)
             snr = rng.uniform(*self.variant.snr_db)
             x = x + m * math.sqrt(pd / (max(pm, 1e-20) * 10.0 ** (snr / 10.0)))
+        if self.recipe.conf_mask and rng.random() < self.recipe.conf_mask:
+            # A real confuser under the drone, same in-band SNR range, drone over confuser.
+            m, pm = self.conf._background(rng)
+            snr = rng.uniform(*self.variant.snr_db)
+            x = x + m * math.sqrt(pd / (max(pm, 1e-20) * 10.0 ** (snr / 10.0)))
         return x
 
     def negative(self, rng: np.random.Generator) -> np.ndarray:
         if self.recipe.steady_neg and rng.random() < self.recipe.steady_neg:
             return self.steady(rng)[0]
+        if self.recipe.conf_neg and rng.random() < self.recipe.conf_neg:
+            # A real confuser over a rig background, confuser over background -5 to +15 dB in-band, so a
+            # confuser negative carries a rig's chain as the positives do.
+            a, pa = self._rig_background(rng)
+            c, pc = self.conf._background(rng)
+            snr = rng.uniform(*self.variant.snr_db)
+            return a + c * math.sqrt(pa * 10.0 ** (snr / 10.0) / max(pc, 1e-20))
         u = rng.random()
         if u < self.rig_neg_share:
             k = min(int(np.searchsorted(np.cumsum(self._rig_share), u, side="right")), len(self._rig_names) - 1)

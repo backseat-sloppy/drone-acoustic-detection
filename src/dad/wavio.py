@@ -188,8 +188,14 @@ def load_scorer(spec: str, cfg: FrontendConfig = DEFAULT, device: str = "cpu"):
     from . import realrun as rr
     if spec == "comb":
         return rr.CombScorer(cfg)
+    if spec.endswith("_pannsft.pt"):
+        from .panns import PannsFtScorer
+        return PannsFtScorer.load(spec, cfg, device)
     if spec.endswith(".pt"):
         return rr.NetScorer.load(spec, cfg, device)
+    if spec.endswith("_panns.pkl"):
+        from .panns import PannsScorer
+        return PannsScorer.load(spec, cfg, device)
     if spec.endswith(".pkl"):
         return rr.LgbmScorer.load(spec, cfg)
     raise ValueError(f"unknown detector {spec!r}: give 'comb', a .pt or a .pkl checkpoint")

@@ -153,6 +153,26 @@ def main() -> None:
                     m = rr.LgbmScorer(variant, cfg).fit(sampler, args.lgbm_windows)
                     m.save(ckpt)
                     evaluate(m, "lgbm", rname, dict(train_seconds=round(time.time() - t, 1)))
+            if "panns" in args.models:   # frozen PANNs Cnn14_16k + logistic regression (iteration 13)
+                from dad.panns import PannsScorer
+                ckpt = REPO / "artifacts" / "models" / f"{args.load_from or args.name}_{held.replace(':', '_')}_{rname}_panns.pkl"
+                if args.load_from:
+                    evaluate(PannsScorer.load(ckpt, cfg, args.device), "panns", rname, dict(loaded=ckpt.name))
+                else:
+                    t = time.time()
+                    m = PannsScorer(cfg, args.device).fit(sampler, args.windows)
+                    m.save(ckpt)
+                    evaluate(m, "panns", rname, dict(train_seconds=round(time.time() - t, 1), windows=args.windows))
+            if "pannsft" in args.models:   # Cnn14_16k fine-tuned end to end, LP-FT (iteration 14)
+                from dad.panns import PannsFtScorer
+                ckpt = REPO / "artifacts" / "models" / f"{args.load_from or args.name}_{held.replace(':', '_')}_{rname}_pannsft.pt"
+                if args.load_from:
+                    evaluate(PannsFtScorer.load(ckpt, cfg, args.device), "pannsft", rname, dict(loaded=ckpt.name))
+                else:
+                    t = time.time()
+                    m = PannsFtScorer(cfg, args.device).fit(sampler, args.windows)
+                    m.save(ckpt)
+                    evaluate(m, "pannsft", rname, dict(train_seconds=round(time.time() - t, 1), windows=args.windows))
             for arch in (a for a in args.models if a in NETS):
                 ckpt = REPO / "artifacts" / "models" / f"{args.load_from or args.name}_{held.replace(':', '_')}_{rname}_{arch}.pt"
                 if args.load_from:
