@@ -9437,3 +9437,64 @@ option.
 
 **Result.** Nothing run. `tests/test_panns.py` passes on the Mac (7 passed, 2 skipped).
 
+## 141 - P1 at the real-background threshold: pooled recall 0.49; mower gate (e) passes; P2 started
+- Date: 2026-11-06
+- Iteration: 11.1
+- Type: Evaluation (validation only)
+- Commit: c1337a0 (server)
+
+**How.** `bash scripts/experiments/run_it11_1.sh gates` in Marius's account. It reran (b) and (c), with the
+same figures as entry 139, then ran `real_threshold.py` and `score_mower.py`. Output files are
+`artifacts/it11_1/real_threshold.json` and `gates_mower.json`.
+
+**Real-background threshold** (entry 129's rule; 2648 drone and 1565 background windows of the pooled
+Nightjar and d3set validation sessions):
+
+| Model | Threshold | FA | Pooled recall at the threshold |
+|---|---|---|---|
+| it9 CRNN | 0.4828 | 5.05% | 0.785 |
+| P1 | 0.2458 | 5.05% | **0.491** |
+| e133 Glasgow s0 / s1 (entry 134) | 4.7e-6 / 1.3e-5 | | 0.710 / 0.703 |
+| it11r CRNN 600k / e133 it11s clean (entry 134) | 0.337 / 0.373 | | 0.592 / 0.583 |
+
+it9's threshold and recall reproduce entry 134 exactly.
+
+**Gate (e), the mower session** (`nightjar-lawnmower1-20260805`): 1045 drone windows and 125 mower-only
+windows at a 0.5 s hop. Each model is at its own threshold from the table above.
+
+| Model | Mower-only FA (Wilson 95%) | AUC, drone against mower-only | Drone recall in the session |
+|---|---|---|---|
+| **P1** | **9.6%** (5.6-16.0%), passes (≤ 25%) | **0.740** | 0.357 |
+| it9 CRNN | 26.4% (19.5-34.7%), fails | 0.695 | 0.584 |
+| comb | | 0.374 | |
+
+**Reading.**
+- **Pooled recall is low.** P1's recall at the pooled real threshold (0.491) is the lowest of the models
+  compared, although its Nightjar ranking is the best (AUC 0.908, entry 139). One threshold has to serve
+  Nightjar and d3set, and P1's scores are not on the same scale on the two rigs. The probe ranks well
+  within a rig, but it is poorly calibrated across rigs.
+- **The mower gate passes, partly because P1 is less sensitive at its threshold.** Its drone recall in the
+  same session is 0.357 against it9's 0.584. The within-session AUC is the fairer comparison. There P1
+  separates drone from mower a little better than it9 (0.740 against 0.695). This is entry 053's
+  within-rig check. Entry 053's decisive objection, that a frozen AudioSet encoder merges mowers with
+  drones, does not hold for this session.
+- The figure rests on 125 mower-only windows from one session (entry 025). The interval is stated with it.
+- **P1 against entry 135's rule:** (b) fails (0.683), (c) fails (0.560), (e) passes; (a) and (d) are not
+  scored yet.
+  - Not a success.
+  - Not the "informative failure" either: (c) shows no gain over e133.
+  - Not a rejection: (b) is narrowly better than e133.
+  - Logged as mixed.
+- **P2 started** under entry 135 (condition met narrowly, entry 139) and entry 140 (final state kept). It
+  runs at 10:39:03 on GPUs 0, 1 and 2, seeds 0-2, 600 000 windows each, all three from `p1_s0_panns.pt`.
+  Logs: `artifacts/it11_1/logs/p2_s{0,1,2}_20261106_103903.log`.
+
+**Glasgow for gates (a) and (d).** Glasgow d17-d20, the room recording and the war track are on the Mac
+only. They are packed for a single upload to the server, so the P2 checkpoints (about 320 MB each)
+need not travel to the Mac.
+- `artifacts/transfer/glasgow_gates.tar` (Mac, git-ignored): 866 500 608 bytes, MD5
+  `281451f0416e6f90841fca0b57a5b645`.
+- It holds 42 files, the originals unmodified (44.1 kHz): the 40 `17to24/` hover files of d17-d20, the
+  room recording `noise/_uav_2022noise_n_noise_1m_.WAV`, and `data/processed/war/war_track.wav`.
+- The test drones d21-d24 share that folder and are left out. This was checked: 0 matching files in the tar.
+
