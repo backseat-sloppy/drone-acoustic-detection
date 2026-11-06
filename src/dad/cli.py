@@ -6,6 +6,7 @@
     uv run dad compare          every model on the same windows, laptop/GPU zoo
     uv run dad info             print the frozen frontend contract
     uv run dad wav FILES...     run a detector over WAV files, hop by hop
+    uv run dad live             run detectors on a live microphone, hop by hop
 """
 
 from __future__ import annotations
@@ -269,6 +270,55 @@ def _cmd_wav(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_live(args: argparse.Namespace) -> int:
+    from .live import LivePipeline, load_detector, mic_blocks, run, wav_blocks
+
+    if args.list_devices:
+        import sounddevice as sd
+        print(sd.query_devices())
+        print(f"\ndefault input: {sd.query_devices(kind='input')['name']}")
+        return 0
+    cfg = FrontendConfig(window_seconds=args.window, hop_seconds=args.hop)
+    specs = args.detector or ["it6 CNN", "comb"]
+    print(f"frontend  : {cfg.describe()}")
+    detectors = []
+    for spec in specs:
+        d = load_detector(spec, cfg, args.torch_device)
+        detectors.append(d)
+        print(f"detector  : {d.name:<10} threshold {'none (scores only)' if d.threshold is None else f'{d.threshold:.6g}'}")
+    if args.from_wav:
+        sr, ch, blocks = wav_blocks(args.from_wav, realtime=not args.fast)
+        print(f"input     : {args.from_wav} ({sr} Hz, {ch} ch){'' if args.fast else ', paced to real time'}")
+    else:
+        import sounddevice as sd
+        device = int(args.device) if args.device and args.device.isdigit() else args.device
+        sr, ch, blocks = mic_blocks(device, args.samplerate, args.channels, args.blocksize)
+        name = sd.query_devices(device, "input")["name"]
+        note = "" if sr == cfg.sample_rate else f", resampled to {cfg.sample_rate} Hz in software"
+        print(f"input     : {name} ({sr} Hz, {ch} ch{note}), channel {args.channel}")
+    if not 0 <= args.channel < ch:
+        print(f"--channel {args.channel}: the input has {ch} channel(s)", file=sys.stderr)
+        return 2
+    if args.gain_db:
+        print(f"gain      : {args.gain_db:+g} dB before the detectors")
+    print("levels    : detectors were trained with 110 dB SPL at full scale; on an uncalibrated mic, read the "
+          "scores as hints")
+    print(f"first decision after {cfg.window_seconds:g} s, then every {cfg.hop_seconds:g} s. Ctrl+C stops.\n")
+    pipe = LivePipeline(detectors, sr, cfg, args.gain_db)
+    s = run(pipe, sr, blocks, channel=args.channel, out_csv=args.out, record=args.record,
+            duration=args.duration, quiet=args.quiet)
+    print(f"\n{s.audio_s:.1f} s of audio, {s.decisions} decisions, slowest scoring {s.max_compute_ms:.1f} ms per window"
+          f" (hop {1000 * cfg.hop_seconds:.0f} ms)" + (f", {s.overflows} input overflows" if s.overflows else ""))
+    for d in detectors:
+        first = s.first_alarm.get(d.name)
+        print(f"  {d.name:<10} {s.alarms[d.name]} alarm(s)" + ("" if first is None else f", first at {first:.2f} s"))
+    if args.out:
+        print(f"decisions -> {args.out}")
+    if args.record:
+        print(f"recording -> {args.record}  (score it later: uv run dad wav {args.record} ...)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="dad", description="Acoustic drone detection, latency first")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -317,6 +367,32 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--out", default=None, help="CSV with every hop's score and answer")
     w.add_argument("--summary", default=None, help="JSON with the totals and per-file results")
     w.set_defaults(fn=_cmd_wav)
+
+    from .live import PRESETS
+
+    lv = sub.add_parser("live", help="run detectors on a live microphone, hop by hop")
+    lv.add_argument("--list-devices", action="store_true", help="list the sound devices and exit")
+    lv.add_argument("--device", default=None, help="input device: index or part of its name (default: system default)")
+    lv.add_argument("--samplerate", type=int, default=None,
+                    help="capture rate (default: 16000 if the device takes it, else its own rate)")
+    lv.add_argument("--channels", type=int, default=None, help="channels to open (default: all the device has)")
+    lv.add_argument("--channel", type=int, default=0, help="the channel the detectors hear (default 0, as dad wav)")
+    lv.add_argument("--blocksize", type=int, default=0, help="frames per device block (0: the driver's choice)")
+    lv.add_argument("--detector", action="append", default=None, metavar="SPEC[@THRESHOLD]",
+                    help=f"repeatable; a preset ({', '.join(repr(k) for k in PRESETS)}), 'comb', or a .pt/.pkl "
+                         "checkpoint. Default: 'it6 CNN' and comb, as detect_gui")
+    lv.add_argument("--window", type=float, default=DEFAULT.window_seconds,
+                    help="must match the window the checkpoint was trained with")
+    lv.add_argument("--hop", type=float, default=DEFAULT.hop_seconds)
+    lv.add_argument("--gain-db", type=float, default=0.0, help="gain applied before the detectors")
+    lv.add_argument("--duration", type=float, default=None, help="stop after this many seconds of audio")
+    lv.add_argument("--out", default=None, help="CSV with every decision of every detector")
+    lv.add_argument("--record", default=None, help="WAV of the raw input, every channel, at the capture rate")
+    lv.add_argument("--from-wav", default=None, help="replay a file as if it were the microphone (for testing)")
+    lv.add_argument("--fast", action="store_true", help="with --from-wav: as fast as possible, not real time")
+    lv.add_argument("--torch-device", default="cpu", help="device for the networks: cpu, cuda, dml")
+    lv.add_argument("--quiet", action="store_true", help="no status line or alarm lines, only the summary")
+    lv.set_defaults(fn=_cmd_live)
 
     args = p.parse_args(argv)
     return int(args.fn(args))
