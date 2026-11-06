@@ -73,6 +73,17 @@ E.dwg.MODELS.update({f"e123 {n} CRNN": (_E123 / f"e123_{n}.json", _E123 / f"e123
 # Entry 129: the it11r CRNN 600k checkpoint at a threshold set on real background (5% FA, it9's rule).
 E.dwg.MODELS["it11r CRNN 600k real-thr"] = (E.dwg.ROOT / "artifacts/e129_realthr/it11r_crnn600k_s0_realthr.json",
                                             E.dwg.ROOT / "artifacts/it11r_crnn600k/it11r_crnn600k_s0_crnn.pt")
+# Iteration 11.2 (report entries 143-146): CRNNs trained under entry 143's rule with one rig held out, seed 0.
+# "N" was trained on d3set (Nightjar held out), "D" on Nightjar (d3set held out); each at the threshold frozen
+# at 5% FA on its training rig's validation. Fold models, not final candidates.
+_IT112 = {"it11.2 N CRNN": ("it11_2_s0_nightjar", "nightjar", "simdist"),
+          "it11.2 N steady CRNN": ("it11_2_s0_nightjar", "nightjar", "simdist_steady"),
+          "it11.2 D CRNN": ("it11_2_s0_d3set", "d3set", "simdist"),
+          "it11.2 D steady CRNN": ("it11_2_s0_d3set", "d3set", "simdist_steady")}
+E.dwg.MODELS.update({k: (E.dwg.ROOT / f"artifacts/runs/{run}.json", E.dwg.ROOT / f"artifacts/models/{run}_{held}_{rec}_crnn.pt")
+                     for k, (run, held, rec) in _IT112.items()})
+COLORS.update({"it11.2 N CRNN": "#ef6c00", "it11.2 N steady CRNN": "#f9a825",
+               "it11.2 D CRNN": "#2e7d32", "it11.2 D steady CRNN": "#00acc1"})
 PART_COLORS = {"drone": "#d93025", "war soundscape": "#6b4e16", "war-shaped noise": "#7a7a7a", "wind": "#2a9d8f",
                "mix": "#111111"}
 BG, PANEL, ACCENT, MUTED = "#f4f5f7", "#ffffff", "#2a78d6", "#6b7280"

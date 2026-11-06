@@ -238,7 +238,7 @@ def threshold_from_run(run_json, checkpoint, window_s: float) -> float:
         if rest.endswith(tail):
             held = rest[: -len(tail)]
             hit = [r for r in rows if r["scorer"] == arch and r["recipe"] == recipe
-                   and r["arm"].replace(":", "_") == f"hold out {held}"]
+                   and r["arm"].replace(":", "_").endswith(f"hold out {held}")]   # also "rule 143, hold out X"
             if hit:
                 return float(hit[0]["deploy_threshold"])
     raise ValueError(f"no single-window result for {name} in {run_json}")

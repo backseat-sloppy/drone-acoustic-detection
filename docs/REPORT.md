@@ -30,7 +30,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 11 | 100 to 105 | Steady-noise family (random slopes, random-phase copies of rig no-drone windows) as negatives and maskers; no war audio in training. Judged on unseen real noise stems and the mower session, with recall guards | All networks alarm on 99-100% of war-shaped noise and on pink/brown noise, but on 0% of the war track: the failure is steady noise, not war (entry 100) | In progress. Council held (entry 100). War-shaped noise matches war audio only in its long-term spectrum; real tank clips alarm 45-57% (entry 101). Step 0 (entry 102): the networks rely on the harmonic lines; steadiness pushes toward drone; noise alarms only at -3 to -6 dB/octave. Step 1 (entry 103): generators and the `simdist_steady` recipe in the sampler, tested. War-shaped noise dropped on Mads's decision; war is tested on real war audio only (entry 104). 36 of 97 FSD50K stems are from FSD50K dev, which training draws from: reported apart (entry 105). Step 2 next. |
 | Soundscape line (branch it11-soundscapes, own section at the end) | 095 to 105 and 101 to 118 of that section | Synthetic Pd drones in random labelled soundscapes (confusers, transients), then realism (rotor detune, mic, room), real Glasgow drones, a CRNN, steady-noise arms | The supervisor's notes (entry 086); synthetic training allowed (entry 087) | **Not met; validation only.** On 10 sealed ARIS excerpts with the war track at 0 dB, the share of alarmed windows is it11 CNN 13.5%, it11r CNN 23.1%, it9 CRNN (real rigs) 58.3%. Steady-noise arms are training. |
 | Iteration 11.1 (branch 11.1) | 135 to 136 | AudioSet-pretrained PANNs Cnn14_16k on the e133 compliant data: P0 AudioSet scores (no training), P1 frozen encoder + linear probe, P2 LP-FT | Entry 134: from scratch, the only allowed real drones (Glasgow d1-d16, one rig) teach "a Glasgow recording"; pretraining is the established lever for unseen recording chains (entries 053, 131) | **P2 rejected, P1 mixed** (validation only). Frozen encoder: best Nightjar AUC (0.908) and drone-vs-mower separation, mower gate passes, but recall at 5% FA misses (b)/(c) and pooled real recall is 0.49. Fine-tuning overfits the Glasgow rig (perfect there, worse everywhere else). The training-data rule stays the binding limit (entry 142). |
-| Iteration 11.2 | 143 to | Real drones from several rigs in training (Mads, entry 143): it9's pooled recipe without FPV plus steady noise, leave one rig out, CRNN against the frozen Cnn14_16k probe | Entries 134 and 142: under the single-rig rule neither training from scratch nor pretraining reaches gates (b) and (c) | Planned. |
+| Iteration 11.2 | 143 to | Real drones from several rigs in training (Mads, entry 143): it9's pooled recipe without FPV plus steady noise, leave one rig out, CRNN against the frozen Cnn14_16k probe | Entries 134 and 142: under the single-rig rule neither training from scratch nor pretraining reaches gates (b) and (c) | **No gate passes** (validation only). CRNN on unseen d3set 0.64-0.70 recall @5% FA (e133: 0.58), on unseen Nightjar 0.64-0.70 (e133: 0.65-0.67); frozen probe worse (0.39-0.58). With FPV test, leave-one-rig-out leaves one real rig per fold (entry 146). |
 
 ## Templates
 
@@ -9704,4 +9704,109 @@ positives: iterations 3-6 and 9, it6, and **it9 CRNN**.
 
 **Result.** Nothing trained. `tests/test_rule143.py` and `tests/test_rangerun.py` pass. 11.2 restarts after
 `check`.
+
+## 146 - Iteration 11.2 results: no gate passes; a real outdoor rig lifts the CRNN on unseen d3set, the frozen probe falls behind
+- Date: 2026-11-06
+- Iteration: 11.2 (verdict)
+- Type: Model, Evaluation (validation only)
+- Commit: df9a21e (server)
+
+**Runs.** `run_it11_2.sh train` started at 11:31:44, after entry 145's fix.
+- `run_range.py --rule143` ran recipes `simdist` and `simdist_steady`, speed 0.8-1.25, 200 000 windows per
+  CRNN, 100 000 per probe, `--deploy-fa 0.05`, at a 0.5 s evaluation hop.
+- Fold N holds out Nightjar: it trains on d3set (85 segments) plus DDL ≤ 50 m, and its threshold comes from
+  d3set validation (13 segments).
+- Fold D holds out d3set: it trains on Nightjar (54 segments) plus DDL ≤ 50 m, and its threshold comes from
+  Nightjar validation (8 segments).
+- Seed 0 ran comb, lgbm, crnn and panns_probe; seed 1 ran crnn only.
+- `run_it11_2.sh gates` produced `artifacts/it11_2/gates_real_dev.json`, `gates_mower.json` and
+  `gates_glasgow.json`, with thresholds listed in `artifacts/it11_2/models.txt`.
+- The LightGBM and comb figures on the held-out rigs are in the run JSONs (`artifacts/runs/it11_2_*.json`).
+  They are not copied here; comb on the held-out rig at the frozen threshold has recall 0.201 (Nightjar) and
+  0.153 (d3set).
+
+**Gates (b) and (c).** Recall at 5% FA on the held-out rig's own validation background (`score_real_dev.py`).
+Only the held-out rig counts for a fold; the other column is that model's in-rig figure, given for scale.
+
+| Fold, recipe, model, seed | Nightjar AUC / recall | d3set AUC / recall |
+|---|---|---|
+| N, simdist, CRNN s0 | **0.941 / 0.697** | 0.922 / 0.825 (in-rig) |
+| N, simdist, CRNN s1 | **0.911 / 0.675** | 0.928 / 0.828 (in-rig) |
+| N, steady, CRNN s0 | **0.834 / 0.639** | 0.928 / 0.837 (in-rig) |
+| N, steady, CRNN s1 | **0.872 / 0.678** | 0.925 / 0.830 (in-rig) |
+| N, simdist, probe | **0.843 / 0.583** | 0.910 / 0.808 (in-rig) |
+| N, steady, probe | **0.818 / 0.546** | 0.899 / 0.772 (in-rig) |
+| D, simdist, CRNN s0 | 0.837 / 0.728 (in-rig) | **0.876 / 0.641** |
+| D, simdist, CRNN s1 | 0.831 / 0.737 (in-rig) | **0.883 / 0.662** |
+| D, steady, CRNN s0 | 0.846 / 0.723 (in-rig) | **0.879 / 0.696** |
+| D, steady, CRNN s1 | 0.831 / 0.742 (in-rig) | **0.889 / 0.685** |
+| D, simdist, probe | 0.934 / 0.796 (in-rig) | **0.802 / 0.430** |
+| D, steady, probe | 0.925 / 0.773 (in-rig) | **0.789 / 0.387** |
+| it9 CRNN (trained in-rig on both, and on FPV and DroneNoise) | 0.759 / 0.678 | 0.930 / 0.823 |
+| e133 Glasgow s0 / s1 (entry 134) | 0.713 / 0.650, 0.755 / 0.672 | 0.812 / 0.582, 0.807 / 0.586 |
+| Gate | (b) ≥ 0.77 | (c) ≥ 0.80 |
+
+**Gates (a), (d) and (e)**, each model at its fold's frozen threshold.
+- Glasgow is in no 11.2 training set: the manifest has no Glasgow rows (entry 132). So (a) and (d) are
+  unseen-rig for every model here, unlike in entries 133-142.
+- The mower session is a Nightjar session. It is unseen-rig only for fold N; for fold D it is in-rig but
+  never trained on.
+
+| Model | (a) room AUC / FA | (d) war recall @1% FA, 0 / -5 / -10 dB | (e) mower FA / drone-vs-mower AUC / drone recall |
+|---|---|---|---|
+| N simdist CRNN s0 | 0.969 / 94.1% | 0.999 / 0.997 / 0.982 | 16.8% / 0.491 / 0.385 |
+| N simdist CRNN s1 | 0.995 / 90.4% | 1.000 / 0.997 / 0.967 | 11.2% / 0.520 / 0.393 |
+| N steady CRNN s0 | 0.994 / 69.9% | 0.999 / 0.991 / 0.963 | 16.8% / 0.477 / 0.365 |
+| N steady CRNN s1 | 0.994 / 58.3% | 1.000 / 0.990 / 0.947 | 22.4% / 0.462 / 0.364 |
+| N simdist probe | 0.983 / 29.0% | 0.859 / 0.754 / 0.636 | 33.6% / 0.637 / 0.538 |
+| N steady probe | 0.964 / 26.6% | 0.908 / 0.811 / 0.674 | 48.0% / 0.557 / 0.576 |
+| D simdist CRNN s0 | 0.709 / 17.7% | 0.989 / 0.986 / 0.979 | 61.6% / 0.527 / 0.618 |
+| D simdist CRNN s1 | 0.619 / 39.2% | 0.976 / 0.986 / 0.981 | 60.8% / 0.417 / 0.462 |
+| D steady CRNN s0 | 0.545 / 10.9% | 0.987 / 0.991 / 0.983 | 53.6% / 0.438 / 0.475 |
+| D steady CRNN s1 | 0.583 / 5.7% | 0.908 / 0.948 / 0.937 | 53.6% / 0.489 / 0.515 |
+| D simdist probe | 0.888 / 31.6% | 0.566 / 0.482 / 0.355 | 36.8% / 0.594 / 0.505 |
+| D steady probe | 0.850 / 28.7% | 0.809 / 0.710 / 0.551 | 39.2% / 0.602 / 0.528 |
+| it9 CRNN | 0.092 / 99.2% | 0.985 / 0.971 / 0.937 | 26.4% / 0.695 / 0.584 |
+| Gate | AUC ≥ 0.97 and FA ≤ 5% | within 5 points of it9 | ≤ 25% |
+
+**Verdict (entry 135's rule, per fold).**
+- **No model succeeds.** (a) fails for every model and (c) for every fold-D model.
+- **Fold N (unseen Nightjar).** All four CRNNs pass (d) and (e) and fail (a) and (b). The probes fail (a),
+  (b), (d) and (e).
+- **Fold D (unseen d3set).** The CRNNs pass (d), except steady s1 at 0 dB. They fail (a), (c) and (e); (e) is
+  53-62%, in-rig.
+- **Against the e133 arms.** On (c), every fold-D CRNN is better by more than the e133 seed spread: 0.641-0.696
+  against 0.582-0.586. On (b), the fold-N CRNNs average 0.686 (simdist) and 0.659 (steady) against 0.650-0.672,
+  which is not more than the spread. That is entry 135's "informative failure" on (c) only.
+
+**Reading.**
+1. **Real drones from an outdoor rig help the CRNN on the other outdoor rig.**
+   - Unseen d3set recall rises by 6-11 points over the Glasgow-only arms.
+   - Unseen Nightjar barely moves.
+   - `simdist_steady` helps on d3set (0.69 against 0.65) and costs a little on Nightjar (0.66 against 0.69).
+     It lowers the room FA in both folds.
+2. **The frozen Cnn14 probe falls behind once real outdoor drones are available.**
+   - Unseen recall is 0.39-0.58 against the CRNN's 0.64-0.70.
+   - In 11.1 (Glasgow drones only) the frozen encoder ranked Nightjar better (AUC 0.908). Here the
+     d3set-trained probe reaches 0.843 on Nightjar and the CRNN 0.91-0.94.
+   - The probe's thresholds transfer better to the Glasgow room (FA 27-32% against 58-94% for the fold-N
+     CRNNs), and it separates drone from mower better (AUC 0.56-0.64 against 0.42-0.52). It fails the war gate.
+   - With real drones in training, the pretrained embedding is not the better feature here.
+3. **The protocol leaves one real rig per fold.**
+   - With FPV a test source (entry 143), the pool is Nightjar and d3set. Holding one out leaves the other, plus
+     DDL near drones. Each fold is single-rig training again.
+   - Gates (b) ≥ 0.77 and (c) ≥ 0.80 (entry 131) were set from in-rig figures (it9: d3set 0.823; it11r CRNN:
+     Nightjar 0.770). The fold-N CRNNs reach the same level in-rig (d3set 0.825-0.837).
+   - The gap to the gates is the unseen-rig penalty, not a weaker model.
+   - Glasgow d1-d16 (allowed, entry 143) are not in `RangeSampler`'s pool, because the manifest has no Glasgow
+     rows. Adding them would give every fold two real rigs.
+4. **A clue to it9's room failure (hypothesis, not tested).**
+   - No 11.2 model inverts the unseen Glasgow room as it9 does (AUC 0.092).
+   - The d3set-trained CRNNs rank it at 0.97-0.995; the Nightjar-trained ones at 0.55-0.71.
+   - it9 alone trained on FPV and DroneNoise (entry 145), so the room inversion likely comes from one of them.
+   - Separately, every fold-N CRNN's room FA at its frozen threshold is far above 5%: the threshold frozen on
+     d3set's 12.3 min of background does not transfer to the room.
+
+**Not run.** Glasgow d1-d16 in the pool; per-rig negative balancing (entry 131's fallback); the
+FPV/DroneNoise ablation of the room inversion. These are the candidate next steps.
 
