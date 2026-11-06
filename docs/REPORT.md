@@ -8543,3 +8543,247 @@ it does not matter, or varied on purpose as a second axis.
 
 **Next.** Proposed to Nicolai: SNR in dB as the conclusions' x-axis in
 place of the dB ratio.
+
+## 135 - The complete test runs on the server's GPUs; `uv sync` there breaks torch again
+
+- Date: 2026-11-06
+- Iteration: 15 (infrastructure, no new result)
+- Type: Infrastructure / server setup
+- Commit: server clone on `master` at 00ee4e8; nothing in the repo changed
+
+**What happened.** First run of `scripts/complete_test_run.py` on the JupyterLab server (entry 134
+left the `cuda` path unchecked).
+- The server clone `~/drone-acoustic-detection` was on `iteration9-frontends` (242b3b4) with
+  uncommitted changes, not on `Automatic-iteration(Mads)` as entry 134 assumed. They were kept in
+  `git stash` ("server WIP before switching to master"), then the clone was switched to `master`.
+- The plan `plan_real.json` was saved on the PC with "Save plan..." and uploaded with the inputs the
+  server lacked: `data/processed/war/war_track.wav` (the PC's copy) and
+  `data/extracted/sealed_peek/CleanDrone.wav`. They were copied in with `cp -n` (nothing on the
+  server overwritten). The server's `sealed_peek` excerpts are the same draw as the PC's (same
+  `draw.json` seed and segments). The upload also left a copy in `~/server_upload` and
+  `~/drone-acoustic-detection/server_upload`.
+- **Dead end, caused by the instructions given:** `uv sync --group dev --extra dl` was run on the
+  server after the switch. It re-synced the venv to `uv.lock`, putting the CUDA 13 libraries back
+  (nvidia-cudnn-cu13 and so on) next to the server's torch 2.14.1+cu126, so torch failed at import:
+  `ImportError: libcudnn.so.9`. Entry 091 already said so: on the server, never `uv sync` or
+  `uv run`; call `.venv/bin/python`. `~/dad` shares this venv through a symlink, so it was broken
+  too until the fix.
+- Fix (run by Mads): `uv pip install --python .venv/bin/python --reinstall-package torch
+  torch==2.14.1 --index-url https://download.pytorch.org/whl/cu126`, then
+  `nohup .venv/bin/python scripts/complete_test_run.py data/extracted/test_plans/plan_real.json`.
+
+**Result.** 6100 rounds x 2 detectors (it9 CRNN, comb) on 3 workers, one TITAN X each, about 300 s.
+`merged 3 shards: 6100 of 6100 rounds` into
+`artifacts/complete_test/20261106_094257_real/` on the server (rounds.csv, scores.npz, summary.csv,
+config.json). The `cuda` path of entry 134 works. Not checked yet: opening that folder in the GUI on
+the PC. These mixes are synthetic scaffolding (CLAUDE.md section 5); no number here is detection
+performance.
+
+**Next.** Download the run folder to the PC and open it with "Open results...".
+
+## 136 - The server run opens on the PC
+
+- Date: 2026-11-06
+- Iteration: 15 (infrastructure, no new result)
+- Type: Check
+- Commit: as entry 135; nothing in the repo changed
+
+The four merged files of entry 135 were zipped on the server and downloaded by Mads to
+`artifacts/complete_test/Jupyter/` (sizes equal the server's: rounds.csv 2573479, scores.npz 7084143,
+summary.csv 24885, config.json 3571 bytes). `Complete_Test_Gui.load_test` opens the folder:
+6100 of 6100 rounds, detectors it9 CRNN and comb. The plan saved on Windows, run on Linux and opened
+back on Windows works end to end. Synthetic scaffolding (CLAUDE.md section 5); no detection numbers.
+
+Also on 2026-11-06: `data/extracted/sealed_peek/CleanDrone.wav` had been removed from the PC, so the
+Results window (which rebuilds rounds from the drone files) failed with `LibsndfileError`. On Mads's
+yes it was put back from the unchanged copy in `data/extracted/test_plans/server_upload.zip`
+(441044 bytes); the run then opened.
+
+## 137 - Ten steady (hovering) drone excerpts from ITU ARIS
+
+- Date: 2026-11-06
+- Iteration: none (data for listening and the complete test; no model change)
+- Type: Data
+- Commit: uncommitted: new `scripts/steady_aris.py`
+
+**Why.** Mads asked for 10 new excerpts of about 10 s (5-15 s allowed) where the drone just hovers
+and gives a near-constant sound, as an alternative to the randomly drawn `sealed_peek` clips of
+entry 101. ITU ARIS is no longer sealed (entry 101), so looking at it steers nothing that is scored.
+
+**How.** `scripts/steady_aris.py` joins each of the 35 drone intervals back into continuous audio
+(every second 1 s segment) and measures every 5-15 s window (hop 0.5 s) on 125 ms frames: level
+spread (L90-L10, 120-5000 Hz), spectral flux (std over time of 48 level-normalised log bands), and the
+stability in semitones of the frequency that stands highest above the background. Score = sum of the
+three z-scores; gates: drone band >= 10 dB over the background, rotor lines >= 20 dB over it. Best
+10 s window per interval, grown towards 15 s while the score holds; the 10 best intervals are kept.
+
+**Two dead ends first (same session, not kept).**
+1. Spectra and lines measured from 80 Hz, with "tonal" (peak over median) rewarded in the score:
+   picks with 10-13 dB level spread and the "line" jumping 5-6 semitones; the strongest peaks were
+   82 Hz, the top of the site's wind/traffic rumble.
+2. From 120 Hz, tonal only a gate: spreads 2-3.5 dB and lines within 1.2 semitones, but every pick's
+   line sat at 177-183 Hz, only ~6 dB over the background RMS. The background segments' own
+   strongest line in 120-1500 Hz is 178 Hz (45 of 200 sampled segments) or 183 Hz: a steady machine
+   tone at the site. Those picks were faint drones under the site's hum, not hovering drones.
+   Hence the measurement against the background spectrum (median per bin over all background
+   frames).
+
+**Result.** 29 of the 35 intervals pass the gates. `uv run python scripts/steady_aris.py` writes
+`data/extracted/steady_peek/Steady_01.wav` ... `Steady_10.wav` (22.05 kHz PCM16, samples unchanged)
+and `picks.json` (interval, segments, start, every measure, and all 29 intervals' scores).
+
+| File | Interval | Start | Length | Spread dB | Flux | Line st @ Hz | SNR dB |
+|---|---|---|---|---|---|---|---|
+| Steady_01 | 31 | 46.0 s | 11 s | 1.7 | 2.11 | 2.90 @ 743 | 12.4 |
+| Steady_02 | 22 | 137.0 s | 14 s | 2.5 | 3.21 | 1.62 @ 1190 | 10.3 |
+| Steady_03 | 05 | 16.0 s | 5 s | 2.6 | 3.70 | 0.61 @ 1184 | 11.2 |
+| Steady_04 | 13 | 1.5 s | 10 s | 2.2 | 3.97 | 0.41 @ 1087 | 11.5 |
+| Steady_05 | 06 | 13.5 s | 5 s | 2.7 | 3.80 | 0.55 @ 1136 | 12.4 |
+| Steady_06 | 00 | 15.5 s | 12 s | 1.9 | 4.32 | 1.25 @ 1351 | 11.2 |
+| Steady_07 | 30 | 181.0 s | 10 s | 1.9 | 2.90 | 4.24 @ 1408 | 12.7 |
+| Steady_08 | 23 | 87.5 s | 11 s | 2.0 | 3.80 | 2.89 @ 1252 | 10.4 |
+| Steady_09 | 08 | 26.0 s | 5 s | 3.1 | 4.08 | 2.20 @ 1055 | 10.6 |
+| Steady_10 | 15 | 8.5 s | 10 s | 1.8 | 3.80 | 3.63 @ 1082 | 11.5 |
+
+**Limits.** Not checked by ear. No interval is more than ~13 dB over the background in the drone band,
+so these are steady but not loud: ITU ARIS flies from ~5 m to ~2 km and holds no close hover. Lines
+of 3-4 semitones (01, 07, 08, 10) probably mean the top bin hops between rotor harmonics rather than
+the rotor speed changing; not verified. Three picks are 5 s because their intervals are short.
+
+**Next.** Mads listens; the files can be chosen as drones in `Complete_Test_Gui.py`.
+
+## 138 - Steady excerpts: at least 10 s, because the complete test needs it
+
+- Date: 2026-11-06
+- Type: Data (fix)
+- Commit: uncommitted: `scripts/steady_aris.py` gets `--min-s` (default 10)
+
+**Why.** Mads chose `Steady_03.wav` in `Complete_Test_Gui.py` and got
+`ValueError: Steady_03.wav is 5.0 s; drone files must be at least 10 s`: the engine uses 10 s of
+drone (`complete_test_engine.DRONE_S`). Entry 137 allowed 5 s excerpts for short intervals.
+
+**Change.** Windows now run from `--min-s` (10) to 15 s; intervals shorter than that are skipped. The
+files of entry 137 were deleted and rewritten by `uv run python scripts/steady_aris.py`. The three
+5 s picks (intervals 05, 06, 08) drop out; intervals 28, 17 and 16 come in, and the names shift:
+
+| File | Interval | Start | Length | Spread dB | Flux | Line st @ Hz | SNR dB |
+|---|---|---|---|---|---|---|---|
+| Steady_01 | 31 | 46.0 s | 11 s | 1.7 | 2.11 | 2.90 @ 743 | 12.4 |
+| Steady_02 | 22 | 137.0 s | 14 s | 2.5 | 3.21 | 1.62 @ 1190 | 10.3 |
+| Steady_03 | 13 | 1.5 s | 10 s | 2.2 | 3.97 | 0.41 @ 1087 | 11.5 |
+| Steady_04 | 00 | 15.5 s | 12 s | 1.9 | 4.32 | 1.25 @ 1351 | 11.2 |
+| Steady_05 | 30 | 181.0 s | 10 s | 1.9 | 2.90 | 4.24 @ 1408 | 12.7 |
+| Steady_06 | 23 | 87.5 s | 11 s | 2.0 | 3.80 | 2.89 @ 1252 | 10.4 |
+| Steady_07 | 15 | 8.5 s | 10 s | 1.8 | 3.80 | 3.63 @ 1082 | 11.5 |
+| Steady_08 | 28 | 27.5 s | 11 s | 3.1 | 4.61 | 1.56 @ 1265 | 12.2 |
+| Steady_09 | 17 | 4.0 s | 10 s | 2.7 | 4.11 | 3.18 @ 980 | 11.2 |
+| Steady_10 | 16 | 57.5 s | 10 s | 1.9 | 4.43 | 3.49 @ 1163 | 10.8 |
+
+Not checked by ear; limits as entry 137.
+
+## 139 - The complete test takes real drone files of 5-10 s; entry 138 undone
+
+- Date: 2026-11-06
+- Type: Engineering (test harness), Data
+- Commit: uncommitted: `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py` (labels),
+  `scripts/steady_aris.py` (`--min-s` default back to 5)
+
+**Why.** Mads: change the code so 5 s clips are allowed, and give back the best clips. This replaces
+entry 138, which went the other way (made the clips fit the engine).
+
+**Change.** `complete_test_engine`: new `MIN_DRONE_S = 5.0`. A real drone file must be at least 5 s
+(was 10 s); files over 10 s are still cut to their first 10 s (`DRONE_S`), and a 5-10 s file is used
+whole. Its span (truth, SNR window, level calibration) is its own length instead of a fixed 10 s.
+Start times are unchanged (`length_s - DRONE_S`), so a short file simply ends earlier inside the
+same grid. Synthetic drones are unchanged (always 10 s). GUI labels say "up to 10 s".
+
+**Clips.** `uv run python scripts/steady_aris.py --min-s 5` rewrote `data/extracted/steady_peek/`:
+the set of entry 137 again, byte for byte the same selection (Steady_03, 05 and 09 are 5 s).
+
+**Checks.** A 7-round plan (Steady_03 at 5 s, Steady_01 at 11 s; 70 dB SPL; war soundscape 60; comb;
+20 s soundscape, step 5 s; no-drone round on) ran with
+`uv run python scripts/complete_test_run.py plan_short.json --gpus 0`: 7 of 7 rounds, `drone_spans`
+`Steady_03 [0, 5]`, `Steady_01 [0, 10]`; `Complete_Test_Gui.load_test` reopens it. `uv run pytest`:
+106 pass. Synthetic scaffolding (section 5); no number here is detection performance.
+**Note for results:** a 5 s drone gives half as many drone windows as a 10 s one, so its recall
+rests on fewer windows; compare per-file results with that in mind. The server clone does not have
+this change until it is committed and pulled.
+
+## 140 - All 35 ITU ARIS drone intervals as full recordings (`data/extracted/All/`)
+
+- Date: 2026-11-06
+- Type: Data
+- Commit: uncommitted: new `scripts/aris_intervals.py`; `data/extracted/All/` is git-ignored data
+
+**Why.** Mads asked for a folder "All", next to `sealed_peek` and `steady_peek`, holding all 35 full
+drone recordings of ITU ARIS, after reading every README to get it right.
+
+**Read first.** The dataset's README, `metadata.json`, `build_acolab_groups.py` and LICENSE, and
+`docs/datasets.md`. Key facts used: 4491 drone segments of 1 s at 22.05 kHz, cut with a 0.5 s hop
+from 35 hand-annotated intervals (2263 s) of one 44.1 kHz session that is not published; an interval
+of D s gives 2D - 1 segments (the build script's own check), numbered consecutively across intervals.
+
+**How.** `uv run python scripts/aris_intervals.py` joins segments 0, 2, 4, ... of each interval
+(published int16 samples, unchanged) into `data/extracted/All/ITU_ARIS_interval_NN.wav`, NN =
+`groups.json` group_id, plus `index.json` (session start/end, segments, checks) and a `README.md`
+(method, file table, limits, credit). The raw dataset folder was only read.
+
+**Checks, all passed.** Per interval: segment count = `groups.json` n_segments = 2D - 1; every
+overlap identical (max int16 difference 0); joined length = D s exactly. Total 2263 s = the README.
+Independent check: all 4491 published segments re-cut from the new files at 0.5 k s: 0 mismatches;
+segment numbers run 1-4491 without gaps across intervals; `sealed_peek/Drone_01-10` equal the new
+files at the `draw.json` offsets.
+
+**Result.** 35 files, 1 s (interval 07) to 296 s (interval 31). For the complete test (entry 139):
+interval 07 is under 5 s and cannot be used; 04, 09 and 29 (7-9 s) are used whole; the rest are cut
+to their first 10 s. ITU ARIS is not sealed (entry 101). No model or metric changed.
+
+## 141 - Complete test: a third page, "Modified drone test" (real recordings flown at the microphone)
+
+- Date: 2026-11-06
+- Type: Engineering (test harness; no model, metric or split changed)
+- Commit: uncommitted: `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`
+
+**Why.** Mads asked for a third page next to Real and Synthetic: upload drone audio, give a speed in
+km/h, treat the drone as steady and move it straight at the microphone so that the very end of the
+file is the impact, with the dB changed by the distance at each moment for that speed.
+
+**Decisions taken without asking (Mads said to go ahead unless there were questions), all settable on
+the page:**
+- The set drone level is the level **at 1 m**: the file's RMS (over the part used) is set to it as if
+  the recording were made at 1 m, then lowered by the distance. Default 80 dB SPL (the synthetic
+  drones' L_1m is 78.5).
+- Path: a straight line that is `closest_m` (default 1 m) from the microphone at the last sample:
+  r(t) = hypot(closest_m, v/3.6 x (T - t)). With 1 m the level at impact is the set level.
+- Part of the file: its **last** 10 s (a 5-10 s file whole, entry 139), since the end is the impact.
+- Level change: spherical spreading 1/r and ISO 9613-1 air absorption at each moment's distance
+  (`dad.propagation`, default weather 10 C, 70 % RH), applied frame by frame. **Doppler** (pitch and
+  travel time) is a tick box, **off by default**, because the request was about dB; with it on, the
+  first sound reaches the microphone (r0 - closest)/c later and the truth span starts there.
+- Every file at every speed is one drone (`Plan.speeds`; round key `path|speed`, label
+  `file @ v km/h`). Truth: the drone from 0 (or first arrival) to the end, impact at the end, so lead
+  times are reported as for synthetic drones. The summary also groups by file and by speed.
+- Conclusions' dB-ratio axis uses the measured drone level for modified rounds (the set level is at
+  1 m, not what the microphone hears).
+
+**Checks.**
+- Model, white noise 10 s, RMS 1 at 1 m, closest 1 m (no Doppler): start distance 139 / 278 / 417 m
+  at 50 / 100 / 150 km/h; the first 0.25 s is -46.2 / -53.9 / -58.5 dB against -42.6 / -48.6 / -52.1
+  from spreading alone (the rest is air absorption of the noise's treble); at 9 s -23.5 / -30.0 /
+  -34.0 against -22.9 / -28.9 / -32.4; the last 20 ms 0.0 / -0.3 / -0.7 dB. With Doppler the first
+  sound arrives at 0.41 / 0.82 / 1.23 s and levels at a given heard time are 2-4 dB lower (that sound
+  left the drone earlier, farther away).
+- Run: `uv run python scripts/complete_test_run.py plan_mod.json --gpus 0` (Steady_03 at 5 s and
+  Drone_01; 50 and 150 km/h; 80 dB SPL at 1 m; war soundscape 50; it9 CRNN and comb; 20 s, step 5 s;
+  no-drone round): 13 of 13 rounds; spans `[0, 5, 5]` and `[0, 10, 10]`; measured drone level
+  62.3 / 57.1 dB SPL (Steady_03 at 50 / 150 km/h) and 60.8 / 56.4 (Drone_01); `lead_s` filled;
+  `load_test` reopens it.
+- The page builds (Tk, no clicks): 2 files x 3 speeds -> 67 rounds; the preview line says where each
+  speed starts and how many dB below impact. An older real run (`artifacts/complete_test/Jupyter`)
+  still opens. `uv run pytest`: 106 pass.
+
+**Limits.** The recording is treated as a clean source at 1 m: its own background noise and the
+distance it was really recorded at (ITU ARIS: up to ~2 km) are moved and scaled with it. No ground
+reflection. Not tried by hand in the GUI (no clicks). Synthetic scaffolding (section 5): no number
+here is detection performance. The server needs this code committed and pulled before it can run
+modified plans.

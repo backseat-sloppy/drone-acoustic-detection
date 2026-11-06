@@ -5,8 +5,13 @@ A test is a grid:
     starts       the drone starts at 0, step, 2 step, ... s into a soundscape of `length` s, as long as
                  the whole 10 s drone fits: length - 10 + 1 starts at a 1 s step (12 s -> 3, 20 s -> 11)
     drones       real drone files (their first 10 s) or synthetic Pure Data drones (one per speed,
-                 rendered by drone_war_grid.render_drones, 10 s from start to impact)
-    drone levels dB SPL, the RMS of the drone's 10 s; or "as rendered" for synthetic drones
+                 rendered by drone_war_grid.render_drones, 10 s from start to impact), or modified
+                 drone files: each file x each speed, the file's last 10 s moved straight at the
+                 microphone so that its last sample is the impact (approach(): spreading and air
+                 absorption from the distance at each moment, optional Doppler)
+    drone levels dB SPL, the RMS of the drone's 10 s; or "as rendered" for synthetic drones; for
+                 modified drones the level at 1 m (the file's RMS is set to it, then the approach
+                 lowers it by distance: at the start a drone at v km/h is v / 3.6 x 10 m away)
     backgrounds  every combination of the enabled layers' levels (dB SPL each)
 
 and optionally one no-drone round per background, for false alarms. Rounds = starts x drones x drone
@@ -45,12 +50,17 @@ from scipy.signal import resample_poly
 sys.path.insert(0, str(Path(__file__).parent))
 import drone_war_grid as dwg  # noqa: E402
 
+from scipy.signal import istft, stft  # noqa: E402
+
+from dad import propagation as prop  # noqa: E402
 from dad.config import DEFAULT  # noqa: E402
 from dad.wavio import Clip, lead_times, load_scorer, read_wav, stream, window_labels, Truth  # noqa: E402
 
 SR = DEFAULT.sample_rate
 FULL_SCALE_DB = dwg.es.FULL_SCALE_DB                         # 1.0 in a WAV = 110 dB SPL
-DRONE_S = 10.0                                               # every drone sound is 10 s
+DRONE_S = 10.0                                               # every drone sound is at most 10 s
+MIN_DRONE_S = 5.0                                            # a real drone file may be 5-10 s (Mads, 2026-11-06)
+APPROACH = dict(closest_m=1.0, doppler=False)                # modified drones: distance at impact, Doppler on/off
 OUT_ROOT = dwg.ROOT / "artifacts/complete_test"
 WAR_TRACK = dwg.es.WAR / "war_track.wav"
 WIND_STEM = dwg.es.STEMS / dwg.es.WIND
@@ -125,9 +135,10 @@ def make_layers() -> dict[str, Layer]:
 
 @dataclass
 class Plan:
-    """Everything a test needs, as the GUI sets it. `drones` are file paths (real) or speeds in
-    km/h (synthetic); `drone_levels` None means "as rendered" (synthetic only)."""
-    kind: str                                                # "real" or "synthetic"
+    """Everything a test needs, as the GUI sets it. `drones` are file paths (real, modified) or speeds
+    in km/h (synthetic); `drone_levels` None means "as rendered" (synthetic only). Modified: `speeds`
+    in km/h (every file at every speed), `drone_levels` are levels at 1 m, `approach` as APPROACH."""
+    kind: str                                                # "real", "synthetic" or "modified"
     length_s: float
     drones: list
     drone_levels: list | None
@@ -137,6 +148,15 @@ class Plan:
     no_drone_rounds: bool = False
     soundscape_start_s: float | None = None                  # None: drawn from seed 1000 per batch
     synth: dict = field(default_factory=lambda: dict(drone_seed=1, pscale=0.85, elev_deg=40.0))
+    speeds: list | None = None                               # modified only
+    approach: dict = field(default_factory=lambda: dict(APPROACH))
+
+    def drone_keys(self) -> list:
+        """The drones the rounds go through: the files or speeds, or for modified every file at every
+        speed as "path|speed" (modified_key)."""
+        if self.kind == "modified":
+            return [modified_key(p, v) for p in self.drones for v in (self.speeds or [])]
+        return list(self.drones)
 
     def starts(self) -> list[float]:
         last = self.length_s - DRONE_S
@@ -153,7 +173,7 @@ class Plan:
         out = []
         levels = self.drone_levels if self.drone_levels is not None else [None]
         for bg in self.backgrounds():
-            for d in self.drones:
+            for d in self.drone_keys():
                 for lv in levels:
                     for s in self.starts():
                         out.append(dict(drone=d, drone_level_db=lv, start_s=s, background=bg))
@@ -166,9 +186,10 @@ class Plan:
     def count(self) -> dict:
         n_bg = len(self.backgrounds())
         n_lv = len(self.drone_levels) if self.drone_levels is not None else 1
-        drone_rounds = len(self.starts()) * len(self.drones) * n_lv * n_bg
+        keys = self.drone_keys()
+        drone_rounds = len(self.starts()) * len(keys) * n_lv * n_bg
         total = drone_rounds + (n_bg if self.no_drone_rounds else 0)
-        return dict(starts=len(self.starts()), drones=len(self.drones), drone_levels=n_lv, backgrounds=n_bg,
+        return dict(starts=len(self.starts()), drones=len(keys), drone_levels=n_lv, backgrounds=n_bg,
                     drone_rounds=drone_rounds, total=total, detector_runs=total * len(self.detectors))
 
     def check(self) -> list[str]:
@@ -179,9 +200,16 @@ class Plan:
         if self.step_s <= 0:
             out.append("start step must be above 0 s")
         if not self.drones:
-            out.append("add at least one drone file" if self.kind == "real" else "give at least one drone speed")
-        if self.kind == "real" and self.drone_levels is None:
-            out.append("real drone files need a level in dB SPL")
+            out.append("give at least one drone speed" if self.kind == "synthetic" else "add at least one drone file")
+        if self.kind in ("real", "modified") and self.drone_levels is None:
+            out.append("drone files need a level in dB SPL")
+        if self.kind == "modified":
+            if not self.speeds:
+                out.append("give at least one speed in km/h")
+            elif any(not 0 < v <= 1000 for v in self.speeds):
+                out.append("speeds must be above 0 and at most 1000 km/h")
+            if not self.approach.get("closest_m", 0) > 0:
+                out.append("the distance at impact must be above 0 m")
         if not self.detectors:
             out.append("tick at least one detector")
         if not self.layers and not self.drones:
@@ -192,17 +220,35 @@ class Plan:
 # ------------------------------------------------------------------ drones
 
 class Drones:
-    """The 10 s drone signals (WAV units, 16 kHz) and where their sound starts and ends within them."""
+    """The drone signals (WAV units, 16 kHz; 10 s, or 5-10 s for a short real file) and where their
+    sound starts and ends within them."""
 
     def __init__(self, plan: Plan, progress=print):
         self.plan, self.sig, self.span = plan, {}, {}
-        if plan.kind == "real":
+        self.unit = set()                                        # signals scaled as "RMS 1 = the level at 1 m"
+        if plan.kind == "modified":
+            files = {}
+            cl, dop = float(plan.approach.get("closest_m", 1.0)), bool(plan.approach.get("doppler", False))
+            for k in plan.drone_keys():
+                p, v = split_key(k)
+                if p not in files:
+                    x = read_wav(portable(p), DEFAULT).audio.astype(np.float64)
+                    if len(x) < MIN_DRONE_S * SR:
+                        raise ValueError(f"{Path(p).name} is {len(x) / SR:.1f} s; drone files must be at least {MIN_DRONE_S:g} s")
+                    x = x[-int(DRONE_S * SR):]                   # the end of the file is the impact
+                    files[p] = x / (float(np.sqrt(np.mean(x ** 2))) or 1.0)
+                y, heard = approach(files[p], v, cl, dop)
+                self.sig[k] = y
+                self.span[k] = (heard, len(y) / SR, len(y) / SR)  # impact at the last sample
+                self.unit.add(k)
+        elif plan.kind == "real":
             for p in plan.drones:
                 x = read_wav(portable(p), DEFAULT).audio.astype(np.float64)
-                if len(x) < DRONE_S * SR:
-                    raise ValueError(f"{Path(p).name} is {len(x) / SR:.1f} s; drone files must be at least {DRONE_S:g} s")
+                if len(x) < MIN_DRONE_S * SR:
+                    raise ValueError(f"{Path(p).name} is {len(x) / SR:.1f} s; drone files must be at least {MIN_DRONE_S:g} s")
                 self.sig[p] = x[: int(DRONE_S * SR)]
-                self.span[p] = (0.0, DRONE_S, None)              # the whole file is drone; no impact
+                # the whole file is drone; no impact. A short file ends early: truth and SNR follow its length.
+                self.span[p] = (0.0, len(self.sig[p]) / SR, None)
         else:
             a = dwg.defaults()
             a.flight_s = DRONE_S
@@ -220,6 +266,8 @@ class Drones:
         x = self.sig[d]
         if level_db is None:                                     # synthetic, as rendered
             return x
+        if d in self.unit:                                       # modified: level_db is the level at 1 m
+            return x * rms_for(level_db)
         s0, s1, _ = self.span[d]
         part = x[int(s0 * SR): int(s1 * SR)]
         r = float(np.sqrt(np.mean(part ** 2))) or 1.0
@@ -235,8 +283,61 @@ def portable(p: str) -> str:
     return str(dwg.ROOT / s[i + 1:]) if i >= 0 and not Path(p).exists() else p
 
 
+def modified_key(path: str, speed_kmh: float) -> str:
+    return f"{path}|{float(speed_kmh):g}"
+
+
+def split_key(k: str) -> tuple[str, float]:
+    p, v = k.rsplit("|", 1)
+    return p, float(v)
+
+
 def drone_label(d) -> str:
+    if isinstance(d, str) and "|" in d:                      # modified: file at speed
+        p, v = split_key(d)
+        return f"{Path(p).name} @ {v:g} km/h"
     return Path(d).name if isinstance(d, str) else f"{float(d):g} km/h"
+
+
+def drone_setting(d, key: str):
+    """A drone round's value of `key`: "drone" (its label), and for modified drones also "file" and
+    "speed_kmh"; None where the key does not apply."""
+    if d is None:
+        return None
+    if key == "drone":
+        return drone_label(d)
+    if isinstance(d, str) and "|" in d:
+        p, v = split_key(d)
+        return Path(p).name if key == "file" else v if key == "speed_kmh" else None
+    return None
+
+
+# ------------------------------------------------------------------ modified drones: the approach
+
+def approach_distance(n: int, speed_kmh: float, closest_m: float = 1.0) -> np.ndarray:
+    """Distance (m) per sample of a drone flying in a straight line at speed_kmh, that is closest_m from
+    the microphone at its last sample (the impact): r(t) = hypot(closest_m, v (T - t))."""
+    t = np.arange(n) / SR
+    return np.hypot(closest_m, speed_kmh / 3.6 * (n / SR - t))
+
+
+def approach(x: np.ndarray, speed_kmh: float, closest_m: float = 1.0, doppler: bool = False) -> tuple[np.ndarray, float]:
+    """x (16 kHz) as heard at 1 m, moved along approach_distance(): spherical spreading 1 / r and ISO
+    9613-1 air absorption at each moment's distance (dad.propagation, its default weather), and with
+    doppler also the travel time (pitch up while approaching). The last sample stays the impact.
+    Returns the heard signal (same length) and when the first sound reaches the microphone (s; 0
+    without Doppler)."""
+    r = approach_distance(len(x), speed_kmh, closest_m)
+    if doppler:
+        y = prop.propagate(x, r, fs=SR)[: len(x)]
+        y = np.pad(y, (0, len(x) - len(y)))
+        return y, float((r[0] - r.min()) / prop.speed_of_sound())
+    y = x / r                                                    # spreading, re 1 m
+    f, _, Z = stft(y, SR, nperseg=prop.NPERSEG, noverlap=prop.NPERSEG - prop.HOP, boundary="even")
+    frame_r = r[np.clip(np.arange(Z.shape[1]) * prop.HOP, 0, len(r) - 1)]
+    Z *= 10 ** (-prop.air_absorption_db_per_m(f)[:, None] * (frame_r[None, :] - 1.0) / 20)
+    _, out = istft(Z, SR, nperseg=prop.NPERSEG, noverlap=prop.NPERSEG - prop.HOP, boundary=True)
+    return out[: len(x)], 0.0
 
 
 # ------------------------------------------------------------------ detectors
@@ -413,12 +514,15 @@ class Test:
 def write_summary(test: Test) -> Path:
     """summary.csv: per detector, and per detector and each varied setting, the mean of the round numbers."""
     rows = []
-    keys = ["drone", "drone_level_db", "start_s", *test.plan.layers]
+    keys = ["drone", *(["file", "speed_kmh"] if test.plan.kind == "modified" else []), "drone_level_db", "start_s",
+            *test.plan.layers]
 
     def setting(r, k):
         if k in r["background"]:
             return r["background"][k]
-        return drone_label(r[k]) if k == "drone" and r[k] is not None else r[k]
+        if k in ("drone", "file", "speed_kmh"):
+            return drone_setting(r["drone"], k)
+        return r[k]
 
     def agg(group):
         out = {}

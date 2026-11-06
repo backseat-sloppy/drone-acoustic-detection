@@ -2,10 +2,16 @@
 
     uv run python scripts/Complete_Test_Gui.py
 
-Two pages, a slide show (the arrows at the top, the page names, or Ctrl+Left / Ctrl+Right):
+Three pages, a slide show (the arrows at the top, the page names, or Ctrl+Left / Ctrl+Right):
 
     Real drone test       real drone recordings (WAV files you add), each cut to its first 10 s
+                          (a file of 5-10 s is used whole)
     Synthetic drone test  Pure Data drones, one per speed, 10 s from start to impact (as drone_war_gui)
+    Modified drone test   real drone recordings treated as a steady drone heard at 1 m and flown
+                          straight at the microphone: the file's last 10 s (or all of a 5-10 s file),
+                          its last sample the impact. Per speed (km/h) the drone is v/3.6 x the time
+                          left before impact away; the level falls with that distance (spherical
+                          spreading and air absorption, optional Doppler). Each file at each speed.
 
 On each page:
 
@@ -61,7 +67,11 @@ from dad.config import DEFAULT  # noqa: E402
 from dad.features import LogMel, hz_to_mel, mel_to_hz  # noqa: E402
 
 TITLE = "Complete Test"
-PAGES = [("real", "Real drone test"), ("synthetic", "Synthetic drone test")]
+PAGES = [("real", "Real drone test"), ("synthetic", "Synthetic drone test"), ("modified", "Modified drone test")]
+SUBTITLES = {"real": "Real drone recordings mixed into chosen background layers at real levels.",
+             "synthetic": "Pure Data drones flying at the microphone, mixed into chosen background layers.",
+             "modified": "Real drone recordings flown at the microphone: the end of each file is the impact, and the "
+                         "level follows the distance at each moment for the chosen speed."}
 DEFAULT_LEVELS = {"war soundscape": ("60", "60", "1"), "war-shaped noise": ("50", "50", "1"), "wind": ("50", "50", "1"),
                   "cars": ("", "", ""), "helicopter": ("", "", ""), "insects": ("", "", "")}
 COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it10 CNN": "#d93025",
@@ -99,6 +109,18 @@ def detector_names() -> list[str]:
     return [*E.dwg.MODELS, "comb"]
 
 
+def approach_preview(speeds: list[float], closest_m: float, length_s: float = E.DRONE_S) -> str:
+    """Where a modified drone starts for each speed, and how much quieter than at impact (spreading
+    only; air absorption takes a little more off the treble), for a 10 s file."""
+    if not speeds or closest_m <= 0:
+        return ""
+    bits = []
+    for v in speeds[:6]:
+        r0 = float(np.hypot(closest_m, v / 3.6 * length_s))
+        bits.append(f"{v:g} km/h: {r0:.0f} m, {20 * np.log10(r0 / closest_m):.0f} dB below impact")
+    return "start (10 s before impact)  ·  " + "  ·  ".join(bits) + ("  ·  …" if len(speeds) > 6 else "")
+
+
 # ------------------------------------------------------------------ one page
 
 class Page(ttk.Frame):
@@ -125,10 +147,7 @@ class Page(ttk.Frame):
     def _build(self):
         self.columnconfigure(0, weight=1)
         ttk.Label(self, text=self.title, style="H1.TLabel", font=("Segoe UI", 18, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(self, text=("Real drone recordings mixed into chosen background layers at real levels."
-                              if self.kind == "real" else
-                              "Pure Data drones flying at the microphone, mixed into chosen background layers."),
-                  style="Sub.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 10))
+        ttk.Label(self, text=SUBTITLES[self.kind], style="Sub.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 10))
         self._build_drones(self._section(2, "Drones"))
         self._build_layers(self._section(3, "Background layers"))
         self._build_rounds(self._section(4, "Test rounds"))
@@ -138,8 +157,9 @@ class Page(ttk.Frame):
     def _build_drones(self, f):
         f.columnconfigure(1, weight=1)
         self.v_drone_levels = tk.StringVar(value="60")
-        if self.kind == "real":
-            ttk.Label(f, text="Drone files (first 10 s of each):").grid(row=0, column=0, sticky="nw")
+        if self.kind in ("real", "modified"):
+            ttk.Label(f, text="Drone files (first 10 s of each; 5-10 s files whole):" if self.kind == "real" else
+                      "Drone files (last 10 s of each = up to impact;\n5-10 s files whole):").grid(row=0, column=0, sticky="nw")
             box = ttk.Frame(f)
             box.grid(row=0, column=1, sticky="ew", padx=(8, 0))
             box.columnconfigure(0, weight=1)
@@ -152,6 +172,23 @@ class Page(ttk.Frame):
             ttk.Button(btns, text="Remove", command=self.remove_files).pack(fill="x", pady=2)
             ttk.Button(btns, text="Clear", command=self.clear_files).pack(fill="x")
             r = 1
+            if self.kind == "modified":
+                self.v_speeds = tk.StringVar(value="50 100 150")
+                self.v_closest = tk.StringVar(value=f"{E.APPROACH['closest_m']:g}")
+                self.v_doppler = tk.BooleanVar(value=E.APPROACH["doppler"])
+                ttk.Label(f, text="Speeds (km/h):").grid(row=1, column=0, sticky="w", pady=(8, 0))
+                ttk.Entry(f, textvariable=self.v_speeds).grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
+                sub = ttk.Frame(f)
+                sub.grid(row=2, column=1, sticky="w", padx=(8, 0), pady=(4, 0))
+                ttk.Label(sub, text="distance at impact (m)", style="Muted.TLabel").pack(side="left", padx=(0, 4))
+                ttk.Entry(sub, textvariable=self.v_closest, width=6).pack(side="left")
+                ttk.Checkbutton(sub, text="Doppler (pitch rises while it approaches)", variable=self.v_doppler,
+                                command=self.update_count).pack(side="left", padx=(12, 0))
+                self.l_approach = ttk.Label(f, text="", style="Muted.TLabel")
+                self.l_approach.grid(row=3, column=1, sticky="w", padx=(8, 0), pady=(2, 0))
+                for v in (self.v_speeds, self.v_closest):
+                    v.trace_add("write", lambda *_: self.update_count())
+                r = 4
         else:
             self.v_speeds = tk.StringVar(value="100 150 200")
             self.v_seed, self.v_pscale, self.v_elev = tk.StringVar(value="1"), tk.StringVar(value="0.85"), tk.StringVar(value="40")
@@ -165,10 +202,12 @@ class Page(ttk.Frame):
                 ttk.Entry(sub, textvariable=var, width=6).grid(row=0, column=2 * i + 1)
             self.v_speeds.trace_add("write", lambda *_: self.update_count())
             r = 2
-        ttk.Label(f, text="Drone level, dB SPL:").grid(row=r, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(f, text="Drone level at 1 m, dB SPL:" if self.kind == "modified" else "Drone level, dB SPL:").grid(
+            row=r, column=0, sticky="w", pady=(8, 0))
         lv = ttk.Frame(f)
         lv.grid(row=r, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
-        self.v_drone_levels = (tk.StringVar(value="60"), tk.StringVar(value="60"), tk.StringVar(value="1"))
+        d0 = "80" if self.kind == "modified" else "60"
+        self.v_drone_levels = (tk.StringVar(value=d0), tk.StringVar(value=d0), tk.StringVar(value="1"))
         self.e_drone_levels = []
         for lbl, v, w in zip(("min", "max", "#"), self.v_drone_levels, (7, 7, 4)):
             ttk.Label(lv, text=lbl, style="Muted.TLabel").pack(side="left", padx=(0 if lbl == "min" else 8, 3))
@@ -183,8 +222,10 @@ class Page(ttk.Frame):
             ttk.Checkbutton(lv, text="as rendered (physical level)", variable=self.v_as_rendered,
                             command=self._as_rendered).pack(side="left", padx=(10, 0))
             self._as_rendered()
-        ttk.Label(f, text="RMS over the drone's sound; # values from min to max, both included, evenly spaced; "
-                          "# 1 needs min = max", style="Muted.TLabel").grid(row=r + 1, column=1, sticky="w", padx=(8, 0))
+        ttk.Label(f, text=("the file's RMS is set to this as if heard at 1 m, then lowered by the distance; "
+                           if self.kind == "modified" else "RMS over the drone's sound; ")
+                  + "# values from min to max, both included, evenly spaced; # 1 needs min = max",
+                  style="Muted.TLabel").grid(row=r + 1, column=1, sticky="w", padx=(8, 0))
 
     def _as_rendered(self):
         for e in self.e_drone_levels:
@@ -253,7 +294,7 @@ class Page(ttk.Frame):
         ttk.Label(f, text="Soundscape length (s):").grid(row=0, column=0, sticky="w")
         ttk.Spinbox(f, from_=10, to=600, increment=1, textvariable=self.v_len, width=8,
                     command=self.update_count).grid(row=0, column=1, sticky="w", padx=8)
-        ttk.Label(f, text="drone length 10 s, starts every").grid(row=0, column=2, sticky="w")
+        ttk.Label(f, text="drone length up to 10 s, starts every").grid(row=0, column=2, sticky="w")
         ttk.Entry(f, textvariable=self.v_step, width=5).grid(row=0, column=3, sticky="w", padx=4)
         ttk.Label(f, text="s until it ends with the soundscape").grid(row=0, column=4, sticky="w")
         ttk.Checkbutton(f, text="add one no-drone round per background (false alarms)", variable=self.v_nodrone,
@@ -316,8 +357,15 @@ class Page(ttk.Frame):
             step = float(self.v_step.get())
         except ValueError:
             raise ValueError("soundscape length and start step must be numbers") from None
-        if self.kind == "real":
+        speeds, approach = None, None
+        if self.kind in ("real", "modified"):
             drones = list(self.files)
+            if self.kind == "modified":
+                try:
+                    speeds = [float(v) for v in self.v_speeds.get().replace(",", " ").split()]
+                    approach = dict(closest_m=float(self.v_closest.get()), doppler=bool(self.v_doppler.get()))
+                except ValueError:
+                    raise ValueError("speeds and distance at impact must be numbers") from None
         else:
             try:
                 drones = [float(v) for v in self.v_speeds.get().replace(",", " ").split()]
@@ -341,7 +389,8 @@ class Page(ttk.Frame):
                 raise ValueError("drone sound seed, pitch scale and elevation must be numbers") from None
         p = E.Plan(self.kind, length, drones, levels, layers, [d for d, v in self.v_det.items() if v.get()],
                    step_s=step, no_drone_rounds=self.v_nodrone.get(),
-                   soundscape_start_s=float(start) if start else None, **({"synth": synth} if synth else {}))
+                   soundscape_start_s=float(start) if start else None, **({"synth": synth} if synth else {}),
+                   **({"speeds": speeds, "approach": approach} if self.kind == "modified" else {}))
         return p
 
     def update_count(self, *_):
@@ -373,9 +422,14 @@ class Page(ttk.Frame):
             self.l_count.configure(text="—", style="Count.TLabel")
             self.l_count_detail.configure(text=str(e), style="Warn.TLabel")
             return
+        if self.kind == "modified":
+            self.l_approach.configure(text=approach_preview(p.speeds, p.approach["closest_m"]))
         c, probs = p.count(), p.check()
         self.l_count.configure(text=f"{c['total']:,} test rounds".replace(",", " "))
-        parts = [f"{c['starts']} starts", f"{c['drones']} drone{'s' * (c['drones'] != 1)}",
+        n_f, n_v = len(p.drones), len(p.speeds or [])
+        drones_txt = (f"{n_f} file{'s' * (n_f != 1)} × {n_v} speed{'s' * (n_v != 1)}" if self.kind == "modified"
+                      else f"{c['drones']} drone{'s' * (c['drones'] != 1)}")
+        parts = [f"{c['starts']} starts", drones_txt,
                  f"{c['drone_levels']} drone level{'s' * (c['drone_levels'] != 1)}" if p.drone_levels is not None
                  else "drone as rendered", f"{c['backgrounds']} background{'s' * (c['backgrounds'] != 1)}"]
         detail = " × ".join(parts) + f" = {c['drone_rounds']}"
@@ -627,7 +681,8 @@ class Results(tk.Toplevel):
         ax1.set_yticks([t + 0.5 for t in ticks], [f"{BAND_HZ[t]:.0f}" for t in ticks])
         ax1.set_ylabel("log-mel band (Hz)")
         title = (f"round {rnd}: " + (E.drone_label(r["drone"]) if r["drone"] is not None else "no drone")
-                 + (f" at {r['drone_level_db']:g} dB SPL" if r["drone_level_db"] is not None else
+                 + (f" at {r['drone_level_db']:g} dB SPL" + (" at 1 m" if self.test.plan.kind == "modified" else "")
+                    if r["drone_level_db"] is not None else
                     " as rendered" if r["drone"] is not None else "")
                  + (f", starts {r['start_s']:g} s" if r["start_s"] is not None else "")
                  + "".join(f" · {k} {v:g} dB" for k, v in r["background"].items()))
@@ -724,8 +779,10 @@ CURVE_ABOVE = 4                                              # more values than 
 
 def parameter_values(test: E.Test) -> dict[str, list]:
     """Every setting that takes more than one value in the test, with its values in order."""
-    names = {"drone": "drone", "drone_level_db": "drone level (dB SPL)", "start_s": "drone start (s)",
-             **{n: f"{n} (dB SPL)" for n in test.plan.layers}}
+    modified = test.plan.kind == "modified"
+    names = {"drone": "drone", **({"file": "drone file", "speed_kmh": "speed (km/h)"} if modified else {}),
+             "drone_level_db": "drone level at 1 m (dB SPL)" if modified else "drone level (dB SPL)",
+             "start_s": "drone start (s)", **{n: f"{n} (dB SPL)" for n in test.plan.layers}}
     out = {}
     for key, label in names.items():
         vals = {setting(r, key) for r in test.rounds if setting(r, key) is not None}
@@ -739,7 +796,7 @@ def setting(r: dict, key: str):
         return r["background"][key]
     if r["drone"] is None:                                   # a no-drone round has no drone setting
         return None
-    return E.drone_label(r["drone"]) if key == "drone" else r[key]
+    return E.drone_setting(r["drone"], key) if key in ("drone", "file", "speed_kmh") else r[key]
 
 
 def confidences(test: E.Test, det: str, key: str, value) -> dict:
@@ -778,14 +835,16 @@ def level_ratio_points(test: E.Test, det: str, layer: str) -> list[tuple[float, 
     """Nicolai's x-axis: the drone's level over the layer's level, both in dB SPL (drone 30 dB and war
     60 dB -> 0.5; the same level -> 1). Drone rounds are grouped by that ratio (3 decimals) and give
     true and false confidence as in confidences(); a layer at 0 dB SPL or below has no ratio. A drone
-    "as rendered" uses its measured level (rebuilt for runs made before it was stored)."""
+    "as rendered" uses its measured level (rebuilt for runs made before it was stored), and so does a
+    modified drone, whose set level is the level at 1 m, not what the microphone hears."""
     groups = {}
+    measured = test.plan.kind == "modified"
     for rnd, res in test.results.items():
         r = test.by_round[rnd]
         lv = r["background"].get(layer)
         if r["drone"] is None or det not in res or lv is None or lv <= 0:
             continue
-        d_db = r["drone_level_db"]
+        d_db = None if measured else r["drone_level_db"]
         if d_db is None:
             d_db = res[det].get("drone_db")
             if d_db is None:
@@ -955,7 +1014,8 @@ def load_test(folder: Path) -> E.Test:
     cfg = json.loads((folder / "config.json").read_text(encoding="utf-8"))
     p = cfg["plan"]
     plan = E.Plan(**{k: p[k] for k in ("kind", "length_s", "drones", "drone_levels", "layers", "detectors", "step_s",
-                                       "no_drone_rounds", "soundscape_start_s", "synth")})
+                                       "no_drone_rounds", "soundscape_start_s", "synth")},
+                  **{k: p[k] for k in ("speeds", "approach") if k in p})        # modified runs only
     t = E.Test(plan, folder)
     t.start_s = cfg["soundscape_start_s"]
     t.prepare(progress=lambda s: None)
