@@ -7,7 +7,7 @@
 #   bash scripts/experiments/run_it11_1.sh p0        # AudioSet scores, no training (1 GPU, minutes)
 #   bash scripts/experiments/run_it11_1.sh p1        # frozen encoder + probe (1 GPU)
 #   bash scripts/experiments/run_it11_1.sh p2        # LP-FT, seeds 0-2 on GPUs 0-2, in the background
-#   bash scripts/experiments/run_it11_1.sh gates     # real-rig and Glasgow gates, where the data exists here
+#   bash scripts/experiments/run_it11_1.sh gates     # it9 + PANNs: real-rig (b, c), real threshold, mower (e), Glasgow (a, d) where present
 #   bash scripts/experiments/run_it11_1.sh pack      # one tar of artifacts/it11_1 (no checkpoints over 100 MB) + MD5
 #
 # Every stage writes under artifacts/it11_1/ and logs to artifacts/it11_1/logs/. The interpreter is
@@ -83,28 +83,39 @@ p2)
   ;;
 gates)
   preflight
-  models=()
+  # Models: it9 CRNN as the reference (entry 134), then every PANNs checkpoint present.
+  IT9="it9 CRNN=artifacts/models/final_crnn_none_simdist_crnn.pt"
+  models=("$IT9")
   for f in "$OUT"/p1_s0_panns.pt "$OUT"/p2_s*_panns.pt; do [ -f "$f" ] && models+=("$(basename "$f" _panns.pt)=$f"); done
-  [ ${#models[@]} -gt 0 ] || { echo "no checkpoints in $OUT"; exit 1; }
+  [ ${#models[@]} -gt 1 ] || { echo "no PANNs checkpoints in $OUT"; exit 1; }
+  G=${GPU:-0}
   if [ -f data/processed/manifest.csv ]; then
-    $PY -u scripts/score_real_dev.py --device cuda --out "$OUT/gates_real_dev.json" "${models[@]}" \
+    # (b), (c): recall at 5% FA on each rig's own background; no frozen threshold needed.
+    CUDA_VISIBLE_DEVICES=$G $PY -u scripts/score_real_dev.py --device cuda --out "$OUT/gates_real_dev.json" "${models[@]}" \
         2>&1 | tee "$OUT/logs/gates_real_dev_$(stamp).log"
+    # The frozen threshold: 5% FA on the pooled real validation background (entry 129, Mads's rule).
+    CUDA_VISIBLE_DEVICES=$G $PY -u scripts/real_threshold.py --device cuda --out "$OUT/real_threshold.json" "${models[@]}" \
+        2>&1 | tee "$OUT/logs/real_threshold_$(stamp).log"
   else
-    note "gates: no data/processed/manifest.csv in this account; real-rig gates (b, c) and the mower gate must run where it is"
+    note "gates: no data/processed/manifest.csv here; gates (b), (c), (e) and the real threshold need it"
   fi
-  if [ -d data/extracted/Glasgow ]; then
-    # Frozen threshold: each run's own 5%-FA threshold on train_clean's validation (synthetic drones vs the
-    # Nightjar no-drone clips). Entry 134 used the real-background threshold (it9's rule, real_threshold.py,
-    # Mads's account); score with that too before any gate verdict.
-    thr=()
+  with_thr=()
+  if [ -f "$OUT/real_threshold.json" ]; then
     for m in "${models[@]}"; do
-      n=${m%%=*}; t=$($PY -c "import json,sys; d=json.load(open('$OUT/$n.json')); print([v for k,v in d['models'].items() if k.startswith('panns')][0]['threshold_5pct_fa'])")
-      thr+=("$m@$t")
+      n=${m%%=*}
+      t=$($PY -c "import json,sys; print(json.load(open('$OUT/real_threshold.json'))[sys.argv[1]]['threshold'])" "$n")
+      with_thr+=("$m@$t")
     done
-    $PY -u scripts/score_glasgow.py --device cuda --room-second-half --war-snr 0 -5 -10 \
-        --out "$OUT/gates_glasgow.json" "${thr[@]}" 2>&1 | tee "$OUT/logs/gates_glasgow_$(stamp).log"
+    # (e): mower-only false alarms at the frozen threshold.
+    CUDA_VISIBLE_DEVICES=$G $PY -u scripts/score_mower.py --device cuda --out "$OUT/gates_mower.json" "${with_thr[@]}" \
+        2>&1 | tee "$OUT/logs/gates_mower_$(stamp).log"
+  fi
+  if [ -d data/extracted/Glasgow ] && [ ${#with_thr[@]} -gt 0 ]; then
+    # (a), (d): Glasgow room second half and Glasgow drones in the war track, at the frozen threshold.
+    CUDA_VISIBLE_DEVICES=$G $PY -u scripts/score_glasgow.py --device cuda --room-second-half --war-snr 0 -5 -10 \
+        --out "$OUT/gates_glasgow.json" "${with_thr[@]}" 2>&1 | tee "$OUT/logs/gates_glasgow_$(stamp).log"
   else
-    note "gates: no data/extracted/Glasgow in this account; gates (a, d) must run where it is"
+    note "gates: no data/extracted/Glasgow here (or no real threshold); gates (a) and (d) run where Glasgow is"
   fi
   ;;
 pack)
