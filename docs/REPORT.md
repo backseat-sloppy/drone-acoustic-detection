@@ -9288,3 +9288,58 @@ Pd drone scenes (`it11s_valdrone`, 5956 windows) against the Nightjar no-drone c
 **Next.** P1: `run_it11_1.sh p1` (100 000 windows). Then the real-rig gates, scored where the manifest and
 `real_threshold.py` are.
 
+## 138 - P1 (frozen Cnn14_16k + probe) on the e133 data: weak on synthetic validation, which cannot judge it
+- Date: 2026-11-06
+- Iteration: 11.1
+- Type: Model, Evaluation (validation only)
+- Commit: 78dded7 (server, branch 11.1)
+
+**Run.** `bash scripts/experiments/run_it11_1.sh p1` in Marius's account, GPU 0.
+- P1 used the e133 data flags (176 Glasgow d1-d16 drone scenes, 1874 no-drone clips) and seed 0, with
+  100 000 training windows embedded at about 820 windows/s. Training took 212.9 s in total.
+- Validation was train_clean's: 5956 drone windows (Pd scenes, seed ≥ 1800) against 15 839 no-drone windows
+  (the Nightjar clips plus the no-drone scenes), 1 s windows at a 0.5 s hop.
+- Output: `artifacts/it11_1/p1_s0.json` and `p1_s0_panns.pt` (head only).
+
+**Result** (validation only, synthetic drones):
+
+| C | 1e-4 | 1e-3 | 1e-2 | 1e-1 | 1 |
+|---|---|---|---|---|---|
+| validation AUC | **0.591** | 0.546 | 0.522 | 0.518 | 0.521 |
+
+- Chosen C = 1e-4, at the edge of the grid (flagged).
+- The probe at that C: AUC 0.591, recall 0.202 at 5% FA, FA 0.943 at 95% recall, threshold 0.2173 at
+  5% FA.
+- `comb` on the same windows: AUC 0.589, recall 0.156 at 5% FA.
+- For reference, the e133 from-scratch Glasgow arms on their own synthetic validation: CRNN AUC 0.560 (s0)
+  and 0.420 (s1) (entry 134; their validation had the same drone scenes).
+- P0's a-priori AudioSet classes on the synthetic validation, for the record (AUC):
+  - Engine 0.689, Light engine 0.691, Helicopter 0.643, Propeller 0.612, Aircraft 0.603, Aircraft engine 0.585;
+  - Lawn mower 0.556, Mechanical fan 0.506;
+  - Insect 0.151, Bee/wasp 0.192, Fly 0.229, Silence 0.299.
+
+**Reading.**
+- On this validation, P1 is level with the from-scratch Glasgow arms and with `comb`. Nothing more can be
+  said from it.
+- The C sweep shows why. The more closely the probe fits its training data, the worse it scores on
+  validation. Training drones are real Glasgow recordings, while validation drones are synthetic Pd
+  scenes, which the encoder hears as music (P0, entry 137). So this validation measures transfer from
+  Glasgow to Pd drones, and it rewards the most regularised, nearly flat probe.
+- That is a weakness of the e133 protocol, which P1 inherited by design ("only the network changes"). It is
+  not evidence about real drones.
+- Lowering C further would chase that mismatch, so the grid is left as it is.
+- **Not a verdict.** Entry 135's rule is decided by the real-rig gates (b, c), the mower gate (e) and the
+  Glasgow gates (a, d), at the real-background threshold. None has run.
+- P2 waits, as entry 135 fixed: it starts only if P1 beats the e133 arms on gate (b) or (c).
+
+**Gate (e) scorer.** `scripts/score_mower.py` is new. It scores the mower-only windows of
+`nightjar-lawnmower1-20260805` (rangerun.CONFUSER) and reports, per model:
+- the false-alarm rate at the frozen threshold, with a Wilson 95% interval;
+- the within-session AUC of drone against mower-only windows;
+- drone recall.
+It needs the manifest.
+
+**Next.** Score P1 on gates (b), (c) and (e) in Mads's account, where `data/processed/manifest.csv` and
+`real_threshold.py` are, next to it9 and the e133 Glasgow arms. Then gates (a) and (d) on the Mac, where
+Glasgow d17-d20 and the room recording are.
+
