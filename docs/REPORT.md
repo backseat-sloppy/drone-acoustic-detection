@@ -9186,7 +9186,7 @@ test. Until then, no further training on this line.
   Cnn14's 64 bands before the level step.
 - `src/dad/pannsrun.py`: `PannsScorer`, with the interface of `NetScorer`.
   - P1 `fit_probe`: frozen encoder in eval mode, 2048-d embeddings of sampled training windows, standardised;
-    logistic regression with C from {1e-3, 1e-2, 1e-1, 1} picked by validation AUC; the scaler is folded
+    logistic regression with C picked by validation AUC from a grid (entry 137); the scaler is folded
     into a 2-logit head. Its checkpoint is head only, about 20 KB, and stores the encoder checkpoint's MD5.
   - P2 `fit_finetune`: from a probe head, AdamW at a one-cycle peak learning rate of 1e-4 with weight decay
     1e-2, SpecAugment after `bn0` (where the reference applies its own), and the reference's dropout. The
@@ -9231,3 +9231,60 @@ test. Until then, no further training on this line.
 
 **Next.** On the server: `bash scripts/experiments/run_it11_1.sh fetch`, `test`, `smoke`, `p0`, `p1`. The
 checkpoint's MD5, the test result and the P0 table go in the next entry.
+
+## 137 - The Cnn14_16k checkpoint on the server, tests, smoke run and P0 (synthetic validation only)
+- Date: 2026-11-06
+- Iteration: 11.1
+- Type: Infrastructure, Evaluation (validation only)
+- Commit: 8573817 (server, branch 11.1; Marius's account)
+
+**Checkpoint.** `run_it11_1.sh fetch` downloaded from Zenodo record 3987831 into `artifacts/pretrained/`.
+The MD5s are in `artifacts/pretrained/MD5SUMS`:
+- `Cnn14_16k_mAP=0.438.pth`: 358 668 570 bytes, MD5 `362fc5ff18f1d6ad2f6d464b45893f2c`;
+- `class_labels_indices.csv`: 14 675 bytes, MD5 `68c0b5c199d6cc789852b144cc3ab500`.
+
+**Interpreter.** Marius's server account has no repo `.venv`. Its CRNN runs use `~/dad/.venv/bin/python`
+(from the shell history), and it reports torch 2.14.1+cu126 with CUDA on 3 devices.
+- `run_it11_1.sh` now takes the interpreter from `$PY`, falling back to the repo `.venv` and then
+  `~/dad/.venv`. A preflight check prints the interpreter, torch and CUDA before each stage (commits
+  fa4d1e7 and 8573817).
+- P2 starts with `nohup setsid ... < /dev/null`, as the CRNN runs do.
+
+**Tests.** `run_it11_1.sh test`: 9 tests, 8 passed, 1 skipped (the librosa comparison; librosa is not in
+that environment). **The checkpoint test passed.** The published state loads into the port with
+`strict=True`, and the checkpoint's own `logmel_extractor.melW` and STFT kernels match our filterbank
+and kernels within the test tolerances (rtol 1e-4 / atol 1e-6 and atol 1e-5). Entry 136's frontend is
+therefore the one the weights were trained on.
+
+**Smoke.** `run_it11_1.sh smoke` is P1 with `--limit 20 --windows 512` on the e133 flags. It ran end to
+end on one GPU at 340 windows/s while embedding. Its numbers come from 20 scenes and 512 windows and
+are not results.
+- The probe picked C = 1e-3, the smallest value in the grid.
+- So the grid is now {1e-4, 1e-3, 1e-2, 1e-1, 1}, and a pick at either edge is flagged in the run JSON
+  (`C_at_grid_edge`).
+
+**P0** (`run_it11_1.sh p0`, `artifacts/it11_1/p0.json`). Only `val_synthetic` ran: train_clean's validation
+Pd drone scenes (`it11s_valdrone`, 5956 windows) against the Nightjar no-drone clips (8999 windows), at a
+0.5 s hop. The real rigs, the mower session and Glasgow were skipped, because there is no
+`data/processed/manifest.csv` and no `data/extracted/Glasgow` in this account.
+- AudioSet classes with the highest AUC (drone over no-drone):
+
+  | Class | AUC |
+  |---|---|
+  | Tender music | 0.810 |
+  | Theme music | 0.783 |
+  | Accelerating, revving, vroom | 0.776 |
+  | Heavy engine (low frequency) | 0.764 |
+  | Background music | 0.763 |
+
+- **Reading.** To a general-audio tagger, the Pd drones resemble tonal music more than aircraft. This is a
+  diagnostic, chosen on validation data, not a result. It is a warning that synthetic-drone validation
+  may mislead model choice here, as entry 128 found for thresholds. It does not bear on P1, which fits
+  its own classifier on the 2048-d embedding.
+- The a-priori classes (Aircraft, Propeller, Helicopter, Lawn mower and so on) are in the JSON and not
+  copied here.
+- P0 on real drones needs Mads's account (manifest) or the Mac (Glasgow).
+
+**Next.** P1: `run_it11_1.sh p1` (100 000 windows). Then the real-rig gates, scored where the manifest and
+`real_threshold.py` are.
+

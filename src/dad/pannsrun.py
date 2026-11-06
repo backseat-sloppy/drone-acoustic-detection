@@ -112,7 +112,7 @@ class PannsScorer:
 
     # ------------------------------------------------------------ P1
     def fit_probe(self, sampler, n_windows: int, pos_val: np.ndarray, neg_val: np.ndarray,
-                  batch_size: int = 64, workers: int = 3, Cs=(1e-3, 1e-2, 1e-1, 1.0),
+                  batch_size: int = 64, workers: int = 3, Cs=(1e-4, 1e-3, 1e-2, 1e-1, 1.0),
                   log: Callable[[str], None] = print) -> "PannsScorer":
         import torch
         from sklearn.linear_model import LogisticRegression
@@ -144,7 +144,9 @@ class PannsScorer:
             self.model.head.weight[1] = torch.from_numpy(w.astype(np.float32))
             self.model.head.bias[1] = b0
         self.kind, self.name = "probe", f"{ARCH} [probe]"
-        self.info.update(probe=dict(C=C, val_auc=auc, windows=int(len(E)), Cs=list(Cs),
+        if C in (min(Cs), max(Cs)):
+            log(f"    probe: WARNING C={C:g} is at the edge of the grid {list(Cs)}")
+        self.info.update(probe=dict(C=C, val_auc=auc, windows=int(len(E)), Cs=list(Cs), C_at_grid_edge=C in (min(Cs), max(Cs)),
                                     seconds=round(time.time() - t0, 1)))
         return self
 
