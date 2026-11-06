@@ -10,3 +10,6 @@ color_scheme: dark
 exclude:
   - REPORT.md
   - datasets.md
+  - sound_taxonomy.md
+  - supervisor_notes.md
+  - war_shaped_noise.md
