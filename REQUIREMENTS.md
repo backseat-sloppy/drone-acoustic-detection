@@ -98,7 +98,7 @@ held-out-source false-alarm rate is the one that predicts field behaviour.
 | Deployment hardware | not decided (laptop, Raspberry Pi or microcontroller) | OPEN |
 | Deployment on a microcontroller | out of scope | Decided by Mads, 2026-10-26 (entry 060) |
 | Deployment microphones | an array of 2 omnidirectional microphones | Decided by Mads, 2026-10-14 |
-| Training hardware | Mads's PC. The AMD GPU may be used through DirectML, in a separate environment. | Decided by Mads, 2026-10-10 |
+| Training hardware | All training runs on the JupyterLab server (3× TITAN X Pascal, fp32), none on the Mac. Was: Mads's PC, the AMD GPU through DirectML (Mads, 2026-10-10) | Decided by Mads, 2026-11-06 (entry 135) |
 | Cold-onset latency | no target yet | OPEN |
 | Model size or parameter limit | no limit yet | OPEN |
 
@@ -116,6 +116,8 @@ held-out-source false-alarm rate is the one that predicts field behaviour.
 | d3set (GPL-3.0) and Lund (no licence stated) | allowed for internal use; not for publishing results or audio without a further decision (Lund: ask the authors) | Decided by Mads, 2026-10-14 |
 | Lund in a cloud tool | Lund may be used for research, including upload to the private Edge Impulse project; publishing results or audio still needs the authors' permission | Decided by Mads, 2026-10-26 (entry 058) |
 | Training and test rigs from iteration 3 | leave one rig out between Nightjar and d3set; Lund and Glasgow scored as further unseen rigs (entry 025) | PROPOSED |
+| AudioSet-pretrained weights | allowed as initialisation (PANNs Cnn14_16k, Zenodo 3987831, CC BY 4.0): no project audio and no test source in them; the training audio rules above are unchanged | Decided by Mads, 2026-11-06 (entry 135) |
+| Pretrained-embedding experiment (entries 053-054) | starts now; entry 054's "after the field test" is lifted | Decided by Mads, 2026-11-06 (entry 135) |
 | Sealed test for recall by range | ITU ARIS and RODENT (fetched 2026-10-14 on Mads's go-ahead), scored only for a finished candidate | PROPOSED |
 
 ## Stop condition

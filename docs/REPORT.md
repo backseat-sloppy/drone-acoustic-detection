@@ -29,6 +29,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 9 | 090 to 094 | Iteration 5's recipe on real data, with the frontend as the only change: MFE (log-mel), MFCC, linear spectrogram | The supervisor's feedback (entry 086) and Mads's choice to compare frontends on real data, after dropping synthetic training (entries 087-089) | **Hypothesis rejected for both.** FPV mean at 10% own false alarms: MFE 0.669, MFCC 0.485, linear 0.692 (+2.3 against +5 required). Linear gains near the rigs (+23-26 points within 50 m) but loses on d3set at 100-200 m (-6.7), on Lund (-18) and alarms 12 points more on mower audio. MFE stays. |
 | Iteration 11 | 100 to 105 | Steady-noise family (random slopes, random-phase copies of rig no-drone windows) as negatives and maskers; no war audio in training. Judged on unseen real noise stems and the mower session, with recall guards | All networks alarm on 99-100% of war-shaped noise and on pink/brown noise, but on 0% of the war track: the failure is steady noise, not war (entry 100) | In progress. Council held (entry 100). War-shaped noise matches war audio only in its long-term spectrum; real tank clips alarm 45-57% (entry 101). Step 0 (entry 102): the networks rely on the harmonic lines; steadiness pushes toward drone; noise alarms only at -3 to -6 dB/octave. Step 1 (entry 103): generators and the `simdist_steady` recipe in the sampler, tested. War-shaped noise dropped on Mads's decision; war is tested on real war audio only (entry 104). 36 of 97 FSD50K stems are from FSD50K dev, which training draws from: reported apart (entry 105). Step 2 next. |
 | Soundscape line (branch it11-soundscapes, own section at the end) | 095 to 105 and 101 to 118 of that section | Synthetic Pd drones in random labelled soundscapes (confusers, transients), then realism (rotor detune, mic, room), real Glasgow drones, a CRNN, steady-noise arms | The supervisor's notes (entry 086); synthetic training allowed (entry 087) | **Not met; validation only.** On 10 sealed ARIS excerpts with the war track at 0 dB, the share of alarmed windows is it11 CNN 13.5%, it11r CNN 23.1%, it9 CRNN (real rigs) 58.3%. Steady-noise arms are training. |
+| Iteration 11.1 (branch 11.1) | 135 to 136 | AudioSet-pretrained PANNs Cnn14_16k on the e133 compliant data: P0 AudioSet scores (no training), P1 frozen encoder + linear probe, P2 LP-FT | Entry 134: from scratch, the only allowed real drones (Glasgow d1-d16, one rig) teach "a Glasgow recording"; pretraining is the established lever for unseen recording chains (entries 053, 131) | Code written and checked against the reference implementation; nothing run on the server yet. |
 
 ## Templates
 
@@ -8477,3 +8478,756 @@ line's entries.
 **Check.** No REPORT.md line of `origin/master` or of f1e36d9 is missing.
 The other checks are in the merge commit's message.
 
+
+## 123 - Why the synthetic-trained models lag it9's CRNN: a code comparison (no run)
+- Date: 2026-11-05
+- Iteration: the soundscape line
+- Type: Analysis
+- Commit: uncommitted (on top of 55b990f)
+
+**Question.** Mads: it makes no sense that it11, it11r, it11s and the other
+synthetic-trained models are so far below it9's CRNN (entry 105: 58.3% of
+windows alarmed against 13.5-23.1%). The it11r CRNN (entries 111-114) uses
+the same architecture (`dad.models.zoo.Crnn`), the same frontend (MFE,
+64 log-mel, 1 s window, level normalisation), the same `NetScorer.fit`
+(AdamW, OneCycle, SpecAugment, per-band mu/sigma), and up to 3x the
+windows. Whatever separates them is in the data path, not the network.
+**Method.** Read `scripts/train_clean.py` (it11 line) against
+`dad.rangerun.RangeSampler` with recipe `simdist`, `--pool`, speed
+0.8-1.25 (the args in `artifacts/runs/final_crnn.json`, entry 096). No
+model was trained or scored.
+**Differences found.**
+
+| | it9 CRNN (`rangerun`, simdist) | it11 line (`train_clean.py`) |
+|---|---|---|
+| Positive source | real drones recorded at 0-50 m (pooled rigs) | Pd synthesis (it11, it11r, it11s); half Glasgow in itG-B only |
+| Positive background | 80%: a real near drone summed into the **same training rig's own background** at -10..+5 dB in-band SNR; 20%: near drone buried in FSD50K | the scene's synthetic soundscape (FSD50K stems, beds, confusers), drone at -20..+10 dB vs the bed |
+| Negatives | the same rigs' backgrounds (share per rig matched to positives), plus FSD50K | real no-drone recordings and stems, and no-drone scenes |
+| Can "real recording vs mixed scene" predict the label? | no: each rig gives both classes | partly: a real recording window is never a positive |
+| Speed (pitch/BPF) augmentation | 0.8-1.25 on every window | none (`raw_batch` passes SPEED_UP) |
+| Random spectral EQ (tilt + shape, `_eq_curve`) | on every window | none (zeros); it11r adds a mic EQ inside the scene renderer instead |
+| Threshold | 5% FA on real held-out rig data | 5% FA on synthetic validation (val scenes + nightjar rig) |
+
+**Assessment (hypotheses, not results).**
+1. *Source gap.* Pd drones are not real drones. Entry 110's itG-B (half
+   real Glasgow drones) is the only run that touches this, and it was
+   never scored on test data, so how big this gap is is still unknown.
+2. *Shortcut on the recording.* In it9 the rig is uninformative by
+   construction (entry 025). In the it11 line every window of a real
+   recording is a negative, and every positive is a rendered scene. A
+   network can lower the loss by learning "real recording texture means
+   no drone". That would make it under-alarm on real drone audio, which is
+   the failure entry 105 shows (alarms too rare, not too frequent).
+3. *Missing augmentation.* Neither speed nor EQ, both of which it9 had on
+   every window. Without speed, the network sees only the BPF range of the
+   Pd presets.
+4. *Threshold calibrated on synthetic validation.* Entry 105's alarm
+   shares depend on it. Option B of entry 105 (re-thresholding on real
+   development data) was never run.
+
+These four are confounded in every it11-line versus it9 comparison so far.
+**Next.** Change one at a time, in order of cost: (4) is no training;
+(3) is two lines in `train_clean.py`; (2) means mixing the Pd drones into
+real rig backgrounds as `simdist` does. Waiting for Mads to pick (no tests
+unasked).
+
+## 124 - Entry 123's fixes: speed + EQ and real-background mixing in `train_clean.py`; three CRNN arms training
+- Date: 2026-11-05
+- Iteration: the soundscape line
+- Type: Data, Model
+- Commit: uncommitted (server: ce75020 + this `train_clean.py` and `score_real_dev.py`, applied as a git
+  patch, MD5s 05be6c34827c1d6bdbbc237c3584e640 and 3a4e1b2d64bb5fbabcea3a033b7e077a, matching the Mac)
+
+**What changed.** Mads: "Do them all" (entry 123's three fixes).
+- `train_clean.py --speed LO HI`: every training window is resampled by a factor from LO-HI. This is
+  `rangerun`'s speed change, as it9 used it (0.8-1.25).
+- `--eq`: `realrun._eq_curve` on every training window, as it9 had.
+- `--mix-real P` (`--mix-snr`, default -10..+5 dB): a share P of *scene* windows is summed into a real
+  no-drone recording (from `--nodrone` recordings.csv, never stems or scenes), with the scene over the
+  recording in-band, as `simdist` does. This applies to drone scenes and no-drone scenes alike, so a real
+  recording's texture no longer marks "no drone" and mixing does not mark "drone".
+- Every option is off by default. With all of them off, the draws are the same as before, so earlier runs
+  reproduce.
+- New `scripts/score_real_dev.py` scores checkpoints on it9's real validation sessions (Nightjar
+  flight 3, d3set Validation). It reports per-rig AUC, recall at 5/10% FA on that rig's own background,
+  and each model's frozen threshold.
+**Check.** A local smoke run (30 scenes, 1024 windows, CPU, all three options on) trained, scored and
+saved a CRNN. On a 16-window batch with speed + EQ + mixing, `batch()` and the GPU path
+(`GpuFrontend("cpu").train_features(raw_batch())`) agree to a maximum difference of 1.9e-6.
+**Training.** At 13:27, one TITAN X each, CRNN, 600 000 windows, seed 0, entry 113's data and command
+(`--drones it11r/drone it11r/nodrone --nodrone ~/nodrone`). The logs show entry 113's split (1800 drone
+scenes, 2053 no-drone clips; validation 5956 / 15 839 windows):
+- `e123_aug`: `--speed 0.8 1.25 --eq`
+- `e123_mix`: `--mix-real 0.8`
+- `e123_augmix`: both
+
+The baseline is the it11r CRNN 600k seed 0 (entry 114). Each arm changes one thing against it, and
+`augmix` combines both.
+**Fix 1 (threshold on real audio) is blocked.** `score_real_dev.py` failed on the server: Marius's account
+has no `data/processed/manifest.csv` or rig stores (Nightjar, d3set, FPV), and the Mac has none either.
+it9 was trained from another account. Nothing was scored.
+**Judged by.** Synthetic validation (each run's own JSON) only, until real drone data can be scored. That
+is not detection performance (CLAUDE.md section 5), and it cannot show whether the shortcut of entry 123
+is gone. Only real drone audio can.
+
+## 125 - Glasgow check of the existing models: the synthetic-trained CRNNs find real Glasgow drones, it9 alarms on the empty room
+- Date: 2026-11-05
+- Iteration: the soundscape line
+- Type: Evaluation
+- Commit: uncommitted (on top of 55b990f)
+
+**Why.** Entry 124's real-rig scoring is blocked, and Mads chose Glasgow instead.
+**What.** New `scripts/score_glasgow.py`, run on the Mac (MPS):
+`uv run python scripts/score_glasgow.py --device mps --out artifacts/runs/e125_glasgow_old.json "it9 CRNN=...@0.4828" "it11r CRNN 600k=...@0.6311" "it11s CRNN=...@0.6184"`.
+- Positives: every hover clip of Glasgow drones d17-d20, at 1 m and 5 m. These are the validation drones
+  of entry 108; the test drones d21-d24 were not read. 9796 windows.
+- Negatives: the Glasgow room recording (`noise/`), 7255 windows.
+- Both: 1 s windows at a 0.5 s hop, skipping digital silence.
+- Thresholds: each model's frozen one (it9 from `final_crnn.json`; the others from their synthetic
+  validation).
+
+**Result.** Validation, one seed per model.
+
+| Model | AUC | AUC 1 m / 5 m | Recall at 5% FA (room) | Frozen threshold: room FA | Frozen threshold: recall (1 m / 5 m) |
+|---|---|---|---|---|---|
+| comb | 0.735 | 0.707 / 0.764 | (ties; not meaningful) | | |
+| it9 CRNN (entry 096) | **0.119** | 0.059 / 0.178 | 0.016 | **96.7%** | 53.2% (36.2 / 70.2) |
+| it11r CRNN 600k s0 (entry 114) | 0.997 | 0.996 / 0.998 | 0.988 | 0.4% | 94.0% (93.4 / 94.7) |
+| it11s CRNN s0 (entry 120) | 0.996 | 0.995 / 0.997 | 0.985 | 0.9% | 95.4% (94.0 / 96.7) |
+
+**Assessment.**
+- This weakens entry 123's hypotheses 1 and 2 *for close, clean drones*. Models that never heard a real
+  drone separate real Glasgow hover drones at 1-5 m from the Glasgow room almost perfectly. At their
+  synthetic thresholds they alarm on 94-95% of drone windows and on under 1% of room windows.
+- it9 is the model that fails here. It ranks the empty room *above* the drones (AUC 0.12) and alarms on
+  97% of the room. it9 trained on Glasgow drones as positives, and Glasgow has no negatives of its own in
+  that pool (`make_pool_arm`: "Glasgow always trains"). So "Glasgow lab sound" became a drone cue: the
+  same recording shortcut that entry 123 suspected in the it11 line, but here in it9.
+- So the gap of entry 105 (ARIS excerpts in war noise at 0 dB) is probably less about "real versus
+  synthetic drone" than about faint or masked drones. There it9's eagerness to alarm may be what helps
+  it. That fits the it11 line's low alarm share there, and entry 115's late alarms.
+
+**Caveats.**
+- Entry 108: the room recording was made at another gain or setting than the background under the
+  drones. Level is removed per window, but its spectral shape differs. A model could therefore separate
+  "drone take" from "room take" without hearing the drone, and part of the 0.997 may be that.
+- it9 has seen Glasgow drones, including d17-d20 (the pool trains on every Glasgow drone). Its recall
+  here is in-distribution. Its room false alarms are not.
+- Hover at 1-5 m indoors is far easier than the deployment case.
+
+**A hygiene finding (not new to this entry).** The server's `~/nodrone/recordings.csv` holds 59 Halmstad
+recordings (and 37 d3set, 121 FPV, 28 Nightjar). Halmstad is a held-out test source (REQUIREMENTS.md).
+`train_clean.py` trains on every non-Nightjar row, so every it11-line model since entry 101 has trained
+on Halmstad no-drone audio. Entry 124's three arms do too, kept that way so they still differ from their
+baseline by one change only. Any Halmstad false-alarm figure for these models is therefore not a test
+result. Excluding Halmstad in `load_nodrone`, as FSD50K eval already is, is a one-line fix and needs
+Mads's go-ahead, because it changes the training set of every later run.
+**Next.** Score entry 124's three arms the same way once their checkpoints are on the Mac. The Mac
+could not receive them directly: a receiving port on the Mac was refused by the sandbox.
+
+## 126 - Entry 124's three arms: no gain on synthetic validation, a loss on Glasgow
+- Date: 2026-11-05
+- Iteration: the soundscape line
+- Type: Model, Evaluation
+- Commit: uncommitted
+
+**Runs.** Entry 124's arms finished at 13:45 (`aug`, `mix`) and 13:48 (`augmix`), after 838-1002 s of
+training. Mads approved the download. The three checkpoints are in `artifacts/e123_arms/`, and their
+MD5s match the server's (aug 2fbaf292..., mix 59fbc4e7..., augmix 6a0e2ca6...). The three JSONs did not
+save through the browser pane and are still only on the server (`artifacts/runs/e123_*.json`); the
+figures below were read from them there.
+**Synthetic validation** (each run's own; the same set as the baseline, since only the training
+draws changed):
+
+| Model | CRNN AUC | Recall at 5% FA | FA at 95% recall | Threshold | Final loss | lgbm AUC |
+|---|---|---|---|---|---|---|
+| it11r CRNN 600k s0 (baseline, entry 114) | 0.803 | 0.367 | 0.638 | 0.631 | 0.551 | |
+| `e123_aug` (speed + EQ) | 0.790 | 0.370 | 0.682 | 0.618 | 0.577 | 0.632 |
+| `e123_mix` (real mixing 0.8) | 0.799 | 0.365 | 0.630 | 0.647 | 0.605 | 0.713 |
+| `e123_augmix` (both) | 0.788 | 0.352 | 0.641 | 0.674 | 0.621 | 0.675 |
+
+comb AUC 0.598 in all three.
+**Glasgow** (entry 125's set-up: `uv run python scripts/score_glasgow.py --device mps --out
+artifacts/e123_arms/e125_glasgow_new.json ...`; d17-d20, 9796 drone and 7255 room windows):
+
+| Model | AUC | AUC 1 m / 5 m | Recall at 5% FA (room) | Frozen threshold: room FA | Frozen threshold: recall |
+|---|---|---|---|---|---|
+| it11r CRNN 600k s0 (baseline, entry 125) | 0.997 | 0.996 / 0.998 | 0.988 | 0.4% | 94.0% |
+| `e123_aug` | 0.983 | 0.980 / 0.987 | 0.914 | 0.2% | 76.4% |
+| `e123_mix` | 0.972 | 0.964 / 0.980 | 0.915 | 0.9% | 82.1% |
+| `e123_augmix` | 0.884 | 0.847 / 0.920 | 0.763 | 0.5% | 58.8% |
+| it9 CRNN (entry 125) | 0.119 | | 0.016 | 96.7% | 53.2% |
+
+**Assessment.** One seed each, so differences of about 0.01 on synthetic validation are within the
+seed spread (entry 112: 0.775-0.811).
+- Neither fix, nor both together, improves anything measured here. On synthetic validation all three
+  are level with the baseline or slightly below it. On Glasgow each one alone costs a little AUC and a
+  lot of recall at the frozen threshold, and the two together cost the most (AUC 0.884).
+- The training loss is higher in every arm (0.577-0.621 against 0.551). The augmented and mixed task is
+  harder, and 600 000 windows may be too few for it. Lower recall at the frozen threshold also reflects
+  higher thresholds (0.647 and 0.674 for the mixing arms).
+- Glasgow was already near its ceiling for the baseline (AUC 0.997), so it can show these arms losing
+  but cannot show them gaining. What they target, faint drones in real noise (entry 105), is not in this
+  check.
+
+Verdict on entry 123's hypotheses, as far as this data can tell:
+- (1) source gap and (2) recording shortcut: not supported for close, clean drones (entry 125).
+- (3) missing augmentation: adding it did not help.
+- (4) threshold on synthetic data: still untested on real far or masked drones.
+
+**Next.** The case that fails is a faint drone under real noise. Two ways to measure it without test
+data:
+- Glasgow d17-d20 mixed into the war track or real rig noise at a range of SNRs;
+- Mads's `drone_war_gui.py` with these three models added.
+
+For now, do not adopt any of the three arms.
+
+## 127 - Entry 124's three arms in `Complete_Test_Gui.py`
+- Date: 2026-11-05
+- Iteration: the soundscape line
+- Type: Infrastructure
+- Commit: uncommitted
+
+**What changed.** Mads asked for the three arms in the complete test GUI.
+- The three run JSONs were downloaded too (Mads approved all six files). Their MD5s match the server's:
+  aug 2fe4f50b..., mix 80091613..., augmix 60163ce6.... All six files are in `artifacts/e123_arms/`.
+- `Complete_Test_Gui.py` adds "e123 aug CRNN", "e123 mix CRNN" and "e123 augmix CRNN" to
+  `drone_war_grid.MODELS` when it starts, with their own colours. They are registered there only, so
+  `detect_gui.py` and `drone_war_gui.py` keep their twelve models and their layouts. The test engine
+  runs in the same process, so this is enough.
+- The detector checkboxes now wrap into rows of six. With 16 detectors, a single row would no longer
+  fit the window.
+
+**Check.** Run headless:
+- `detector_names()` lists the three before comb.
+- `complete_test_engine.load_detectors` loads them at thresholds 0.6183, 0.6468 and 0.6741, the
+  `threshold_5pct_fa` of each run.
+- With the window built (1180 x 917), all checkboxes are mapped, in three rows, the last at y = 774.
+
+The GUI was not run on a test round.
+
+## 128 - Real-rig validation (it9's own validation sessions): the it11r CRNN ranks as well as it9 on Nightjar; its synthetic threshold is far too strict
+- Date: 2026-11-05
+- Iteration: the soundscape line
+- Type: Evaluation
+- Commit: uncommitted
+
+**Where.** Marius allowed work in Mads's JupyterHub account (`mads`), which holds the rig stores and
+`data/processed/manifest.csv` that it9 was trained from (entry 124's block). Mads's repo
+(`iteration9-frontends` at 242b3b4, with his uncommitted changes) was not modified. A separate folder
+`~/e123_score` has `scripts/score_real_dev.py` (MD5 3a4e1b2d..., as on the Mac), a link to his `src`,
+and the five synthetic-trained checkpoints, uploaded from the Mac with MD5s matching. His it9 checkpoint
+`final_crnn_none_simdist_crnn.pt` has the same MD5 as ours (1a5728b1...).
+**Command.** `CUDA_VISIBLE_DEVICES=0 python -u scripts/score_real_dev.py --device cuda --out
+artifacts/runs/e128_real_dev.json "<label>=<ckpt>@<frozen threshold>" ...`
+(result MD5 705e9fb332f0672050330096938bbb24, on the server).
+**Set.** `rangerun.make_pool_arm(manifest, "none").val`: Nightjar flight 3 and d3set Validation.
+These are the sessions that froze it9's threshold. 1 s windows at a 0.5 s hop, digital silence
+skipped. Per rig, the threshold is set on that rig's own background windows.
+- Nightjar: 357 drone and 1482 background windows.
+- d3set: 2291 drone and only 83 background windows, so 5% FA there is about 4 windows. The d3set rows
+  are coarse.
+
+**Result.** One seed per model.
+
+| Model | Nightjar AUC | Nightjar recall at 5% / 10% FA | Nightjar at frozen thr: FA / recall | d3set AUC | d3set recall at 5% FA | d3set at frozen thr: FA / recall |
+|---|---|---|---|---|---|---|
+| comb | 0.516 | 0.115 / 0.120 | | 0.643 | 0.312 | |
+| it9 CRNN (entry 096) | 0.759 | 0.678 / 0.695 | 5.3% / 68.1% | **0.930** | **0.823** | 0% / 80.2% |
+| it11r CRNN 600k s0 (entry 114) | **0.929** | **0.770 / 0.824** | 0.3% / 29.1% | 0.884 | 0.691 | 0% / 36.7% |
+| it11s CRNN s0 (entry 120) | 0.897 | 0.675 / 0.745 | 0.3% / 32.5% | 0.847 | 0.539 | 0% / 40.9% |
+| e123 aug | 0.871 | 0.697 / 0.756 | 0.3% / 20.7% | 0.874 | 0.644 | 0% / 37.4% |
+| e123 mix | 0.910 | 0.686 / 0.773 | 0.3% / 49.0% | 0.863 | 0.542 | 0% / 38.6% |
+| e123 augmix | 0.844 | 0.686 / 0.703 | 0.1% / 34.2% | 0.879 | 0.576 | 0% / 36.3% |
+
+**Assessment.**
+1. **Ranking:** the synthetic-trained it11r CRNN 600k *matches or beats* it9 on Nightjar (AUC 0.929
+   against 0.759; recall at 5% FA 0.770 against 0.678). It has never heard a real drone or any Nightjar
+   audio, while it9 trained on other Nightjar sessions. On d3set it9 is ahead (0.930 against 0.884). The
+   it11 models trained on d3set no-drone audio, so their d3set background may not even be unseen.
+2. **Threshold** (entry 123's hypothesis 4): confirmed, and it is the big one. At its frozen synthetic
+   threshold, the it11r CRNN raises almost no false alarms on real background (0.3%) but catches only
+   29-37% of real drones. At a threshold set on real background at 5% FA, it catches 69-77%. it9's
+   threshold was frozen on these very sessions, so it is calibrated here by construction (5.3% FA on
+   Nightjar). A large part of "it9 wins" in the GUIs (entries 105, 115; Marius on 2026-11-05) is
+   probably this calibration gap, not detection ability. The GUIs use each model's frozen threshold.
+3. **Entry 124's arms:** none beats the it11r CRNN 600k on real rigs either. This agrees with entries
+   125-126.
+
+**Caveats.** One seed each. These sessions are validation, but they are also it9's threshold set, so
+it9's frozen-threshold row is in-sample. The d3set background is 83 windows. Choosing a new threshold
+for the it11 models on these sessions would be tuning on validation, which is allowed, but it then
+needs a fresh check elsewhere.
+**Next.** Re-threshold the it11r CRNN 600k on real background (these Nightjar and d3set sessions, at the
+FA budget the GUIs use), then rerun Marius's Complete_Test_Gui comparison with that threshold.
+
+## 129 - The it11r CRNN 600k at a real-background threshold; "it11r CRNN 600k real-thr" in Complete_Test_Gui
+- Date: 2026-11-05
+- Iteration: the soundscape line
+- Type: Tuning (threshold on validation)
+- Commit: uncommitted
+
+**What.** Marius: re-threshold it. The rule is it9's own (`run_range.py`): `rangerun.fa_threshold` at
+5% false alarms on the *pooled* background windows of `make_pool_arm(manifest, "none").val`, 1 s windows
+at a 0.5 s hop. Run in Mads's account with `~/e123_score/scripts/real_threshold.py`
+(`CUDA_VISIBLE_DEVICES=0 python -u scripts/real_threshold.py`).
+**Check of the rule.** Applied to it9, it returns 0.48279285..., exactly the `deploy_threshold` in
+`final_crnn.json`. So the rule is the one that set it9's threshold.
+**Result.** 2648 drone and 1565 background windows (Nightjar and d3set pooled):
+
+| Model | Threshold | FA on real background | Recall |
+|---|---|---|---|
+| it11r CRNN 600k s0, frozen synthetic threshold (entry 114) | 0.6311 | (entry 128: 0-0.3% per rig) | (entry 128: 29-37% per rig) |
+| it11r CRNN 600k s0, real threshold | **0.3370** | 5.05% | 59.2% |
+| it9 CRNN, same rule (= its frozen threshold) | 0.4828 | 5.05% | 78.5% |
+
+The pooled drone windows are 87% d3set (2291 of 2648), where it9 ranks better (entry 128). On Nightjar
+alone the it11r CRNN was ahead at equal FA.
+**GUI.** `artifacts/e129_realthr/it11r_crnn600k_s0_realthr.json` holds the threshold. It is
+`train_clean`-shaped, so `wavio.threshold_from_run` reads it, and it points at the unchanged checkpoint.
+`Complete_Test_Gui.py` registers "it11r CRNN 600k real-thr" (GUI-only, as in entry 127).
+`load_detectors` returns 0.6311 / 0.3370 / 0.4828 for "it11r CRNN 600k" / "... real-thr" / "it9 CRNN".
+**Hygiene.** The threshold is chosen on validation sessions, which is allowed. It is it9's
+threshold set, so the two models are now calibrated on the same data. Marius's Complete_Test_Gui rounds
+are the fresh check. Nothing was scored on test sources.
+
+## 130 - Marius's Complete_Test_Gui run at 14:30: on Drone_10 in the war soundscape, it6 and it9 rank far better than the it11r CRNN, also at equal false alarms
+- Date: 2026-11-05
+- Iteration: the soundscape line
+- Type: Evaluation (reading of a GUI run)
+- Commit: uncommitted
+
+**Run.** `artifacts/complete_test/20261105_143050_real/` (Marius):
+- one real drone clip, `data/extracted/sealed_peek/Drone_10.wav` (first 10 s), at 60 dB SPL;
+- the war soundscape at 30, 60, 70, 90 and 120 dB, 11 starts each, plus one drone-free round per level;
+- 20 s rounds, 0.125 s hop;
+- detectors: it6 CNN, it9 CRNN, it11r CRNN 600k, it11r CRNN 600k real-thr (entry 129), comb.
+
+Marius: "it6 is the best and it11 is far behind".
+**At each model's own threshold** (`rounds.csv`, pooled per war level, recall / FA):
+
+| War dB | it6 CNN | it9 CRNN | it11r CRNN 600k | it11r real-thr | comb |
+|---|---|---|---|---|---|
+| 30 | 0.95 / 0.000 | 0.76 / 0.000 | 0.19 / 0.000 | 0.48 / 0.030 | 0.00 / 0.008 |
+| 60 | 0.61 / 0.000 | 0.55 / 0.000 | 0.13 / 0.000 | 0.47 / 0.054 | 0.01 / 0.008 |
+| 70 | 0.44 / 0.000 | 0.40 / 0.000 | 0.13 / 0.000 | 0.38 / 0.054 | 0.01 / 0.008 |
+| 90 | 0.16 / 0.000 | 0.14 / 0.000 | 0.07 / 0.000 | 0.26 / 0.054 | 0.00 / 0.008 |
+| 120 | 0.05 / 0.000 | 0.03 / 0.000 | 0.02 / 0.000 | 0.16 / 0.054 | 0.00 / 0.008 |
+
+**At equal false alarms.** Re-read from `scores.npz`:
+- Windows wholly inside the drone's 10 s count as drone; windows wholly outside it, and every window
+  of the drone-free rounds, count as no drone. Straddling windows are left out, as in the engine.
+- Per level, each model's threshold is set at 1% FA on that level's drone-free windows (893 at
+  120 dB; 803 drone windows).
+
+| War dB | it6 CNN AUC / recall | it9 CRNN AUC / recall | it11r CRNN 600k AUC / recall | comb AUC / recall |
+|---|---|---|---|---|
+| 30 | 1.000 / 1.00 | 1.000 / 1.00 | 0.850 / 0.32 | 0.961 / 0.00 |
+| 60 | 0.977 / 0.78 | 0.986 / 0.92 | 0.867 / 0.26 | 0.960 / 0.01 |
+| 70 | 0.919 / 0.60 | 0.921 / 0.72 | 0.804 / 0.19 | 0.961 / 0.01 |
+| 90 | 0.746 / 0.30 | 0.709 / 0.32 | 0.708 / 0.10 | 0.960 / 0.00 |
+| 120 | 0.614 / 0.07 | 0.578 / 0.08 | 0.601 / 0.02 | 0.960 / 0.00 |
+
+The real-thr variant is the same network, so its ranking is identical to the it11r CRNN 600k's.
+**Assessment.**
+- Marius is right, and here the threshold is not the explanation. On this drone the synthetic-trained
+  CRNN ranks worse than it6 and it9 even with the war track almost silent (30 dB: AUC 0.85 against
+  1.00). At 1% FA it catches about a third as many windows as they do.
+- Entry 129's real threshold only trades false alarms for recall: about 5% FA, which it6 and it9 do
+  not pay here.
+- So the it11r CRNN separates *some* real drones well (Glasgow hover, entry 125; Nightjar, entry 128)
+  but not Drone_10. Entry 123's hypothesis 1 (the Pd drones lack something real drones have) stands for
+  this kind of drone.
+- comb's AUC (0.96 at every level) with near-zero recall at 1% FA means its scores are tied or flat on
+  the drone-free windows. Its AUC is not comparable.
+
+**Hygiene.** One drone clip, so this is anecdotal. Drone_10 is a `sealed_peek` ITU ARIS excerpt, the
+third design discussion steered by it (entries 101, 105). Decisions taken on it need confirming on
+drones that have not been looked at.
+
+## 131 - Council: drop the synthetic-only line and build on it9's real-drone recipe?
+- Date: 2026-11-05
+- Iteration: the soundscape line (decision on its future)
+- Type: Council
+- Commit: uncommitted
+
+**Question.** Should the project (A) abandon synthetic-only training and build on it9's real-drone
+recipe (`run_range.py --pool`, simdist: real drones from several rigs summed into the same rig's
+background, speed 0.8-1.25, EQ), adding what the it11 line contributed (steady and war-like noise,
+soundscape backgrounds, Glasgow no-drone audio as negatives)? The alternatives are (B), keep the current
+approach (Pd drones in soundscapes, plus Glasgow d1-d16), and (C), a hybrid of real data plus synthetic
+scenes, or it9's weights fine-tuned on scenes. The evidence given was entries 105 and 123-130, with
+REQUIREMENTS.md rows R2, R3 and "Synthetic training data". The last of these (Mads, entry 107) allows only
+synthetic drones and Glasgow d1-d16 in training, so A needs a requirements change.
+
+**Devil's Advocate.**
+- Decisive 1: *source confounded with label.* The it9 recipe puts each rig's channel into every positive,
+  and Glasgow proves the risk (it9 AUC 0.119, 97% FA on the empty room; entry 125). Adding Glasgow
+  negatives patches only the rig that happened to be caught.
+  **Answer:** partly answered by design. Every rig that gives drone positives must also give its own
+  no-drone audio. DDL, DroneNoise and Glasgow have none in it9's pool, and this is the mechanism to remove,
+  not a single patch. The Glasgow room probe becomes a hard gate. If an A model still fails it, the
+  objection stands and A is rejected.
+- Decisive 2: *the case for A rests on sealed ARIS data and one drone.* **Answer:** this objection stands
+  in part. The non-sealed evidence is mixed: d3set favours it9 (0.930 against 0.884), Nightjar favours
+  it11r (0.929 against 0.759), and Glasgow favours it11r. The evidence clearly for A is ARIS (entries 105,
+  130), which has now steered four discussions. From here, ARIS is not used for decisions until a finished
+  candidate is scored. Gates use non-sealed probes only.
+- Serious objections:
+  - *The rule change removes validation and test rigs.* Answered by protocol: leave-one-rig-out within
+    validation, and DroneNoise, Halmstad, FSD50K-eval and FPV stay test.
+  - *One seed.* Answered: at least 2 seeds per arm.
+  - *Tiny d3set background (83 windows).* Answered: the threshold is pooled per rig, weighted, not by
+    window count.
+  - *itG-B (half real Glasgow, allowed now) never scored.* Answered: a compliant arm, with Glasgow
+    d1-d16 as the only real drones, runs next to A and shows what the extra rigs add.
+  - *Time cost.* This stands; it is the price of A.
+
+**Scholar** (no project context; it checked the sources below, abstracts only, and I have not
+re-verified them).
+- Best practice is (b): real target audio from as many rigs and drone types as possible, augmented by
+  mixing into real background at controlled SNR, pitch/speed shift, EQ and SpecAugment, plus hard
+  negatives. On top of that, pretraining on a broad audio corpus (AudioSet/PANNs, Kong et al. 2020).
+  Reuter, Ohlenbusch & Rollwage (arXiv 2605.31329) find that pretraining is the biggest lever for
+  out-of-domain robustness.
+- Synthetic Scaper-style soundscapes are mainstream as a complement, with a known synthetic-to-real gap
+  (Serizel et al. 2020; Turpault & Serizel 2020).
+- Procedurally synthesised *target* sound as the main source: no established practice found. (a) is
+  *against practice*, (b) is *standard*, (c) is a *defensible variation* only as an ablation.
+- Evaluation: leave-one-source-out or an external out-of-domain corpus, TPR at a fixed FPR measured on
+  large realistic negatives, TPR by SNR or distance, thresholds on training-source validation.
+- Unsettled: whether synthetic target audio helps beyond generic pretraining, and log-mel against PCEN
+  under heavy noise (Vilhurin et al., arXiv 2608.14287).
+
+**Problem Solver.** Verdict: *try a modified version of A.* Start from the `simdist_steady` recipe, then
+add Glasgow no-drone audio, war-like noise as negatives and masks, and the soundscape backgrounds as extra
+negatives. Remove Halmstad from every training pool. Keep the CRNN and the frontend (data change only).
+- Cheapest experiment: "it9+neg", 2 seeds, about 20 minutes, beside it9 and an it11r reference without
+  Halmstad, all thresholds frozen on validation. Gates:
+  - (a) Glasgow d17-d20 against the room: AUC ≥ 0.97 and FA ≤ 5% (required);
+  - (b) Nightjar recall at 5% FA ≥ 0.77;
+  - (c) d3set recall at 5% FA ≥ 0.80 (required);
+  - (d) war test within 5 points of it9.
+- Success means (a) and (c) pass, plus (b) or (d). If (a) fails, balance negatives per rig instead of
+  going back to synthetic.
+- Fallback if Mads refuses the rule change: the same recipe with Glasgow d1-d16 as the only real drones.
+- Confidence: medium.
+
+**Weighing.**
+- The Scholar and the Problem Solver agree: real drones at the core, synthetic material as negatives and
+  diversity at most. No departure from best practice is proposed.
+- The Problem Solver's gate (d) uses the war GUI, which runs on sealed ARIS clips. It is replaced by a
+  non-sealed war check: Glasgow d17-d20 mixed into the war track. ARIS is kept for the final scoring.
+- The Scholar's strongest lever, pretraining on a broad corpus, is a new model family or frontend change.
+  It needs its own council and is noted as the next candidate, not part of this decision.
+
+**Decision.** Recommend modified A to Mads. Its training data needs his change to the "Synthetic training
+data" requirement: real drones from DDL, Nightjar and d3set (training sessions only), and Glasgow d1-d16, may train. FPV stays test.
+Until he decides:
+1. The synthetic line is frozen (no further tuning).
+2. The Halmstad leak is fixed in every training list, with a check that no test source reaches training.
+3. The compliant arm (it9's recipe plus the it11 negatives, Glasgow d1-d16 as the only real drones) may
+   run, since it needs no rule change.
+
+Gates as above, with (d) replaced, at least 2 seeds, and leave-one-rig-out validation. The sealed ARIS
+clips are not used again until a finished candidate is scored.
+
+## 132 - Test-source leak fixed in `train_clean.py`; correction to entries 125 and 131: it9 never trained on Glasgow
+- Date: 2026-11-05
+- Iteration: the soundscape line
+- Type: Bug fix, Correction
+- Commit: uncommitted
+
+**Leak fix.** Entry 125 found the Halmstad no-drone recordings in `~/nodrone`. A second test source was
+there too: 121 FPV no-drone recordings, and REQUIREMENTS.md makes the FPV clips test.
+- `train_clean.load_nodrone` now skips every row whose source is in `TEST_SOURCES = {halmstad, fpv,
+  dronenoise}`. FSD50K eval stems were already skipped.
+- New `tests/test_train_clean.py` checks this (`uv run pytest -q tests/test_train_clean.py`: 1 passed).
+- Every it11-line model so far, including entry 124's arms and the it11r and it11s CRNNs, trained on
+  Halmstad and FPV no-drone audio. Their Halmstad or FPV false-alarm figures, if ever taken, are not
+  test results. No model was retrained here.
+
+**Correction.** Mads's `data/processed/manifest.csv`, the data it9 was trained from, read in his account
+on 2026-11-05, holds no Glasgow rows. Its sources are d3set, ddl, dronenoise, fpv, fsd50k, halmstad, lund
+and nightjar. `make_pool_arm` adds Glasgow only when the manifest has it, so **it9 never trained on
+Glasgow**.
+- Entry 125's explanation ("it9 trained on Glasgow drones as positives ... so 'Glasgow lab sound' became
+  a drone cue") is wrong.
+- What stands is the measurement: it9 ranks the Glasgow empty room above the Glasgow drones (AUC 0.119)
+  and alarms on 97% of it. The room and the drones were *both* unseen. So it9 false-alarms on an unseen
+  quiet room recording, which is a generalisation failure, not a learned microphone cue.
+- In entry 131, the Devil's Advocate's decisive objection 1 rested on that wrong explanation, and so did
+  my answer to it ("every rig that gives drone positives must also give its own no-drone audio").
+  - Restated, the objection is weaker but still serious: it9 alarms on an unseen room, and the it9 recipe
+    has not shown it can avoid that.
+  - The Glasgow room gate (a) stays. It now tests generalisation to an unseen room, not removal of a
+    learned cue.
+- Also wrong in entry 128: "it9 has seen Glasgow drones, including d17-d20". It has not, so its
+  Glasgow drone recall in entry 125 is not in-distribution either.
+
+**Consequence for the compliant arm (entry 131).** Its only allowed real drones, Glasgow d1-d16, exist
+on the Mac and not on the server where the rig backgrounds are. The Glasgow audio has to be moved first,
+or the arm built differently.
+
+## 133 - The compliant arm: Glasgow d1-d16 as the only real drones, mixed into real backgrounds (started); gate set-up and reference scores
+- Date: 2026-11-05
+- Iteration: the soundscape line (entry 131's compliant arm)
+- Type: Data, Model
+- Commit: uncommitted (server: ce75020 + entry 124's and 132's `train_clean.py`, MD5 a8669939...)
+
+**Data.** Allowed now (REQUIREMENTS.md, entry 107): Glasgow d1-d16 train.
+- Hover clips are stationary, so a 30 s excerpt was taken from each of the 176 d1-d16 hover files
+  (random start, rng 132) instead of all 5.96 h, resampled to 16 kHz. Moving all 687 MB through the
+  browser's 10 MB uploads was not practical.
+- Added: the first half (30.2 min) of the Glasgow room recording as one no-drone clip, so "Glasgow room"
+  cannot mean "drone". Gate (a) uses only the second half.
+- Path: Mac → tar (MD5 504805bd...) → Mads's account in 11 uploads → shared `/tmp` → Marius's account,
+  where the MD5 matched. Now `data/processed/scenes/glasgow_d1_16/` holds 177 WAVs and labels.
+- Validation drones: `scenes/it11s_valdrone/`, symlinks to the 360 it11s drone scenes with seed ≥ 1800.
+
+**Runs** (14:53, CRNN, 600 000 windows, `--nodrone ~/nodrone`, test sources excluded by entry 132's fix:
+1873 no-drone clips instead of 2053):
+- `e133_glasgow_s0` / `_s1` (GPUs 0, 1):
+  `--drones scenes/glasgow_d1_16 scenes/it11s_valdrone scenes/it11s/nodrone --speed 0.8 1.25 --eq
+  --mix-real 0.8`.
+  - Positives: only Glasgow d1-d16, 80% summed into real rig recordings at -10..+5 dB (simdist-like),
+    with speed and EQ as in it9.
+  - Negatives: real Nightjar, d3set and stems, plus the it11s soundscape scenes (steady noise in half of
+    them) and the room half.
+- `e133_it11s_clean_s0` (GPU 2): the it11s command of entry 117, now without Halmstad and FPV, as the
+  leak-free reference.
+
+**Gate set-up.** `scripts/score_glasgow.py` gained two options:
+- `--room-second-half`;
+- `--war-snr`: every d17-d20 drone window is mixed into a random window of
+  `data/processed/war/war_track.wav` at the given in-band SNR. These mixes are scored against
+  war-track windows alone, with recall at 1% FA on those.
+
+This war check (d) replaces the sealed ARIS war test (entry 131). Caveat: the it11 line has `stem:war`
+stems in training, so the war track may not be fully unseen by it.
+**Reference scores**:
+`uv run python scripts/score_glasgow.py --device mps --room-second-half --war-snr 0 -5 -10 --out
+artifacts/runs/e133_gates_ref.json ...`. There are 9796 drone and 3627 room windows (second half), and
+the war-track windows come from the whole war track.
+
+| Model | (a) room AUC | room FA at frozen thr | recall at frozen thr | war AUC 0 / -5 / -10 dB | war recall at 1% FA, 0 / -5 / -10 dB | war FA at frozen thr |
+|---|---|---|---|---|---|---|
+| it6 CNN* | 1.000 | 11.6% | 100% | 1.000 / 1.000 / 1.000 | 1.00 / 1.00 / 1.00 | 1.3% |
+| it9 CRNN | 0.092 | 99.2% | 53.2% | 0.999 / 0.999 / 0.995 | 0.985 / 0.971 / 0.937 | 0.8% |
+| it11r CRNN 600k | 0.998 | 0.3% | 94.0% | 0.996 / 0.995 / 0.993 | 0.876 / 0.839 / 0.787 | 0.6% |
+| it11s CRNN | 0.997 | 0.8% | 95.4% | 0.998 / 0.997 / 0.995 | 0.952 / 0.930 / 0.895 | 0.3% |
+| comb | 0.737 | | | 0.679 / 0.646 / 0.612 | 0.166 / 0.133 / 0.097 | |
+
+\* **it6 trained on every Glasgow drone**, including d17-d20 and the test drones d21-d24 (iteration 6
+box: "Nightjar, d3set, the three FPV campaigns, Glasgow, DDL and DroneNoise"), and on DroneNoise, a test
+source. Its Glasgow figures here are in-training and say nothing about generalisation. Any Glasgow
+d21-d24 or DroneNoise score of it6 is not a test result either. This bears on Marius's "it6 is the best"
+(entry 130): whether Drone_10 resembles a source it6 trained on is unknown.
+
+**Reading of the references.**
+- it9 alarms on almost all of the unseen Glasgow room (99%; correction in entry 132).
+- On Glasgow drones in the war track, though, it9 is the best of the models that never heard Glasgow:
+  93.7% at -10 dB against 89.5% (it11s) and 78.7% (it11r) at 1% FA on the war track.
+- Gate (a) separates the models: it9 fails it, and the it11 models pass. Gate (d) favours it9.
+
+## 134 - The compliant arm fails its gates: Glasgow-only real drones overfit to the Glasgow recordings
+- Date: 2026-11-06 (runs finished 2026-11-05, 15:06-15:16)
+- Iteration: the soundscape line (entry 131's compliant arm)
+- Type: Model, Evaluation (validation only)
+- Commit: uncommitted
+
+**Files.** Marius asked for the download.
+- Checkpoints and run JSONs are in `artifacts/e133_arms/`. The checkpoint MD5s match the server's:
+  glasgow s0 67d685db..., s1 aaa0f7ec..., it11s clean 5e435b0d....
+- The real-rig scoring ran in Mads's account, with the checkpoints passed through `/tmp/e133`:
+  - `~/e123_score/artifacts/runs/e133_real_dev.json`;
+  - `e133_real_threshold.json` (`scripts/real_threshold.py`, it9's rule);
+  - Glasgow gates: `artifacts/e133_arms/e133_gates_new.json`.
+
+**Training.**
+- The Glasgow arm's loss fell to 0.003 (s0) and 0.003 (s1); the it11s CRNNs ended near 0.55.
+- On their own synthetic validation (Pd drone scenes), the Glasgow arms score CRNN AUC 0.560 / 0.420,
+  with a 5% FA threshold of 8e-5 / 1e-4. Their scores collapse to about 0 for anything that does not
+  sound like a Glasgow recording.
+- it11s clean (leak-free): AUC 0.796 and recall at 5% FA 0.399, about the same as it11s with the leak
+  (0.788-0.807, entry 120).
+
+**Gates** (entry 131). The frozen threshold is each model's real-background threshold (5% FA pooled,
+it9's rule).
+
+| Model | (a) Glasgow room AUC / FA at thr | (b) Nightjar AUC / recall at 5% FA | (c) d3set AUC / recall at 5% FA | Pooled real recall at 5% FA (thr) | (d) war recall at 1% FA, 0 / -5 / -10 dB |
+|---|---|---|---|---|---|
+| e133 glasgow s0 | 1.000 / 99.9% | 0.713 / 0.650 | 0.812 / 0.582 | 71.0% (4.7e-6) | 1.00 / 1.00 / 0.999 |
+| e133 glasgow s1 | 1.000 / 99.2% | 0.755 / 0.672 | 0.807 / 0.586 | 70.3% (1.3e-5) | 1.00 / 1.00 / 0.999 |
+| e133 it11s clean | 1.000 / 8.7% | 0.890 / 0.678 | 0.847 / 0.557 | 58.3% (0.373) | 0.963 / 0.938 / 0.880 |
+| it11r CRNN 600k (entries 128, 129, 133) | 0.998 / | 0.929 / 0.770 | 0.884 / 0.691 | 59.2% (0.337) | 0.876 / 0.839 / 0.787 |
+| it9 CRNN (same) | 0.092 / 99.2% | 0.759 / 0.678 | 0.930 / 0.823 | 78.5% (0.483) | 0.985 / 0.971 / 0.937 |
+| Gate | AUC ≥ 0.97, FA ≤ 5% | recall ≥ 0.77 | recall ≥ 0.80 | | within 5 points of it9 |
+
+**Verdict: the compliant arm fails.**
+- It fails (b) and (c), the decisive real-rig gates.
+- It fails (a) on false alarms: at the threshold real rigs need, it alarms on 99% of the Glasgow room.
+- Its perfect (a) AUC and (d) war scores are uninformative. d17-d20 come from the same Glasgow rig and
+  room as the d1-d16 it trained on, which is exactly the shortcut the Devil's Advocate warned of
+  (entry 131).
+- The near-zero loss, the near-zero thresholds and the collapsed synthetic validation all show a model
+  that learned "a Glasgow recording" more than "a drone".
+
+**What it does show.** Ranked on the pooled real rigs at 5% FA, even this overfit model catches more
+drones than either synthetic-trained CRNN (70-71% against 58-59%), from one indoor rig of real drones.
+it9, trained on real drones from several outdoor rigs, is still well ahead at 78.5%. Under the current
+rule (Glasgow d1-d16 the only real drones), real drone audio helps, but one rig is not enough.
+**Leak fix.** Removing Halmstad and FPV changed it11s by about one seed's spread (Nightjar AUC 0.890
+against 0.897; recall at 5% FA 0.678 against 0.675). The earlier conclusions do not depend on the leak.
+**Next.** This is the evidence entry 131 said Mads needs. The compliant route stalls at Glasgow's single
+rig. The next step is his decision on the "Synthetic training data" requirement: real drones from DDL,
+Nightjar and d3set training sessions in training, with FPV, DroneNoise, Halmstad and FSD50K-eval kept as
+test. Until then, no further training on this line.
+
+# Iteration 11.1 - AudioSet-pretrained encoder (PANNs Cnn14_16k)
+
+> **Changed from the soundscape line (entries 133-134):** the network only. The CRNN trained from scratch
+> is replaced by the AudioSet-pretrained PANNs Cnn14_16k: frozen with a linear probe (P1), then fine-tuned
+> from that probe (P2, LP-FT). P0 scores its 527 AudioSet outputs with no training.
+> **Why:** entry 134. Under entry 107's rule, the only real training drones are Glasgow d1-d16, from one
+> indoor rig. From scratch, the model learned "a Glasgow recording", not "a drone". It failed gates (a), (b)
+> and (c), with a near-zero loss and near-zero thresholds. Pretraining is the established lever for unseen
+> recording chains: the entry 053 and 131 councils, and Reuter, Ohlenbusch & Rollwage, arXiv 2605.31329.
+> The latter was read in full on 2026-11-06. It reports out-of-domain TPR at 1% FPR of 0.701 ± 0.015 from
+> scratch against 0.783 ± 0.014 with AudioSet pretraining, over 10 runs, with full fine-tuning of their own
+> SE-ResNet.
+> **Kept the same:** the e133 compliant training data, split and augmentation, by importing
+> `train_clean.py`. That is Glasgow d1-d16, the it11s scenes, real rig negatives, speed 0.8-1.25, EQ,
+> `--mix-real 0.8`, and the entry 132 test-source exclusion. Also kept: the validation split
+> (train_clean's `--val-seed 1800` drones against the Nightjar no-drone clips), 1 s windows and 0.5 s
+> evaluation hop.
+> **Hypothesis:** a general-audio prior stops the single-rig shortcut. On real rigs, the pretrained arm
+> beats the e133 from-scratch arm by more than the seed spread, and passes the room gate.
+> **Judged by:** entry 131's gates plus entry 053's mower gate, fixed in entry 135 before any run.
+
+## 135 - Requirements: Mads accepts the pretrained-encoder plan; entry 054's deferral is lifted
+- Date: 2026-11-06
+- Iteration: 11.1
+- Type: Requirements
+- Commit: uncommitted (branch 11.1, from 55b990f)
+
+**What changed.**
+- A written plan was put to Mads: P0, P1 and P2 on the e133 data, the gates below, and four open decisions.
+  In reply he wrote "Im mads i accept it".
+- He was then asked to approve each of the four decisions one by one. He answered "use your best judgment".
+- Earlier in the same conversation the user was taken to be Marius, from the Mac account. Mads identified
+  himself at this point. This is recorded as stated.
+- Read as follows:
+  1. **Entry 054's deferral ("embeddings wait until after the field test") is lifted.** The report does not
+     record whether the field test has happened.
+  2. **AudioSet-pretrained weights are allowed as initialisation** under the "Synthetic training data" row
+     (entry 107). They contain no project audio and no test source. PANNs are trained on AudioSet, which is
+     YouTube; FSD50K is Freesound. The training audio itself is unchanged.
+  3. **The new code and the checkpoint download are approved:**
+     - the Cnn14 port (reference code MIT);
+     - `Cnn14_16k_mAP=0.438.pth` from Zenodo record 3987831, weights CC BY 4.0 according to several mirrors.
+       The record itself could not be opened from the Mac. The download is about 330 MB (a mirror's figure,
+       not verified), fetched on the server.
+  4. **No new council**, my judgment as delegated:
+     - Entry 053's council decided this arm: frozen `Cnn14_16k` plus a probe, with LP-FT on `Cnn14_16k` as
+       the next step if the probe shows the encoder helps.
+     - P2 is bound to that condition: it runs only if P1 beats the e133 from-scratch arm on gate (b) or (c).
+     - The gates below are entry 131's council's, plus entry 053's mower gate.
+     - Departure: entry 053's Lund gate and its iteration-5-arm comparison are replaced by entry 131's gates.
+       Entry 107 changed the training data, so the iteration-5 arms are no longer the reference. The e133
+       arms are, being on the same data.
+- Also from this conversation: all training runs on the JupyterLab server and none on the Mac. Server:
+  3× TITAN X (Pascal, 12 GB), fp32, internet access, no sshd.
+- REQUIREMENTS.md was updated to match: two Data rows and the training-hardware row.
+
+**Pass/fail rule, fixed now, before any run.**
+- Frozen threshold: each model's real-background threshold (5% FA pooled per rig, it9's rule, entry 129).
+  It is computed with `real_threshold.py`, which is in Mads's account and not in the repo.
+- Gates:
+
+  | Gate | Pass |
+  |---|---|
+  | (a) Glasgow room, second half | AUC ≥ 0.97 and FA ≤ 5% at the frozen threshold |
+  | (b) Nightjar | recall ≥ 0.77 at 5% FA |
+  | (c) d3set | recall ≥ 0.80 at 5% FA (required) |
+  | (d) Glasgow d17-d20 in the war track | recall at 1% FA within 5 points of it9 at 0 / -5 / -10 dB |
+  | (e) Mower-only windows of `nightjar-lawnmower1-20260805` | FA ≤ 25% at the frozen threshold |
+
+- **Success:** (a) and (c) pass, plus (b) or (d), and (e) is no worse than it9. For P2 this must hold on
+  at least 2 of 3 seeds.
+- **Informative failure:** better than the e133 Glasgow arms (entry 134) on (b) and (c) by more than their
+  seed spread, without passing.
+- **Rejection:** not better than e133 on (b) and (c).
+- **Also reported:**
+  - entry 053's rig-ID probe (how well the rig is predicted from the embedding), next to the same probe on
+    the CRNN's penultimate features;
+  - the `comb` baseline, and the e133 `lgbm` baseline from the same data and split.
+- **Sealed data stays sealed.** ARIS, RODENT and the held-out test sources are scored once, for a candidate
+  that passes.
+
+**Next.** Entry 136: the code. Then the server stages fetch, test, smoke, P0 and P1.
+
+## 136 - The Cnn14_16k port, its scorer, scripts and tests (branch 11.1; no run on the server)
+- Date: 2026-11-06
+- Iteration: 11.1
+- Type: Infrastructure
+- Commit: uncommitted (branch 11.1, from 55b990f)
+
+**What changed.**
+- `src/dad/models/panns.py`: Cnn14 ported from the reference code, with module names that load the
+  checkpoint with `strict=True`. Also its own pretraining frontend in plain torch and numpy (the repo's
+  no-librosa rule):
+  - 512/160-sample periodic-Hann STFT, centred, reflect-padded;
+  - power spectrum, the Slaney mel filterbank with 64 bands over 50-8000 Hz, then 10·log10 with amin 1e-10.
+- **Level.** Each window's mean log-mel (dB over time and bands) is set to the mean of the checkpoint's `bn0`
+  running mean. This is my choice, not taken from the paper and not tuned. It makes loudness say nothing,
+  as the repo's "level" variant does, and keeps the input at the encoder's training level.
+- **EQ.** The training EQ curves, in natural-log units over 64 bands, are converted to dB and added to
+  Cnn14's 64 bands before the level step.
+- `src/dad/pannsrun.py`: `PannsScorer`, with the interface of `NetScorer`.
+  - P1 `fit_probe`: frozen encoder in eval mode, 2048-d embeddings of sampled training windows, standardised;
+    logistic regression with C from {1e-3, 1e-2, 1e-1, 1} picked by validation AUC; the scaler is folded
+    into a 2-logit head. Its checkpoint is head only, about 20 KB, and stores the encoder checkpoint's MD5.
+  - P2 `fit_finetune`: from a probe head, AdamW at a one-cycle peak learning rate of 1e-4 with weight decay
+    1e-2, SpecAugment after `bn0` (where the reference applies its own), and the reference's dropout. The
+    state with the best validation AUC is kept, checked every 100 000 windows, as `dad.train` keeps the best
+    epoch. The checkpoint is the whole network (about 320 MB) and loads without the encoder file.
+  - Speed is changed on the device by `gpufront.GpuFrontend.speed`.
+- `src/dad/realrun.py`: 3 lines. `NetScorer.load` hands checkpoints with arch `panns*` to `PannsScorer`, so
+  `score_glasgow.py`, `score_real_dev.py` and the GUIs take them unchanged.
+- `scripts/train_panns.py` runs P1 and P2. It imports train_clean's `load_drones`, `load_nodrone`,
+  `CleanSampler`, `eval_windows` and `scores`.
+- `scripts/panns_p0.py` runs P0: the per-class AUC of all 527 AudioSet outputs on each comparison whose data
+  is present (train_clean validation, real validation rigs, the mower session, Glasgow room and war track).
+  Classes picked by these AUCs are picked on validation, so P0 is a diagnostic only.
+- `tests/test_panns.py`: 9 tests. One compares our filterbank and STFT kernels with the checkpoint's frozen
+  copies; it runs only where the checkpoint exists.
+- `scripts/experiments/run_it11_1.sh`: the server stages `fetch`, `test`, `smoke`, `p0`, `p1`, `p2` (seeds 0-2
+  on GPUs 0-2, in the background), `gates` and `pack`. It calls `.venv/bin/python`, never `uv run`, so the
+  Pascal-capable torch on the server is not replaced.
+
+**How (checks on the Mac, CPU, random weights; no training).**
+- `.venv/bin/python -m pytest -q tests`: 121 collected, 119 passed, 2 skipped. The skips are the librosa
+  comparison (librosa is not a repo dependency) and the checkpoint test (no checkpoint on the Mac).
+  `tests/test_realrun.py` and `tests/test_train_clean.py` pass with the `realrun.py` change.
+- Against the reference code, in a scratch environment outside the repo (librosa 1.0.0, torchlibrosa 0.1.0,
+  panns_inference 0.1.1, torch 2.14.1):
+  - mel filterbank against `librosa.filters.mel(sr=16000, n_fft=512, n_mels=64, fmin=50, fmax=8000)`: max
+    absolute difference 1.9e-9 (largest weight 0.0216);
+  - STFT kernels against torchlibrosa's: 1.5e-8 (real), 4.7e-10 (imaginary);
+  - all 84 state tensors of the reference `Cnn14(sample_rate=16000, window_size=512, hop_size=160,
+    mel_bins=64, fmin=50, fmax=8000)` load strictly into the port;
+  - with the same random weights and the level step bypassed, embedding and clipwise output differ by 0.0.
+
+**Result.** No detection figure. Not run: the checkpoint test, P0, P1, P2 and every gate.
+
+**Known gaps before a gate verdict.**
+- `gates` scores with each run's own train_clean validation threshold. That is the synthetic-validation
+  threshold entry 128 found far too strict. The decisive real-background threshold needs
+  `real_threshold.py` (Mads's account).
+- The real-rig and mower gates need `data/processed/manifest.csv` (Mads's account). Gates (a) and (d) need
+  `data/extracted/Glasgow`, which may be on the Mac only.
+- The level normalisation is a design choice, not tuned.
+
+**Next.** On the server: `bash scripts/experiments/run_it11_1.sh fetch`, `test`, `smoke`, `p0`, `p1`. The
+checkpoint's MD5, the test result and the P0 table go in the next entry.

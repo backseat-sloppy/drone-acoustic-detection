@@ -61,7 +61,18 @@ PAGES = [("real", "Real drone test"), ("synthetic", "Synthetic drone test")]
 DEFAULT_LEVELS = {"war soundscape": "60", "war-shaped noise": "50", "wind": "50", "cars": "", "helicopter": "",
                   "insects": ""}
 COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it10 CNN": "#d93025",
+          "e123 aug CRNN": "#00897b", "e123 mix CRNN": "#c2185b", "e123 augmix CRNN": "#795548",
+          "it11r CRNN 600k real-thr": "#3949ab",
           "comb": "#1baf7a"}
+
+# Entry 124's arms (report entries 124-126): it11r CRNN 600k + speed/EQ, + real-recording mixing, + both; seed 0.
+# Registered here only, so the older GUIs' model lists stay as they are.
+_E123 = E.dwg.ROOT / "artifacts/e123_arms"
+E.dwg.MODELS.update({f"e123 {n} CRNN": (_E123 / f"e123_{n}.json", _E123 / f"e123_{n}_crnn.pt")
+                     for n in ("aug", "mix", "augmix")})
+# Entry 129: the it11r CRNN 600k checkpoint at a threshold set on real background (5% FA, it9's rule).
+E.dwg.MODELS["it11r CRNN 600k real-thr"] = (E.dwg.ROOT / "artifacts/e129_realthr/it11r_crnn600k_s0_realthr.json",
+                                            E.dwg.ROOT / "artifacts/it11r_crnn600k/it11r_crnn600k_s0_crnn.pt")
 PART_COLORS = {"drone": "#d93025", "war soundscape": "#6b4e16", "war-shaped noise": "#7a7a7a", "wind": "#2a9d8f",
                "mix": "#111111"}
 BG, PANEL, ACCENT, MUTED = "#f4f5f7", "#ffffff", "#2a78d6", "#6b7280"
@@ -237,7 +248,7 @@ class Page(ttk.Frame):
             self.v_det[d] = v
             tk.Checkbutton(f, text="DSP (comb)" if d == "comb" else d, variable=v, command=self.update_count,
                            fg=COLORS.get(d, "#333"), bg=PANEL, activebackground=PANEL, selectcolor=PANEL,
-                           font=("Segoe UI", 10, "bold")).grid(row=0, column=i, padx=(0, 14), sticky="w")
+                           font=("Segoe UI", 10, "bold")).grid(row=i // 6, column=i % 6, padx=(0, 14), sticky="w")
 
     def _build_run(self, f):
         f.columnconfigure(0, weight=1)

@@ -590,6 +590,9 @@ class NetScorer:
         import torch
         from .models.zoo import build
         ck = torch.load(path, map_location="cpu", weights_only=False)
+        if str(ck.get("arch", "")).startswith("panns"):   # pretrained encoder (pannsrun.py): its own frontend
+            from .pannsrun import PannsScorer
+            return PannsScorer.load(path, cfg, device)
         cfg = dataclasses.replace(cfg, **ck.get("frontend", {}))
         net = cls(ck["arch"], VARIANTS[ck["variant"]], cfg, device)
         net.mu, net.sigma = ck["mu"], ck["sigma"]
