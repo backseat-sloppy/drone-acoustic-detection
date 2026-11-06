@@ -39,6 +39,14 @@ for held in rg.POOL143_UNITS:
     a = rg.make_pool_arm_143(m, held)
     print(f'hold out {held}: train {len(a.train)} segments, val {len(a.val)} (from {sorted({r.source for r in a.val})}), '
           f'test {len(a.test)}, mower {len(a.confuser)}; train sources {sorted({r.source for r in a.train})}')
+# Build each fold's sampler as train does (this reads the audio, so a missing source fails here, not on the GPUs)
+from dad import realrun as rr; from dad.config import FrontendConfig
+cfg = FrontendConfig(); splits = rr.make_splits(m, cfg)
+for held in rg.POOL143_UNITS:
+    for rec in ('simdist', 'simdist_steady'):
+        sm = rg.RangeSampler(rg.make_pool_arm_143(m, held), splits, rg.RECIPES[rec], cfg, seed=0, speed=(0.8, 1.25), dronenoise=False)
+        assert not [c for c in sm.cells if c.chain == 'dronenoise'], 'DroneNoise in a rule-143 sampler'
+        print(f'hold out {held}, {rec}:', sm.describe())
 "
   ;;
 train)

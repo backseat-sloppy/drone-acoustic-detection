@@ -9677,3 +9677,31 @@ drones from several rigs, to keep the rule and try fixes within it, or to stop a
 **Result.** Nothing run. On the Mac, `tests/test_rule143.py`, `tests/test_rangerun.py` and
 `tests/test_panns.py` pass (2 skips, as before).
 
+## 145 - Correction: RangeSampler always trained on DroneNoise drones; off under entry 143, so 11.2 restarts
+- Date: 2026-11-06
+- Iteration: 11.2
+- Type: Bug fix, Correction
+- Commit: this entry's commit
+
+**What happened.** The first `run_it11_2.sh train` (11:26:31) stopped in all three jobs before any training
+step, with `FileNotFoundError: data/processed/dronenoise.f32`.
+- `RangeSampler.__init__` always adds a DroneNoise cell (`rr.dronenoise_pool`) as training positives, next to
+  the DDL ≤ 50 m cell.
+- DroneNoise is a test source under entry 143 and was therefore not copied to Marius's account (entry 143).
+
+**Fix.**
+- `RangeSampler(..., dronenoise=True)` keeps the old behaviour by default. `run_range.py` passes
+  `dronenoise=False` under `--rule143`.
+- `run_it11_2.sh check` now builds both folds' samplers for both recipes, exactly as `train` does. This reads
+  the audio, so a missing source fails there and not on the GPUs. It also asserts that no DroneNoise cell is
+  present, and prints each sampler's composition.
+
+**Correction to earlier entries.** Every `run_range.py` model trained DroneNoise near-pass-by drones as
+positives: iterations 3-6 and 9, it6, and **it9 CRNN**.
+- Entry 133 noted this for it6 only.
+- Their DroneNoise figures, where any were taken, are not test results.
+- it9 also trained on the FPV campaigns. Under entry 143's rule it is a reference, not a compliant candidate.
+
+**Result.** Nothing trained. `tests/test_rule143.py` and `tests/test_rangerun.py` pass. 11.2 restarts after
+`check`.
+

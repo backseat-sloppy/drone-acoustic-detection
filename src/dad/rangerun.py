@@ -233,7 +233,10 @@ class RangeSampler:
     """
 
     def __init__(self, arm: Arm, splits: rr.Splits, recipe: Recipe, cfg: FrontendConfig = DEFAULT,
-                 seed: int = 0, grid_s: float = 0.1, speed: tuple[float, float] | None = None) -> None:
+                 seed: int = 0, grid_s: float = 0.1, speed: tuple[float, float] | None = None,
+                 dronenoise: bool = True) -> None:
+        """dronenoise: add DroneNoise near-pass-by drones as positives, as every run before entry 145 did.
+        False under entry 143's rule, where DroneNoise is a test source."""
         self.cfg, self.recipe, self.seed, self.speed = cfg, recipe, seed, speed
         self.n_out = cfg.samples_per_window
         # Windows are drawn long enough to be sped up by the largest factor.
@@ -279,7 +282,8 @@ class RangeSampler:
                 idx = np.flatnonzero(wn > 0)
                 self._rigs[src] = (cw, idx, np.cumsum(wn[idx] / wn[idx].sum()))
         cells.append(_pool_cell(rr.ddl_pool(splits.ddl_train, n, 50.0, name="ddl <=50 m"), "ddl"))
-        cells.append(_pool_cell(rr.dronenoise_pool(splits.dronenoise, n), "dronenoise"))
+        if dronenoise:
+            cells.append(_pool_cell(rr.dronenoise_pool(splits.dronenoise, n), "dronenoise"))
         set_weights(cells, recipe)
         self.cells = [c for c in cells if c.weight > 0]
         w = np.array([c.weight for c in self.cells] + [recipe.sim_share])

@@ -156,7 +156,8 @@ def main() -> None:
         for rname in args.recipes:
             recipe = rg.RECIPES[rname]
             sampler = rg.RangeSampler(arm, splits, recipe, cfg, seed=args.seed,
-                                      speed=tuple(args.speed) if args.speed else None)
+                                      speed=tuple(args.speed) if args.speed else None,
+                                      dronenoise=not args.rule143)   # DroneNoise is test under entry 143
             print(f"  recipe {rname}: {sampler.describe()}", flush=True)
             variant = rr.VARIANTS["buried"]
             if "lgbm" in args.models:
