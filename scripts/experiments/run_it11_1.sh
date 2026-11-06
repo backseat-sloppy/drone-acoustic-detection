@@ -11,12 +11,15 @@
 #   bash scripts/experiments/run_it11_1.sh pack      # one tar of artifacts/it11_1 (no checkpoints over 100 MB) + MD5
 #
 # Every stage writes under artifacts/it11_1/ and logs to artifacts/it11_1/logs/. The interpreter is
-# $PY (default: the repo's .venv/bin/python), the one the CRNN runs already train with; never `uv run`:
+# $PY (default below), the one the CRNN runs already train with; never `uv run`:
 # uv may re-sync torch, and recent CUDA builds of torch dropped the Pascal GPUs (TITAN X) this server
 # has. fp32 throughout (Pascal fp16 is slow). Example: PY=$(which python) bash scripts/experiments/run_it11_1.sh test
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-PY=${PY:-.venv/bin/python}
+# Interpreter: $PY if set, else the repo's .venv, else ~/dad/.venv (the one the server's CRNN runs use).
+if [ -z "${PY:-}" ]; then
+  if [ -x .venv/bin/python ]; then PY=.venv/bin/python; else PY=$HOME/dad/.venv/bin/python; fi
+fi
 OUT=artifacts/it11_1
 PRE=artifacts/pretrained
 CK="$PRE/Cnn14_16k_mAP=0.438.pth"
@@ -71,9 +74,9 @@ p2)
   [ -f "$OUT/p1_s0_panns.pt" ] || { echo "run p1 first (LP-FT starts from its probe)"; exit 1; }
   for s in 0 1 2; do
     log="$OUT/logs/p2_s${s}_$(stamp).log"
-    CUDA_VISIBLE_DEVICES=$s nohup $PY -u scripts/train_panns.py --mode ft --init "$OUT/p1_s0_panns.pt" \
+    CUDA_VISIBLE_DEVICES=$s nohup setsid $PY -u scripts/train_panns.py --mode ft --init "$OUT/p1_s0_panns.pt" \
         --name "p2_s$s" --seed $s --windows ${WINDOWS:-600000} --device cuda --out "$OUT" "${DATA[@]}" \
-        > "$log" 2>&1 &
+        > "$log" 2>&1 < /dev/null &
     note "p2 seed $s on GPU $s, pid $!, log $log"
   done
   echo "Running in the background; follow with: tail -f $OUT/logs/p2_s*_*.log"
