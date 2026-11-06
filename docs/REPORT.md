@@ -9343,3 +9343,97 @@ It needs the manifest.
 `real_threshold.py` are, next to it9 and the e133 Glasgow arms. Then gates (a) and (d) on the Mac, where
 Glasgow d17-d20 and the room recording are.
 
+## 139 - Real data copied to Marius's account; P1 on gates (b) and (c): Nightjar AUC jumps, recall at 5% FA barely moves, d3set unchanged
+- Date: 2026-11-06
+- Iteration: 11.1
+- Type: Data, Evaluation (validation only)
+- Commit: 78dded7 on the server for the scoring; `scripts/real_threshold.py` is added in this entry's commit
+
+**Data.** On Mads's choice, the real data the gates read was copied once from his account (`jupyter-mads`)
+into Marius's (`jupyter-mariusq`), so training and gates run in one account.
+- What was copied: from `~/drone-acoustic-detection/data/processed` (which `~/dad/data/processed` links to),
+  `manifest.csv`, `range_track.csv`, `ddl_clips.csv`, `summary.json`, `nightjar.i16` (305 484 000 bytes) and
+  `d3set.i16` (264 420 040 bytes).
+- It moved as one tar through `/tmp`: `real_gates.tar`, MD5 `5f6fc8a2db9f473cc191022a98672d4e`, `md5sum -c` OK.
+  It was unpacked with `tar --skip-old-files`, so nothing in Marius's `data/processed` was overwritten.
+- Not copied: FSD50K (9.6 GB), FPV, Halmstad, DroneNoise, DDL and Lund. The gate scripts read only the
+  Nightjar and d3set validation sessions and the mower session, because recordings are memory-mapped when
+  first read. Any code that reads another source in Marius's account will fail with "file not found".
+- The `/tmp` copies are to be deleted once this entry is logged.
+
+**Copy check.** it9 CRNN on the copied data, scored with the command below, reproduces entry 134 to the
+third decimal: d3set AUC 0.930 and recall 0.823 at 5% FA; Nightjar 0.759 and 0.678.
+
+**`real_threshold.py`.** Mads's script (`~/e123_score/scripts/real_threshold.py`, MD5
+`1fdbd6c6a47974e43827b7a8396826cb`), which set the thresholds of entries 129 and 134. It is now
+`scripts/real_threshold.py`, with the model list and output path as arguments and the rule unchanged:
+`fa_threshold` at 5% on the background windows of `make_pool_arm(..., "none").val`, at a 0.5 s hop.
+- **Correction to entries 131 and 135.** They describe this threshold as "pooled per rig, weighted, not by
+  window count". The script pools by window, so the rig with more background windows weighs more. Entry
+  134's thresholds, and every one from here on, use the script's rule.
+- `run_it11_1.sh gates` now runs, in order, `score_real_dev.py`, `real_threshold.py`, `score_mower.py` at
+  that threshold, and `score_glasgow.py` where Glasgow exists. it9 is scored alongside as the reference.
+
+**How.** In Marius's account:
+`CUDA_VISIBLE_DEVICES=0 ~/dad/.venv/bin/python -u scripts/score_real_dev.py --device cuda --out
+artifacts/it11_1/gates_real_dev.json "it9 CRNN=artifacts/models/final_crnn_none_simdist_crnn.pt"
+"p1=artifacts/it11_1/p1_s0_panns.pt"`.
+The figures are recall at 5% (10%) FA on each rig's own validation background, all windows, 0.5 s hop.
+
+**Result** (validation, real rigs; e133 figures from entry 134):
+
+| Model | Nightjar AUC | Nightjar recall @5% FA (@10%) | d3set AUC | d3set recall @5% FA (@10%) |
+|---|---|---|---|---|
+| **P1** (frozen Cnn14_16k + probe, C 1e-4) | **0.908** | 0.683 (0.742) | 0.823 | 0.560 (0.617) |
+| e133 Glasgow s0 (CRNN from scratch, same data) | 0.713 | 0.650 | 0.812 | 0.582 |
+| e133 Glasgow s1 | 0.755 | 0.672 | 0.807 | 0.586 |
+| it9 CRNN (real drones of several rigs; not under entry 107's rule) | 0.759 | 0.678 (0.695) | 0.930 | 0.823 (0.841) |
+| comb | 0.516 | 0.115 (0.120) | 0.643 | 0.312 (0.337) |
+| Gate (entry 135) | | (b) ≥ 0.77 | | (c) ≥ 0.80 |
+
+**Reading.**
+- **Gates (b) and (c) both fail.**
+- **Nightjar.** Pretraining changes the ranking, but the operating point barely moves.
+  - AUC is 0.908, against 0.713 and 0.755 for the from-scratch arms on the same data, and above it9 (0.759).
+    That is far outside the e133 seed spread.
+  - Recall at 5% FA is 0.683, which is +0.011 over the better e133 seed and inside the e133 seed spread
+    (0.650 to 0.672, so 0.022).
+  - So the encoder ranks Nightjar drones above Nightjar background much better overall, but the
+    top-scoring 5% of background windows still outrank many drone windows.
+- **d3set.** No gain: AUC 0.823 against 0.81, and recall 0.560 against 0.58.
+- Against the synthetic validation of entry 138 (AUC 0.591), the real Nightjar AUC (0.908) confirms that
+  the synthetic validation could not judge P1.
+- **P2 trigger (entry 135).** "P2 runs only if P1 beats the e133 from-scratch arm on gate (b) or (c)." On (b)
+  it does by the letter (0.683 against 0.650 and 0.672), but by less than e133's seed spread. The condition
+  is met narrowly. The stronger evidence that pretraining helps is the Nightjar AUC, not the recall at 5% FA.
+- P1 is one probe (seed 0). Its spread over seeds is not measured.
+
+**Next.**
+1. The real threshold and gate (e): `run_it11_1.sh gates`.
+2. P2 (LP-FT), seeds 0-2 on GPUs 0-2, under entry 135's rule.
+3. Gates (a) and (d) on the Mac, where Glasgow is.
+
+## 140 - P2 keeps its final state, not the best synthetic-validation state (before any P2 run)
+- Date: 2026-11-06
+- Iteration: 11.1
+- Type: Tuning (protocol detail, fixed before the run)
+- Commit: this entry's commit
+
+**What changed.** `PannsScorer.fit_finetune` now keeps the final state by default (`--select last`). Entry
+136 had it keep the state with the best validation AUC, checked every 100 000 windows. Validation AUC is
+still logged at each check, and the JSON records the best and final values. `--select best` remains as an
+option.
+
+**Why.**
+- Entry 136's choice followed `dad.train`, which keeps the best validation epoch.
+- On the e133 data, however, the validation drones are synthetic Pd scenes. Entries 138 and 139 show
+  that this validation misjudges the encoder: the P1 probe scored AUC 0.591 there against 0.908 on real
+  Nightjar audio, and the less it fitted, the higher it scored.
+- Selection on it would favour the flattest state, possibly the untrained starting probe.
+- The real validation sets (Nightjar, d3set, Glasgow d17-d20) are the gate data and cannot be used for
+  selection.
+- Keeping the final state is what `NetScorer` does for the e133 CRNNs. With it, "only the network
+  changes" holds for the stopping rule too.
+
+**Result.** Nothing run. `tests/test_panns.py` passes on the Mac (7 passed, 2 skipped).
+

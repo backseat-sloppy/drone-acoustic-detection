@@ -52,6 +52,8 @@ def main() -> None:
     p.add_argument("--lr", type=float, default=1e-4, help="ft: one-cycle peak learning rate")
     p.add_argument("--weight-decay", type=float, default=1e-2)
     p.add_argument("--eval-every", type=int, default=100_000, help="ft: validate every this many windows")
+    p.add_argument("--select", choices=("last", "best"), default="last",
+                   help="ft: keep the final state (default, as the e133 CRNNs) or the best validation state (entry 140)")
     p.add_argument("--workers", type=int, default=3)
     p.add_argument("--val-seed", type=int, default=1800)
     p.add_argument("--val-rig", default="nightjar")
@@ -98,7 +100,7 @@ def main() -> None:
         sc = PannsScorer.load(a.init, device=a.device, pretrained=a.pretrained)
         res["init"] = str(a.init)
         sc.fit_finetune(sampler, a.windows, pos, neg, a.batch_size, a.lr, a.weight_decay, a.eval_every,
-                        a.workers, log=log)
+                        a.workers, select=a.select, log=log)
     res["pretrained_md5"] = sc.pretrained_md5
     ck = a.out / f"{a.name}_panns.pt"
     sc.save(ck)

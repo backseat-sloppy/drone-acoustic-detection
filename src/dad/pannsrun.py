@@ -14,9 +14,10 @@ windows, standardised, logistic regression with C picked by validation AUC. The 
 into the 2-logit head. The checkpoint stores only the head plus the encoder checkpoint's MD5.
 
 P2 (LP-FT, Kumar et al., ICLR 2022): start from a P1 head, train everything (encoder frontend stays
-frozen) with AdamW and a one-cycle schedule, SpecAugment after bn0 as in the reference code, and
-keep the state with the best validation AUC (ties: log-loss), checked every eval_every windows, as
-dad.train keeps the best validation epoch. The checkpoint stores the whole network (about 320 MB).
+frozen) with AdamW and a one-cycle schedule and SpecAugment after bn0 as in the reference code. By
+default the final state is kept (select="last"), as NetScorer keeps it for the e133 CRNNs; validation
+AUC is logged every eval_every windows. select="best" keeps the best validation state instead, which
+entry 140 rules out for the e133 data: its validation drones are synthetic and favour a flat model. The checkpoint stores the whole network (about 320 MB).
 """
 from __future__ import annotations
 
@@ -161,13 +162,15 @@ class PannsScorer:
     # ------------------------------------------------------------ P2
     def fit_finetune(self, sampler, n_windows: int, pos_val: np.ndarray, neg_val: np.ndarray,
                      batch_size: int = 64, lr: float = 1e-4, weight_decay: float = 1e-2,
-                     eval_every: int = 100_000, workers: int = 3,
+                     eval_every: int = 100_000, workers: int = 3, select: str = "last",
                      log: Callable[[str], None] = print) -> "PannsScorer":
         import torch
         import torch.nn.functional as F
         from sklearn.metrics import log_loss, roc_auc_score
         from .realrun import prefetch
         from .train import spec_augment
+        if select not in ("last", "best"):
+            raise ValueError(f"select must be 'last' or 'best', not {select!r}")
         if self.kind != "probe":
             raise ValueError("LP-FT starts from a probe head: run fit_probe or load a probe checkpoint first")
         torch.manual_seed(sampler.seed)
@@ -208,11 +211,13 @@ class PannsScorer:
                 if key > best_key:
                     best_key, best_state, best_at = key, copy.deepcopy(self.model.state_dict()), seen
                 self.model.train()
-        self.model.load_state_dict(best_state)
+        if select == "best":
+            self.model.load_state_dict(best_state)
         self.model.eval()
         self.kind, self.name = "ft", f"{ARCH} [ft]"
         self.info.update(ft=dict(windows=n_windows, batch_size=batch_size, lr=lr, weight_decay=weight_decay,
-                                 eval_every=eval_every, best_at_windows=best_at, best_val_auc=best_key[0],
+                                 eval_every=eval_every, select=select, best_at_windows=best_at, best_val_auc=best_key[0],
+                                 final_val_auc=self.history[-1]["val_auc"] if self.history else None,
                                  seconds=round(time.time() - t0, 1)))
         return self
 
