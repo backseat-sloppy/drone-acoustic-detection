@@ -29,7 +29,8 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 9 | 090 to 094 | Iteration 5's recipe on real data, with the frontend as the only change: MFE (log-mel), MFCC, linear spectrogram | The supervisor's feedback (entry 086) and Mads's choice to compare frontends on real data, after dropping synthetic training (entries 087-089) | **Hypothesis rejected for both.** FPV mean at 10% own false alarms: MFE 0.669, MFCC 0.485, linear 0.692 (+2.3 against +5 required). Linear gains near the rigs (+23-26 points within 50 m) but loses on d3set at 100-200 m (-6.7), on Lund (-18) and alarms 12 points more on mower audio. MFE stays. |
 | Iteration 11 | 100 to 105 | Steady-noise family (random slopes, random-phase copies of rig no-drone windows) as negatives and maskers; no war audio in training. Judged on unseen real noise stems and the mower session, with recall guards | All networks alarm on 99-100% of war-shaped noise and on pink/brown noise, but on 0% of the war track: the failure is steady noise, not war (entry 100) | In progress. Council held (entry 100). War-shaped noise matches war audio only in its long-term spectrum; real tank clips alarm 45-57% (entry 101). Step 0 (entry 102): the networks rely on the harmonic lines; steadiness pushes toward drone; noise alarms only at -3 to -6 dB/octave. Step 1 (entry 103): generators and the `simdist_steady` recipe in the sampler, tested. War-shaped noise dropped on Mads's decision; war is tested on real war audio only (entry 104). 36 of 97 FSD50K stems are from FSD50K dev, which training draws from: reported apart (entry 105). Step 2 next. |
 | Soundscape line (branch it11-soundscapes, own section at the end) | 095 to 105 and 101 to 118 of that section | Synthetic Pd drones in random labelled soundscapes (confusers, transients), then realism (rotor detune, mic, room), real Glasgow drones, a CRNN, steady-noise arms | The supervisor's notes (entry 086); synthetic training allowed (entry 087) | **Not met; validation only.** On 10 sealed ARIS excerpts with the war track at 0 dB, the share of alarmed windows is it11 CNN 13.5%, it11r CNN 23.1%, it9 CRNN (real rigs) 58.3%. Steady-noise arms are training. |
-| Iteration 11.1 (branch 11.1) | 135 to 136 | AudioSet-pretrained PANNs Cnn14_16k on the e133 compliant data: P0 AudioSet scores (no training), P1 frozen encoder + linear probe, P2 LP-FT | Entry 134: from scratch, the only allowed real drones (Glasgow d1-d16, one rig) teach "a Glasgow recording"; pretraining is the established lever for unseen recording chains (entries 053, 131) | Code written and checked against the reference implementation; nothing run on the server yet. |
+| Iteration 11.1 (branch 11.1) | 135 to 136 | AudioSet-pretrained PANNs Cnn14_16k on the e133 compliant data: P0 AudioSet scores (no training), P1 frozen encoder + linear probe, P2 LP-FT | Entry 134: from scratch, the only allowed real drones (Glasgow d1-d16, one rig) teach "a Glasgow recording"; pretraining is the established lever for unseen recording chains (entries 053, 131) | **P2 rejected, P1 mixed** (validation only). Frozen encoder: best Nightjar AUC (0.908) and drone-vs-mower separation, mower gate passes, but recall at 5% FA misses (b)/(c) and pooled real recall is 0.49. Fine-tuning overfits the Glasgow rig (perfect there, worse everywhere else). The training-data rule stays the binding limit (entry 142). |
+| Iteration 11.2 | 143 to | Real drones from several rigs in training (Mads, entry 143): it9's pooled recipe without FPV plus steady noise, leave one rig out, CRNN against the frozen Cnn14_16k probe | Entries 134 and 142: under the single-rig rule neither training from scratch nor pretraining reaches gates (b) and (c) | Planned. |
 
 ## Templates
 
@@ -9497,4 +9498,182 @@ need not travel to the Mac.
 - It holds 42 files, the originals unmodified (44.1 kHz): the 40 `17to24/` hover files of d17-d20, the
   room recording `noise/_uav_2022noise_n_noise_1m_.WAV`, and `data/processed/war/war_track.wav`.
 - The test drones d21-d24 share that folder and are left out. This was checked: 0 matching files in the tar.
+
+## 142 - P2 (LP-FT) overfits the Glasgow rig and is rejected; P1 passes gates (a) and (e) and fails (b), (c) and (d)
+- Date: 2026-11-06
+- Iteration: 11.1 (verdict)
+- Type: Model, Evaluation (validation only)
+- Commit: c1337a0 (server)
+
+**Runs.** `run_it11_1.sh p2`: seeds 0-2 on GPUs 0-2, each from `p1_s0_panns.pt`.
+- 600 000 windows each, AdamW at a peak learning rate of 1e-4, the final state kept (entry 140).
+- 1755 / 1795 / 1804 s, at about 345 windows/s per seed.
+- Training loss (mean per 100 000 windows): 0.80 → 0.06 → 0.03 → 0.02 → 0.016, with all three seeds alike.
+- train_clean's synthetic validation (AUC at the end): 0.397 / 0.386 / 0.408, below chance and below the
+  starting probe's 0.591. This is the e133 pattern of entry 134.
+
+**Gates.** `run_it11_1.sh gates` scored it9 CRNN, P1 and P2 s0-s2.
+- Thresholds are `real_threshold.py`'s (entry 139).
+- Glasgow: d17-d20 hover (9796 windows) against the second half of the room recording (3627 windows).
+  The war mixes are at 0 / -5 / -10 dB in-band, scored against the war track.
+- Files: `artifacts/it11_1/gates_real_dev.json`, `real_threshold.json`, `gates_mower.json` and
+  `gates_glasgow.json`.
+- Glasgow came from the Mac tar of entry 141. The war-track MD5 matches the Mac's
+  (`966937647ba588030f411ca1eaf079ee`).
+- macOS `tar` had added `._*` AppleDouble files. They were deleted before scoring. From now on, Mac tars
+  are made with `COPYFILE_DISABLE=1`.
+- it9 reproduces entries 133-134 throughout: room AUC 0.092, room FA 99.2%, war 0.985 / 0.971 / 0.937, and
+  threshold 0.4828.
+
+| Model | (b) Nightjar AUC / recall @5% FA | (c) d3set AUC / recall @5% FA | Real threshold / pooled recall | (e) mower FA (Wilson 95%) / drone-vs-mower AUC | (a) room AUC / FA at threshold | (d) war recall @1% FA, 0 / -5 / -10 dB |
+|---|---|---|---|---|---|---|
+| P1 (frozen + probe) | **0.908** / 0.683 | 0.823 / 0.560 | 0.2458 / 0.491 | 9.6% (5.6-16.0) / **0.740** | 1.000 / 3.3% | 0.977 / 0.898 / 0.789 |
+| P2 s0 | 0.759 / 0.513 | 0.764 / 0.498 | 0.0243 / 0.299 | 11.2% (6.8-17.9) / 0.398 | 1.000 / 0.8% | 1.000 / 1.000 / 0.997 |
+| P2 s1 | 0.775 / 0.555 | 0.783 / 0.504 | 0.0101 / 0.333 | 14.4% (9.3-21.6) / 0.386 | 1.000 / 0.6% | 1.000 / 1.000 / 0.995 |
+| P2 s2 | 0.766 / 0.543 | 0.722 / 0.421 | 0.0084 / 0.304 | 25.6% (18.8-33.9) / 0.332 | 1.000 / 0.8% | 1.000 / 1.000 / 0.994 |
+| e133 Glasgow s0 / s1 (entry 134) | 0.713 / 0.650, 0.755 / 0.672 | 0.812 / 0.582, 0.807 / 0.586 | 4.7e-6, 1.3e-5 / 0.710, 0.703 | not scored | 1.000 / 99.9%, 99.2% | 1.00 / 1.00 / 0.999 |
+| it9 CRNN | 0.759 / 0.678 | 0.930 / 0.823 | 0.4828 / 0.785 | 26.4% (19.5-34.7) / 0.695 | 0.092 / 99.2% | 0.985 / 0.971 / 0.937 |
+| comb | 0.516 / 0.115 | 0.643 / 0.312 | | / 0.374 | 0.737 / | 0.166 / 0.133 / 0.097 |
+| Gate (entry 135) | recall ≥ 0.77 | recall ≥ 0.80 | | FA ≤ 25% | AUC ≥ 0.97 and FA ≤ 5% | within 5 points of it9 |
+
+Notes on the table:
+- The mower session has 125 mower-only windows and 1045 drone windows.
+- Drone recall in that session at each model's threshold: P1 0.357, P2 0.216 / 0.225 / 0.241, it9 0.584.
+
+**Verdict (entry 135's rule, fixed before any run).**
+- **P2 is rejected.** It is worse than the e133 arms on both (b) and (c), on all three seeds. Mean over seeds:
+  - Nightjar recall 0.537 against e133's 0.650-0.672;
+  - d3set recall 0.474 against e133's 0.582-0.586.
+- **P1 is mixed.**
+  - (a) passes: room AUC 1.000, FA 3.3%.
+  - (e) passes: 9.6%, better than it9's 26.4%.
+  - (b) fails: 0.683.
+  - (c) fails: 0.560.
+  - (d) fails: -0.8 / -7.3 / -14.8 points against it9.
+  - It is neither the rule's success nor its informative failure.
+- The Glasgow passes are weak evidence either way. d17-d20 come from the same rig and room as the training
+  drones d1-d16, and the first half of the room recording is in training (entries 133-134).
+
+**Reading.**
+1. **Full fine-tuning on one rig's real drones overwrites the pretraining.**
+   - P2 becomes perfect on Glasgow and worse than the frozen P1 on every rig it never heard: Nightjar AUC
+     0.908 → 0.76-0.78, d3set 0.823 → 0.72-0.78, pooled recall 0.49 → about 0.31.
+   - It now ranks mower-only windows above drone windows within the mower session (AUC 0.33-0.40).
+   - This is the single-rig shortcut of entry 134 in a pretrained network. It is also the effect Kumar et
+     al. (ICLR 2022) report, that full fine-tuning can lose out-of-distribution accuracy against a linear
+     probe; entry 053's Scholar named it as a pitfall.
+   - It is consistent across the three seeds.
+2. **The frozen encoder keeps general structure.**
+   - It gives the best Nightjar ranking of every model in this report's real-rig table (0.908; it11r CRNN
+     600k had 0.929 in entry 134).
+   - It gives the best within-session drone-vs-mower separation (0.740). Entry 053's decisive objection,
+     that a frozen AudioSet encoder merges mowers with drones, does not hold for this session.
+   - What fails is the operating point. A single threshold does not transfer across rigs: pooled recall is
+     0.491 while within-rig AUC is 0.908.
+3. **The binding limit is still the training data, not the network.**
+   - Under entry 107's rule, the only real training drones are one indoor rig's.
+   - Pretraining improved ranking on one unseen rig (Nightjar) but not the other (d3set). It did not
+     reach gates (b) or (c), and tuning it fully made things worse.
+   - This agrees with entries 131 and 134: the next lever is real drones from several rigs in training,
+     which is Mads's decision on the "Synthetic training data" row.
+   - If that is allowed, the frozen Cnn14_16k probe (P1) is the pretrained arm to pair with it, not LP-FT.
+     That is the 2×2 of the plan (data rule × pretraining).
+
+**Not run.** Partial fine-tuning (only the last blocks, or a lower learning rate) and recalibration across
+rigs. Both would be new arms. They are not tried here, because the evidence points at the data, and
+entry 135 fixed one encoder with one P2 recipe.
+
+**Files.** The three P2 checkpoints, about 320 MB each, stay on the server in `artifacts/it11_1/`. `pack`
+leaves them out.
+
+## 143 - Requirements: real drones from several rigs may train (Mads)
+- Date: 2026-11-06
+- Iteration: 11.2 (opens it)
+- Type: Requirements
+- Commit: this entry's commit
+
+**What changed.** After entry 142, Mads was asked how to continue. The options were to allow real
+drones from several rigs, to keep the rule and try fixes within it, or to stop and report. He chose:
+**"Allow real multi-rig drones in training"**.
+- This is entry 131's "modified A", with the wording entry 131 proposed.
+- REQUIREMENTS.md has a new row, "Real drones in training". The "Synthetic training data" row (entry 107)
+  is marked superseded.
+- Training may use real drones from the training sessions of DDL, Nightjar and d3set, and Glasgow
+  d1-d16, next to synthetic drones.
+- FPV, DroneNoise, Halmstad and FSD50K-eval stay test. Glasgow d17-d20 validate and d21-d24 test.
+- The rig a gate is scored on is held out of training for that gate (leave one rig out, as entry 131 required).
+
+# Iteration 11.2 - Real drones from several rigs, CRNN and the frozen Cnn14_16k probe
+
+> **Changed from iteration 11.1:** the training data. Real drones from several rigs, under entry 143's rule:
+> it9's pooled recipe (`run_range.py --pool`, simdist, speed 0.8-1.25) with FPV taken out of the pool,
+> because FPV is test now. Steady noise as in iteration 11 (`simdist_steady`). Two networks on the same
+> sampler: the CRNN from scratch, and the frozen Cnn14_16k with a probe (P1's method, entry 136). Not
+> LP-FT, which entry 142 rejected.
+> **Why:** entries 134 and 142. With one indoor rig of real drones, neither training from scratch nor
+> pretraining reaches gates (b) and (c). Full fine-tuning overfits the rig. it9, trained on real drones
+> from several rigs, reaches 0.785 pooled real recall but alarms on 99% of the unseen Glasgow room.
+> **Kept the same:**
+> - the gates of entry 135: (a) Glasgow room, (b) Nightjar, (c) d3set, (d) war mix, (e) mower;
+> - the real-background threshold rule of entry 129, computed from the training rigs' validation
+>   sessions only;
+> - the 1 s window and 0.5 s evaluation hop;
+> - test and sealed data, untouched.
+> **Design:** leave one rig out.
+> - Fold N trains with every Nightjar session held out and is judged on (b).
+> - Fold D trains with every d3set session held out and is judged on (c).
+> - Both folds are scored on (a), (d) and (e).
+> - The mower session belongs to Nightjar, so (e) is unseen-rig only in fold N.
+> - 2 seeds per CRNN fold, 1 probe per fold.
+> **Hypothesis:** real drones from several rigs lift (b) and (c) towards it9. The frozen encoder keeps
+> the unseen Glasgow room quiet (gate a), where it9 fails, so the probe arm passes (a), (c) and one of
+> (b) or (d).
+> **Judged by:** entry 135's success rule, per fold. If (a) fails, the next step is entry 131's: add
+> Glasgow room and soundscape negatives, and balance negatives per rig.
+
+**Needed before any run.**
+1. `rangerun`: a pool arm without FPV (entry 143), with Nightjar or d3set held out.
+2. `run_range.py`: that arm, and the frozen probe as a model next to the CRNN.
+3. `real_threshold.py`: the threshold from the training rigs' validation sessions only, per fold.
+4. Data in Marius's account: `ddl.f32` (DDL near drones, 364 MB) and `fsd50k.i16` (FSD50K training
+   backgrounds, 9.6 GB). Both come from Mads's account as in entry 139. FSD50K-eval stays excluded by
+   `make_splits`.
+
+## 144 - Iteration 11.2 code: the pool arm without FPV, the probe in run_range.py, and the runner (no run)
+- Date: 2026-11-06
+- Iteration: 11.2
+- Type: Infrastructure
+- Commit: this entry's commit
+
+**What changed.**
+- `rangerun.make_pool_arm_143(manifest, held)` builds the arm for entry 143's rule.
+  - The pool is Nightjar and d3set, plus Glasgow if the manifest has it. FPV is out of the pool because it
+    is a test source.
+  - `held` is "nightjar" or "d3set", and it is wholly out of training and validation. Validation, and with
+    it the deployment threshold, comes from the other rig only.
+  - The mower session is never trained on. Nothing is scored as unseen; Lund is not in Marius's account.
+  - DDL near drones and FSD50K training backgrounds enter through `RangeSampler`, as for it9. DroneNoise,
+    Halmstad and FSD50K-eval are not read by this path.
+  - `tests/test_rule143.py`: 3 tests pass.
+- `scripts/run_range.py` has two additions.
+  - `--rule143` selects that arm.
+  - `panns_probe` is a model: the frozen Cnn14_16k plus probe of entry 136, fitted on `RangeSampler.raw_batch`.
+    C is picked on `arm.val`, the training rig's *real* validation sessions, not on synthetic drones as in
+    iteration 11.1. `--probe-windows` defaults to 100 000.
+  - The existing `comb`, `lgbm` and `crnn` paths are unchanged.
+- `scripts/it11_2_models.py` lists the trained CRNN and probe checkpoints as `label=checkpoint@threshold`,
+  using each run's `deploy_threshold`: 5% FA on the training rig's validation sessions.
+- `scripts/experiments/run_it11_2.sh` has four stages: `check`, `train`, `status` and `gates`.
+  - `train` starts three background jobs, all with recipes `simdist` (it9) and `simdist_steady`, speed
+    0.8-1.25, 200 000 windows per CRNN (as it9), and `--deploy-fa 0.05`:
+    - GPU 0: seed 0, Nightjar held out, with comb, lgbm, crnn and panns_probe;
+    - GPU 2: seed 0, d3set held out, with the same four models;
+    - GPU 1: seed 1, both folds, crnn only.
+  - `gates` scores it9 and every trained model with `score_real_dev.py` (b, c), `score_mower.py` (e) and
+    `score_glasgow.py` (a, d). A fold counts on (b) or (c) only for its held-out rig.
+
+**Data still to arrive in Marius's account.** `ddl.f32` and `fsd50k.i16` (entry 143).
+
+**Result.** Nothing run. On the Mac, `tests/test_rule143.py`, `tests/test_rangerun.py` and
+`tests/test_panns.py` pass (2 skips, as before).
 

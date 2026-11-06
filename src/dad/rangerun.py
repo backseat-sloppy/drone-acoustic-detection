@@ -118,6 +118,33 @@ def make_pool_arm(manifest: list[Recording], held: str) -> Arm:
     )
 
 
+POOL143_UNITS = ("nightjar", "d3set")
+
+
+def make_pool_arm_143(manifest: list[Recording], held: str) -> Arm:
+    """Iteration 11.2 (entry 143): make_pool_arm under the rule of entry 143.
+
+    Real drones from the training sessions of Nightjar and d3set (and Glasgow, if the manifest has it)
+    train; the FPV campaigns are a test source under entry 143 and leave the pool. DDL near drones and
+    FSD50K training backgrounds come in through RangeSampler as before. `held` ("nightjar" or "d3set")
+    is held out entirely: none of its sessions trains or validates, so validation, and with it the
+    deployment threshold, comes from the other rig's validation sessions only. The mower session is a
+    Nightjar session and is never trained on. Nothing is scored as unseen here (Lund is not in every
+    account; entry 139).
+    """
+    if held not in POOL143_UNITS:
+        raise ValueError(f"held must be one of {POOL143_UNITS}, not {held!r}")
+    pool = [r for r in manifest if r.source in ("nightjar", "d3set", "glasgow") and ch.session(r) not in CONFUSER]
+    train = [r for r in pool if _unit(r) != held]
+    return Arm(
+        name=f"rule 143, hold out {held}", train_chain="pool143", test_chain=held,
+        train=[r for r in train if not _is_val(r)], val=[r for r in train if _is_val(r)],
+        test=[r for r in pool if _unit(r) == held],
+        confuser=[r for r in manifest if r.source == "nightjar" and ch.session(r) in CONFUSER],
+        unseen={},
+    )
+
+
 # ---------------------------------------------------------------- sampling
 
 @dataclass(frozen=True)

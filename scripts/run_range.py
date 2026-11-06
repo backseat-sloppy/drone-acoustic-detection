@@ -33,6 +33,16 @@ NETS = ("dscnn", "resnet", "crnn", "transformer")
 HOP_S = {"glasgow": 2.0}   # 8.7 h of near-range hover; a coarser grid is plenty
 
 
+def val_windows(recs, cfg, hop_s: float) -> tuple[np.ndarray, np.ndarray]:
+    """Drone and background windows of `recs` on a hop_s grid, silent windows dropped (as score_chain)."""
+    from dad import chains as ch
+    n = cfg.samples_per_window
+    cw = ch.chain_windows(recs, n, int(hop_s * cfg.sample_rate))
+    a = np.stack([cw.audio(j, n) for j in range(len(cw))]) if len(cw) else np.empty((0, n), np.float32)
+    keep = np.array([rr.inband_power(x) > rr.SILENCE_POWER for x in a], bool)
+    return a[keep & (cw.y == 1)].astype(np.float32), a[keep & (cw.y == 0)].astype(np.float32)
+
+
 def show(tag: str, r: dict) -> None:
     h = rg.headline(r)
     f = lambda v: "  -  " if v is None else f"{v:.3f}"
@@ -48,6 +58,10 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--name", required=True)
     p.add_argument("--arms", nargs="+", default=["nightjar", "d3set"], help="the rig held out")
+    p.add_argument("--rule143", action="store_true",
+                   help="iteration 11.2: the pool without FPV under entry 143's rule, --arms nightjar and/or d3set held out")
+    p.add_argument("--probe-windows", type=int, default=100_000,
+                   help="panns_probe: training windows embedded for the frozen Cnn14_16k probe (entry 136)")
     p.add_argument("--pool", action="store_true",
                    help="train on every rig but the held-out one (iteration 5); arms may then also be "
                         "fpv:ariel_25.02, fpv:palmahim_10.02, fpv:palmahim_27.05, or none to train on all")
@@ -88,7 +102,8 @@ def main() -> None:
     t_start = time.time()
 
     for held in args.arms:
-        arm = rg.make_pool_arm(manifest, held) if args.pool else rg.make_arm(manifest, held)
+        arm = (rg.make_pool_arm_143(manifest, held) if args.rule143
+               else rg.make_pool_arm(manifest, held) if args.pool else rg.make_arm(manifest, held))
         print(f"\n=== {arm.name}: train on {arm.train_chain} ({len(arm.train)} segments), "
               f"validate on {len(arm.val)} segments, test {len(arm.test)} segments", flush=True)
 
@@ -153,6 +168,22 @@ def main() -> None:
                     m = rr.LgbmScorer(variant, cfg).fit(sampler, args.lgbm_windows)
                     m.save(ckpt)
                     evaluate(m, "lgbm", rname, dict(train_seconds=round(time.time() - t, 1)))
+            if "panns_probe" in args.models:
+                # The frozen Cnn14_16k + probe (entry 136) on this sampler's windows; C is picked on arm.val,
+                # the training rigs' real validation sessions.
+                from dad.models import panns as pn
+                from dad.pannsrun import PannsScorer
+                ckpt = REPO / "artifacts" / "models" / f"{args.load_from or args.name}_{held.replace(':', '_')}_{rname}_panns.pt"
+                if args.load_from:
+                    evaluate(PannsScorer.load(ckpt, cfg, args.device), "panns_probe", rname, dict(loaded=ckpt.name))
+                else:
+                    t = time.time()
+                    pos_v, neg_v = val_windows(arm.val, cfg, args.eval_hop)
+                    sc = PannsScorer(REPO / "artifacts" / "pretrained" / pn.CHECKPOINT_NAME, args.device, cfg)
+                    sc.fit_probe(sampler, args.probe_windows, pos_v, neg_v)
+                    sc.save(ckpt)
+                    evaluate(sc, "panns_probe", rname, dict(train_seconds=round(time.time() - t, 1), info=sc.info,
+                                                            windows=args.probe_windows))
             for arch in (a for a in args.models if a in NETS):
                 ckpt = REPO / "artifacts" / "models" / f"{args.load_from or args.name}_{held.replace(':', '_')}_{rname}_{arch}.pt"
                 if args.load_from:
