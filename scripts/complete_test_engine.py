@@ -5,8 +5,13 @@ A test is a grid:
     starts       the drone starts at 0, step, 2 step, ... s into a soundscape of `length` s, as long as
                  the whole 10 s drone fits: length - 10 + 1 starts at a 1 s step (12 s -> 3, 20 s -> 11)
     drones       real drone files (their first 10 s) or synthetic Pure Data drones (one per speed,
-                 rendered by drone_war_grid.render_drones, 10 s from start to impact)
-    drone levels dB SPL, the RMS of the drone's 10 s; or "as rendered" for synthetic drones
+                 rendered by drone_war_grid.render_drones, 10 s from start to impact), or modified
+                 drone files: each file x each speed, the file's last 10 s moved straight at the
+                 microphone so that its last sample is the impact (approach(): spreading and air
+                 absorption from the distance at each moment, optional Doppler)
+    drone levels dB SPL, the RMS of the drone's 10 s; or "as rendered" for synthetic drones; for
+                 modified drones the level at 1 m (the file's RMS is set to it, then the approach
+                 lowers it by distance: at the start a drone at v km/h is v / 3.6 x 10 m away)
     backgrounds  every combination of the enabled layers' levels (dB SPL each)
 
 and optionally one no-drone round per background, for false alarms. Rounds = starts x drones x drone
@@ -45,12 +50,17 @@ from scipy.signal import resample_poly
 sys.path.insert(0, str(Path(__file__).parent))
 import drone_war_grid as dwg  # noqa: E402
 
+from scipy.signal import istft, stft  # noqa: E402
+
+from dad import propagation as prop  # noqa: E402
 from dad.config import DEFAULT  # noqa: E402
 from dad.wavio import Clip, lead_times, load_scorer, read_wav, stream, window_labels, Truth  # noqa: E402
 
 SR = DEFAULT.sample_rate
 FULL_SCALE_DB = dwg.es.FULL_SCALE_DB                         # 1.0 in a WAV = 110 dB SPL
-DRONE_S = 10.0                                               # every drone sound is 10 s
+DRONE_S = 10.0                                               # every drone sound is at most 10 s
+MIN_DRONE_S = 5.0                                            # a real drone file may be 5-10 s (Mads, 2026-11-06)
+APPROACH = dict(closest_m=1.0, doppler=False)                # modified drones: distance at impact, Doppler on/off
 OUT_ROOT = dwg.ROOT / "artifacts/complete_test"
 WAR_TRACK = dwg.es.WAR / "war_track.wav"
 WIND_STEM = dwg.es.STEMS / dwg.es.WIND
@@ -125,9 +135,10 @@ def make_layers() -> dict[str, Layer]:
 
 @dataclass
 class Plan:
-    """Everything a test needs, as the GUI sets it. `drones` are file paths (real) or speeds in
-    km/h (synthetic); `drone_levels` None means "as rendered" (synthetic only)."""
-    kind: str                                                # "real" or "synthetic"
+    """Everything a test needs, as the GUI sets it. `drones` are file paths (real, modified) or speeds
+    in km/h (synthetic); `drone_levels` None means "as rendered" (synthetic only). Modified: `speeds`
+    in km/h (every file at every speed), `drone_levels` are levels at 1 m, `approach` as APPROACH."""
+    kind: str                                                # "real", "synthetic" or "modified"
     length_s: float
     drones: list
     drone_levels: list | None
@@ -136,9 +147,16 @@ class Plan:
     step_s: float = 1.0
     no_drone_rounds: bool = False
     soundscape_start_s: float | None = None                  # None: drawn from seed 1000 per batch
-    calibrate_fa: float | None = None                        # site calibration (entry 148): thresholds at this FA
-    calibrate_s: float = 120.0                               # on this many seconds of each background, no drone
     synth: dict = field(default_factory=lambda: dict(drone_seed=1, pscale=0.85, elev_deg=40.0))
+    speeds: list | None = None                               # modified only
+    approach: dict = field(default_factory=lambda: dict(APPROACH))
+
+    def drone_keys(self) -> list:
+        """The drones the rounds go through: the files or speeds, or for modified every file at every
+        speed as "path|speed" (modified_key)."""
+        if self.kind == "modified":
+            return [modified_key(p, v) for p in self.drones for v in (self.speeds or [])]
+        return list(self.drones)
 
     def starts(self) -> list[float]:
         last = self.length_s - DRONE_S
@@ -155,7 +173,7 @@ class Plan:
         out = []
         levels = self.drone_levels if self.drone_levels is not None else [None]
         for bg in self.backgrounds():
-            for d in self.drones:
+            for d in self.drone_keys():
                 for lv in levels:
                     for s in self.starts():
                         out.append(dict(drone=d, drone_level_db=lv, start_s=s, background=bg))
@@ -168,9 +186,10 @@ class Plan:
     def count(self) -> dict:
         n_bg = len(self.backgrounds())
         n_lv = len(self.drone_levels) if self.drone_levels is not None else 1
-        drone_rounds = len(self.starts()) * len(self.drones) * n_lv * n_bg
+        keys = self.drone_keys()
+        drone_rounds = len(self.starts()) * len(keys) * n_lv * n_bg
         total = drone_rounds + (n_bg if self.no_drone_rounds else 0)
-        return dict(starts=len(self.starts()), drones=len(self.drones), drone_levels=n_lv, backgrounds=n_bg,
+        return dict(starts=len(self.starts()), drones=len(keys), drone_levels=n_lv, backgrounds=n_bg,
                     drone_rounds=drone_rounds, total=total, detector_runs=total * len(self.detectors))
 
     def check(self) -> list[str]:
@@ -181,37 +200,55 @@ class Plan:
         if self.step_s <= 0:
             out.append("start step must be above 0 s")
         if not self.drones:
-            out.append("add at least one drone file" if self.kind == "real" else "give at least one drone speed")
-        if self.kind == "real" and self.drone_levels is None:
-            out.append("real drone files need a level in dB SPL")
+            out.append("give at least one drone speed" if self.kind == "synthetic" else "add at least one drone file")
+        if self.kind in ("real", "modified") and self.drone_levels is None:
+            out.append("drone files need a level in dB SPL")
+        if self.kind == "modified":
+            if not self.speeds:
+                out.append("give at least one speed in km/h")
+            elif any(not 0 < v <= 1000 for v in self.speeds):
+                out.append("speeds must be above 0 and at most 1000 km/h")
+            if not self.approach.get("closest_m", 0) > 0:
+                out.append("the distance at impact must be above 0 m")
         if not self.detectors:
             out.append("tick at least one detector")
         if not self.layers and not self.drones:
             out.append("nothing to test")
-        if self.calibrate_fa is not None:
-            if not self.layers:
-                out.append("site calibration needs at least one background layer to listen to")
-            if not 0 < self.calibrate_fa < 1:
-                out.append("calibration false-alarm rate must be between 0 and 100 %")
-            if self.calibrate_s < 10:
-                out.append("calibrate on at least 10 s of background")
         return out
 
 
 # ------------------------------------------------------------------ drones
 
 class Drones:
-    """The 10 s drone signals (WAV units, 16 kHz) and where their sound starts and ends within them."""
+    """The drone signals (WAV units, 16 kHz; 10 s, or 5-10 s for a short real file) and where their
+    sound starts and ends within them."""
 
     def __init__(self, plan: Plan, progress=print):
         self.plan, self.sig, self.span = plan, {}, {}
-        if plan.kind == "real":
+        self.unit = set()                                        # signals scaled as "RMS 1 = the level at 1 m"
+        if plan.kind == "modified":
+            files = {}
+            cl, dop = float(plan.approach.get("closest_m", 1.0)), bool(plan.approach.get("doppler", False))
+            for k in plan.drone_keys():
+                p, v = split_key(k)
+                if p not in files:
+                    x = read_wav(portable(p), DEFAULT).audio.astype(np.float64)
+                    if len(x) < MIN_DRONE_S * SR:
+                        raise ValueError(f"{Path(p).name} is {len(x) / SR:.1f} s; drone files must be at least {MIN_DRONE_S:g} s")
+                    x = x[-int(DRONE_S * SR):]                   # the end of the file is the impact
+                    files[p] = x / (float(np.sqrt(np.mean(x ** 2))) or 1.0)
+                y, heard = approach(files[p], v, cl, dop)
+                self.sig[k] = y
+                self.span[k] = (heard, len(y) / SR, len(y) / SR)  # impact at the last sample
+                self.unit.add(k)
+        elif plan.kind == "real":
             for p in plan.drones:
-                x = read_wav(p, DEFAULT).audio.astype(np.float64)
-                if len(x) < DRONE_S * SR:
-                    raise ValueError(f"{Path(p).name} is {len(x) / SR:.1f} s; drone files must be at least {DRONE_S:g} s")
+                x = read_wav(portable(p), DEFAULT).audio.astype(np.float64)
+                if len(x) < MIN_DRONE_S * SR:
+                    raise ValueError(f"{Path(p).name} is {len(x) / SR:.1f} s; drone files must be at least {MIN_DRONE_S:g} s")
                 self.sig[p] = x[: int(DRONE_S * SR)]
-                self.span[p] = (0.0, DRONE_S, None)              # the whole file is drone; no impact
+                # the whole file is drone; no impact. A short file ends early: truth and SNR follow its length.
+                self.span[p] = (0.0, len(self.sig[p]) / SR, None)
         else:
             a = dwg.defaults()
             a.flight_s = DRONE_S
@@ -229,57 +266,91 @@ class Drones:
         x = self.sig[d]
         if level_db is None:                                     # synthetic, as rendered
             return x
+        if d in self.unit:                                       # modified: level_db is the level at 1 m
+            return x * rms_for(level_db)
         s0, s1, _ = self.span[d]
         part = x[int(s0 * SR): int(s1 * SR)]
         r = float(np.sqrt(np.mean(part ** 2))) or 1.0
         return x * (rms_for(level_db) / r)
 
 
+def portable(p: str) -> str:
+    """A drone file path that also works on the other machine: if `p` does not exist, the same path
+    from its "data/" folder on, under this clone (a plan saved on Windows runs on the server and back)."""
+    # shortcut: only files under data/ travel, others must exist at their path; upgrade if drones live elsewhere.
+    s = p.replace("\\", "/")
+    i = s.find("/data/")
+    return str(dwg.ROOT / s[i + 1:]) if i >= 0 and not Path(p).exists() else p
+
+
+def modified_key(path: str, speed_kmh: float) -> str:
+    return f"{path}|{float(speed_kmh):g}"
+
+
+def split_key(k: str) -> tuple[str, float]:
+    p, v = k.rsplit("|", 1)
+    return p, float(v)
+
+
 def drone_label(d) -> str:
+    if isinstance(d, str) and "|" in d:                      # modified: file at speed
+        p, v = split_key(d)
+        return f"{Path(p).name} @ {v:g} km/h"
     return Path(d).name if isinstance(d, str) else f"{float(d):g} km/h"
+
+
+def drone_setting(d, key: str):
+    """A drone round's value of `key`: "drone" (its label), and for modified drones also "file" and
+    "speed_kmh"; None where the key does not apply."""
+    if d is None:
+        return None
+    if key == "drone":
+        return drone_label(d)
+    if isinstance(d, str) and "|" in d:
+        p, v = split_key(d)
+        return Path(p).name if key == "file" else v if key == "speed_kmh" else None
+    return None
+
+
+# ------------------------------------------------------------------ modified drones: the approach
+
+def approach_distance(n: int, speed_kmh: float, closest_m: float = 1.0) -> np.ndarray:
+    """Distance (m) per sample of a drone flying in a straight line at speed_kmh, that is closest_m from
+    the microphone at its last sample (the impact): r(t) = hypot(closest_m, v (T - t))."""
+    t = np.arange(n) / SR
+    return np.hypot(closest_m, speed_kmh / 3.6 * (n / SR - t))
+
+
+def approach(x: np.ndarray, speed_kmh: float, closest_m: float = 1.0, doppler: bool = False) -> tuple[np.ndarray, float]:
+    """x (16 kHz) as heard at 1 m, moved along approach_distance(): spherical spreading 1 / r and ISO
+    9613-1 air absorption at each moment's distance (dad.propagation, its default weather), and with
+    doppler also the travel time (pitch up while approaching). The last sample stays the impact.
+    Returns the heard signal (same length) and when the first sound reaches the microphone (s; 0
+    without Doppler)."""
+    r = approach_distance(len(x), speed_kmh, closest_m)
+    if doppler:
+        y = prop.propagate(x, r, fs=SR)[: len(x)]
+        y = np.pad(y, (0, len(x) - len(y)))
+        return y, float((r[0] - r.min()) / prop.speed_of_sound())
+    y = x / r                                                    # spreading, re 1 m
+    f, _, Z = stft(y, SR, nperseg=prop.NPERSEG, noverlap=prop.NPERSEG - prop.HOP, boundary="even")
+    frame_r = r[np.clip(np.arange(Z.shape[1]) * prop.HOP, 0, len(r) - 1)]
+    Z *= 10 ** (-prop.air_absorption_db_per_m(f)[:, None] * (frame_r[None, :] - 1.0) / 20)
+    _, out = istft(Z, SR, nperseg=prop.NPERSEG, noverlap=prop.NPERSEG - prop.HOP, boundary=True)
+    return out[: len(x)], 0.0
 
 
 # ------------------------------------------------------------------ detectors
 
-def load_detectors(names: list[str]) -> tuple[dict, dict]:
+def load_detectors(names: list[str], device: str = "cpu") -> tuple[dict, dict]:
     thr, sc = {}, {}
     for m in names:
         if m == "comb":
             thr[m], sc[m] = dwg.comb_threshold(), load_scorer("comb", DEFAULT, "cpu")
         else:
-            t, s = dwg._detectors(m)
+            t, s = dwg._detectors(m, device)
             thr[m], sc[m] = t["CNN"], s["CNN"]
     return thr, sc
-
-
-def calibrate(plan: Plan, layers: dict, scorers: dict, frozen: dict, start_s: float) -> tuple[dict, dict]:
-    """Site calibration (report entry 148): each detector's threshold set on the site's own background.
-
-    For every background of the plan (each combination of the enabled layers' levels), `calibrate_s`
-    seconds of the layers with no drone are mixed, from the stretch that follows the test's own stretch
-    ([start_s + length_s, ...), so the calibration audio is never the audio the rounds are cut from unless
-    a source is shorter than length_s + calibrate_s and wraps: `overlaps_test` says so per layer). Every
-    detector streams it as in a round (1 s window, 0.125 s hop); the windows of all backgrounds are pooled
-    and the threshold is rangerun.fa_threshold at `calibrate_fa`. This is what a fielded system does when
-    it is commissioned on a recording of where it stands, instead of keeping a threshold frozen on
-    another rig's validation (entries 141, 147)."""
-    from dad.rangerun import fa_threshold
-    n = int(round(plan.calibrate_s * SR))
-    c0 = start_s + plan.length_s
-    pooled = {k: [] for k in scorers}
-    for bg in plan.backgrounds():
-        mix = np.sum([layers[name].window(n, c0, lv) for name, lv in bg.items()], axis=0)
-        clip = Clip("site calibration", mix.astype(np.float32), SR, 1, "FLOAT")
-        for k, sc in scorers.items():
-            pooled[k].append(np.asarray(stream(clip, sc, DEFAULT, frozen[k]).score, dtype=np.float64))
-    thr = {k: float(fa_threshold(np.concatenate(v), plan.calibrate_fa)) for k, v in pooled.items()}
-    info = dict(fa=plan.calibrate_fa, seconds=plan.calibrate_s, start_s=c0, backgrounds=len(plan.backgrounds()),
-                windows={k: int(sum(len(x) for x in v)) for k, v in pooled.items()},
-                fa_at_frozen={k: float((np.concatenate(v) >= frozen[k]).mean()) for k, v in pooled.items()},
-                overlaps_test={name: bool((plan.length_s + plan.calibrate_s) * SR > len(layers[name].signal()[0]))
-                               for name in plan.layers},
-                frozen_thresholds=frozen)
-    return thr, info
 
 
 # ------------------------------------------------------------------ a round
@@ -335,6 +406,22 @@ def score_round(m: dict, thr: dict, scorers: dict) -> dict:
     return out
 
 
+def snr(m: dict) -> dict:
+    """Drone against background over the drone's sound (its truth span): snr_db = 10 log10(P_drone /
+    P_background), signal_share = P_drone / (P_drone + P_background), 0 (only noise) to 1 (only drone),
+    0.5 at 0 dB. None without a drone; signal_share 1 with no background."""
+    if not m["truth"].drones or "drone" not in m["parts"]:
+        return dict(snr_db=None, signal_share=None, drone_db=None)
+    k = m["truth"].drones[0]
+    a, b = int(round(k["start_s"] * SR)), int(round(k["end_s"] * SR))
+    d = m["parts"]["drone"][a:b]
+    pd = float(np.mean(d ** 2))
+    pb = float(np.mean((m["mix"][a:b] - d) ** 2))
+    return dict(snr_db=10 * np.log10(pd / pb) if pb > 0 and pd > 0 else None,
+                signal_share=pd / (pd + pb) if pd + pb > 0 else None,
+                drone_db=db_spl(d) if pd > 0 else None)      # measured: also for "as rendered" drones
+
+
 def hop_levels(parts: dict, t_end: np.ndarray) -> dict:
     """dB SPL of every part (and the mix) in each 1 s window ending at t_end, as the detectors hear it."""
     n = int(DEFAULT.window_seconds * SR)
@@ -354,15 +441,15 @@ def row_fields(plan: Plan) -> list[str]:
     return (["round", "kind", "drone", "drone_level_db", "start_s", *[f"{n}_db" for n in plan.layers], "detector",
              "threshold", "tp", "fn", "fp", "tn", "left_out", "recall", "false_positive_rate", "precision",
              "first_alarm_s", "delay_s", "lead_s", "any_alarm", "any_false_alarm", "mean_conf_drone",
-             "mean_conf_no_drone"])
+             "mean_conf_no_drone", "snr_db", "signal_share", "drone_db"])
 
 
 class Test:
     """One run of a plan. `run()` goes round by round (stop() between rounds), appends to rounds.csv,
     keeps every round's per-hop scores in memory and in scores.npz, and writes config.json."""
 
-    def __init__(self, plan: Plan, out_dir: Path | None = None):
-        self.plan = plan
+    def __init__(self, plan: Plan, out_dir: Path | None = None, device: str = "cpu"):
+        self.plan, self.device = plan, device
         self.out = Path(out_dir or OUT_ROOT / f"{time.strftime('%Y%m%d_%H%M%S')}_{plan.kind}")
         self.layers = make_layers()
         self.rounds = plan.rounds()
@@ -370,7 +457,6 @@ class Test:
         self.start_s = plan.soundscape_start_s
         self.drones = None
         self.thr = self.scorers = None
-        self.calibration = None
 
     def prepare(self, progress=print):
         if self.start_s is None:                             # one start per batch, so the longest window fits
@@ -379,14 +465,9 @@ class Test:
             self.start_s = float(np.random.default_rng(dwg.WSN_SEED).integers(0, int(span) + 1)) if span else 0.0
         self.drones = Drones(self.plan, progress)
         progress("loading detectors")
-        self.thr, self.scorers = load_detectors(self.plan.detectors)
-        if self.plan.calibrate_fa is not None:
-            progress(f"calibrating thresholds on {self.plan.calibrate_s:g} s of each background "
-                     f"({len(self.plan.backgrounds())} backgrounds) at {100 * self.plan.calibrate_fa:g}% false alarms")
-            self.thr, self.calibration = calibrate(self.plan, self.layers, self.scorers, self.thr, self.start_s)
+        self.thr, self.scorers = load_detectors(self.plan.detectors, self.device)
         self.out.mkdir(parents=True, exist_ok=True)
         cfg = dict(plan=asdict(self.plan), soundscape_start_s=self.start_s, thresholds=self.thr,
-                   calibration=self.calibration,
                    count=self.plan.count(), drone_spans={drone_label(k): v for k, v in self.drones.span.items()})
         (self.out / "config.json").write_text(json.dumps(cfg, indent=1, default=str), encoding="utf-8")
 
@@ -406,7 +487,11 @@ class Test:
                 if stop():
                     progress(f"stopped after {i - 1} of {len(self.rounds)} rounds")
                     break
-                res = score_round(self.rebuild(r), self.thr, self.scorers)
+                m = self.rebuild(r)
+                res = score_round(m, self.thr, self.scorers)
+                q = snr(m)                                       # the same for every detector of the round
+                for v in res.values():
+                    v["row"].update(q)
                 self.results[r["round"]] = {k: v["row"] for k, v in res.items()}
                 for k, v in res.items():
                     scores[f"{r['round']}|{k}"] = v["dec"].score
@@ -429,12 +514,15 @@ class Test:
 def write_summary(test: Test) -> Path:
     """summary.csv: per detector, and per detector and each varied setting, the mean of the round numbers."""
     rows = []
-    keys = ["drone", "drone_level_db", "start_s", *test.plan.layers]
+    keys = ["drone", *(["file", "speed_kmh"] if test.plan.kind == "modified" else []), "drone_level_db", "start_s",
+            *test.plan.layers]
 
     def setting(r, k):
         if k in r["background"]:
             return r["background"][k]
-        return drone_label(r[k]) if k == "drone" and r[k] is not None else r[k]
+        if k in ("drone", "file", "speed_kmh"):
+            return drone_setting(r["drone"], k)
+        return r[k]
 
     def agg(group):
         out = {}
@@ -468,3 +556,17 @@ def write_summary(test: Test) -> Path:
             w.writerows(rows)
     test.summary = rows
     return p
+
+
+def read_results(folder: Path) -> dict:
+    """round -> detector -> numbers, read back from a run folder's rounds.csv."""
+    num = lambda v: None if v in ("", "None") else (v == "True") if v in ("True", "False") else float(v)  # noqa: E731
+    out: dict[int, dict] = {}
+    with open(Path(folder) / "rounds.csv", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            out.setdefault(int(row["round"]), {})[row["detector"]] = {
+                k: num(row.get(k, "")) for k in ("tp", "fn", "fp", "tn", "left_out", "recall", "false_positive_rate",
+                                                 "precision", "first_alarm_s", "delay_s", "lead_s", "any_alarm",
+                                                 "any_false_alarm", "mean_conf_drone", "mean_conf_no_drone",
+                                                 "snr_db", "signal_share", "drone_db")}   # older runs lack these
+    return out

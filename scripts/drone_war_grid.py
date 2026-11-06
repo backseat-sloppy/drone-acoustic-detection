@@ -272,11 +272,11 @@ def _sources():
 
 
 @functools.cache
-def _detectors(model="it6 CNN"):
-    """(thresholds, scorers) for "CNN" = the network MODELS[model] and "comb"."""
+def _detectors(model="it6 CNN", device="cpu"):
+    """(thresholds, scorers) for "CNN" = the network MODELS[model] (on `device`) and "comb" (CPU)."""
     run, ckpt = MODELS[model]
     thr = {"CNN": threshold_from_run(run, str(ckpt), DEFAULT.window_seconds), "comb": comb_threshold()}
-    return thr, {"CNN": load_scorer(str(ckpt), DEFAULT, "cpu"), "comb": load_scorer("comb", DEFAULT, "cpu")}
+    return thr, {"CNN": load_scorer(str(ckpt), DEFAULT, device), "comb": load_scorer("comb", DEFAULT, "cpu")}
 
 
 def defaults():

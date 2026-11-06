@@ -31,6 +31,11 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Soundscape line (branch it11-soundscapes, own section at the end) | 095 to 105 and 101 to 118 of that section | Synthetic Pd drones in random labelled soundscapes (confusers, transients), then realism (rotor detune, mic, room), real Glasgow drones, a CRNN, steady-noise arms | The supervisor's notes (entry 086); synthetic training allowed (entry 087) | **Not met; validation only.** On 10 sealed ARIS excerpts with the war track at 0 dB, the share of alarmed windows is it11 CNN 13.5%, it11r CNN 23.1%, it9 CRNN (real rigs) 58.3%. Steady-noise arms are training. |
 | Iteration 11.1 (branch 11.1) | 135 to 136 | AudioSet-pretrained PANNs Cnn14_16k on the e133 compliant data: P0 AudioSet scores (no training), P1 frozen encoder + linear probe, P2 LP-FT | Entry 134: from scratch, the only allowed real drones (Glasgow d1-d16, one rig) teach "a Glasgow recording"; pretraining is the established lever for unseen recording chains (entries 053, 131) | **P2 rejected, P1 mixed** (validation only). Frozen encoder: best Nightjar AUC (0.908) and drone-vs-mower separation, mower gate passes, but recall at 5% FA misses (b)/(c) and pooled real recall is 0.49. Fine-tuning overfits the Glasgow rig (perfect there, worse everywhere else). The training-data rule stays the binding limit (entry 142). |
 | Iteration 11.2 | 143 to | Real drones from several rigs in training (Mads, entry 143): it9's pooled recipe without FPV plus steady noise, leave one rig out, CRNN against the frozen Cnn14_16k probe | Entries 134 and 142: under the single-rig rule neither training from scratch nor pretraining reaches gates (b) and (c) | **No gate passes** (validation only). CRNN on unseen d3set 0.64-0.70 recall @5% FA (e133: 0.58), on unseen Nightjar 0.64-0.70 (e133: 0.65-0.67); frozen probe worse (0.39-0.58). With FPV test, leave-one-rig-out leaves one real rig per fold (entry 146). |
+| Iteration 11 | 100 to 105, 123 to 125 | Steady-noise family (random slopes, random-phase copies of rig no-drone windows) as negatives and maskers; no war audio in training. Judged on unseen real noise stems and the mower session, with recall guards | All networks alarm on 99-100% of war-shaped noise and on pink/brown noise, but on 0% of the war track: the failure is steady noise, not war (entry 100) | In progress. Council held (entry 100). War-shaped noise matches war audio only in its long-term spectrum; real tank clips alarm 45-57% (entry 101). Step 0 (entry 102): the networks rely on the harmonic lines; steadiness pushes toward drone; noise alarms only at -3 to -6 dB/octave. Step 1 (entry 103): generators and the `simdist_steady` recipe in the sampler, tested. War-shaped noise dropped on Mads's decision; war is tested on real war audio only (entry 104). 36 of 97 FSD50K stems are from FSD50K dev, which training draws from: reported apart (entry 105). Step 2 next. On the CRNN (entries 123-125): **fails its guards.** Pink/brown to 0%, mower 38% to 13%, but Lund recall 0.34 to 0.17 and ARIS drones 71% to 37% of windows; slightly worse separation (entry 127). |
+| Iteration 12 | 125 to 127 | Real FSD50K confusers (engine, vehicle, power tool, fan, insect, water) as 25% of negatives and under 30% of positives | Iteration 11's synthetic steady noise cost real-drone recall; the worst unseen false alarms are engines, vehicles, insects and water | **Fails its guards.** Unseen confuser stems 31% to 18% (target met), but validation -2.3 and Lund -13 points. At matched false alarms it separates exactly like `simdist` (AUC 0.932 against 0.930): the recipes move the operating point, not the separation (entry 127). |
+| Iteration 13 | 127 to 128 | Frozen PANNs Cnn14_16k embedding plus logistic regression (entry 053's modified B) | Training-data levers ran out: every CRNN recipe reaches about the same separation (entry 127) | **Failed** (entry 053's rule). Mower false alarms 46% (> 40%); Lund recall 0.545 (CRNN 0.342), but suite AUC 0.84 against the CRNN's 0.93, brown noise 100%; fusing with the CRNN does not help. Folds: mean 0.466 against 0.527 (entry 130). |
+| Iteration 14 | 129 to 130 | Cnn14_16k fine-tuned end to end (LP-FT), after a council (entry 129) | The frozen embedding underfits (training accuracy 0.81) | **Failed at its go/no-go** (seed 0): validation recall at 10% FA 0.594 (gate 0.768), Lund 0.000 (gate 0.30). One untuned setup. The it9 CRNN stays the best model. |
+| Iteration 15 | 132 to 133 | Decision stage on the it9 CRNN, no training: a causal 1 s median, and the mean of several networks; a new war-coupling readout (score of drone + war minus drone alone) through `Complete_Test_Gui`'s engine | Mads saw war spikes lift the drone's score; iterations 11-14 changed the training data or the model without better separation | **Hypothesis rejected.** The war mostly *lowers* the CRNN's drone score (more than 0.1 on 37-51% of drone hops, lifts on 5-6%). A median leaves the coupling unchanged; averaging cuts it by 17-21% (30% required). Both CNNs separate drone-in-war better than the CRNN on this readout (AUC 0.91-0.92 against 0.86 at 65 dB SPL). |
 
 ## Templates
 
@@ -9912,3 +9917,1457 @@ both rigs, admitting one FPV campaign to training, and stopping to report.
   levels) is harsher than the test stretch (118-138 s): 5% FA there became 0% on the test's no-drone windows.
 - One sealed clip; nothing here is a test result or a design decision (entry 131).
 
+## 123 - Mads: iterate on the it9 CRNN; iteration 11 runs on the CRNN, on the server
+
+- Date: 2026-11-05
+- Iteration: 11
+- Type: Requirements, Infrastructure
+- Commit: ad25f45 (branch `Automatic-iteration(Mads)`) plus the uncommitted `scripts/steady_suite.py`
+
+**What changed.**
+- Mads's instruction (2026-11-05, in Danish, paraphrased): keep iterating on the "it9 CRNN"
+  (`final_crnn`, entry 096), the best model so far. Steady noise looks like the largest problem.
+  The real goal is to detect real drone sounds with the highest possible confidence. Claude should
+  not tie itself too closely to `REQUIREMENTS.md`, may add training data or change the model,
+  should use the JupyterLab server and its GPUs, and should get the GUI test running there.
+- **Iteration 11 changes network.** The box's DS-CNN becomes the CRNN of entry 096 (739,747
+  parameters). Everything else in the box stays: the two arms (`simdist` against
+  `simdist_steady`), three seeds, the threshold frozen at 5% false alarms on validation, and the
+  pass rules. The rules now read "the CRNN with `simdist_steady` against the CRNN with `simdist`
+  on the same seeds". The iteration 9 leave-one-unit-out guard was a DS-CNN figure, so the CRNN
+  `simdist` arm is trained on the same five units here and becomes its own reference.
+- **New readout, reported without a rule.** The ten real drone excerpts in
+  `data/extracted/sealed_peek/` (ITU ARIS, entry 101): the share of windows alarmed and the mean
+  score, scored as the GUI scores them. These come from the sealed range test set, which entry
+  101 opened. They are now looked at on every candidate, on Mads's request. **They can steer
+  design choices from now on**, so ITU ARIS no longer counts as a sealed set. Selection still
+  rests on validation and the leave-one-unit-out folds.
+- **The server.** A second clone of `Automatic-iteration(Mads)` at `~/dad` on the JupyterLab
+  account `mads`, next to the old `~/drone-acoustic-detection` (branch `iteration9-frontends`, with
+  uncommitted changes, left untouched). In the new clone:
+  - `.venv` is a symlink to the old clone's venv (torch 2.14.1+cu129, entry 091), and runs set
+    `PYTHONPATH=$PWD/src` so `dad` is imported from the new clone. Checked:
+    `dad.__file__` = `~/dad/src/dad/__init__.py`, CUDA available.
+  - `data/processed/*` are symlinks to the old clone's stores, `fsd50k.i16` included. Nothing was
+    copied or changed.
+  - `data/FSD50K/` is a folder of symlinks to the old clone's raw FSD50K files, plus
+    `_source_record.json` fetched from `https://zenodo.org/api/records/4060432`. The download
+    script writes that file, and `fetch_env_clips.py` needs it. The raw folder itself was not
+    touched.
+  - The stems and the war track were rebuilt on the server from FSD50K:
+    `build_stems.py --skip-drones`, then `--picked`, then `war_track.py` (seed 0). That gives 98
+    non-drone stems against 97 on Mads's PC. The difference is one bird: the PC's stems predate the
+    exclusion of 'Lapwing.wav' (`EXCLUDE`, 2026-10-29) and were never rebuilt, so the server has
+    the replacement clip `fsd50k_eval_427435` as a third bird.
+  - Commands are run through a JupyterLab terminal driven from the browser session where Mads is
+    logged in. No token was created.
+- **Entry 105's open check, done.** `FSD50K.ground_truth/dev.csv` on the server: of the 36 dev
+  stems, 32 are in split `train` and 4 in `val` (1 buzzing insect, 1 chainsaw, 2 war shouts).
+  Both tank clips, the mower, the scooters and the generators are `train`. They pass the licence
+  and drone-keyword filters, since the stem builder applies the same ones, so they were almost
+  certainly training negatives for models 6 and 9. The tank clips still alarm on 45-57% of
+  windows (entry 101).
+
+**Next.** Step 2: the suite script and its baseline (entry 124), then the runs.
+
+## 124 - Step 2: the steady suite, and the baseline of the three GUI models
+
+- Date: 2026-11-05
+- Iteration: 11 (step 2)
+- Type: Evaluation
+- Commit: ad25f45 plus the uncommitted `scripts/steady_suite.py`
+
+**What changed.** New `scripts/steady_suite.py`. It scores checkpoints as `detect_gui.py` does
+(`dad.wavio.stream`: channel 0, 16 kHz, a 1 s window every 0.125 s, each model at its frozen
+threshold). The sets:
+- the ten ITU ARIS drone excerpts;
+- `Fugle.wav` (birds, no drone);
+- every non-drone stem, with its subset (`eval` unseen; `dev` possibly seen, entry 105);
+- the 23 war clips per class, and the 600 s war track;
+- white, pink and brown noise (20 s, -30 dBFS, seed 0), as tripwires only.
+
+It writes one CSV row per model and file to `artifacts/steady_suite/<tag>.csv`. Models are named
+from the GUI's list or given as `NAME=CHECKPOINT,RUN_JSON`.
+
+**Why.** Entry 103's step 2, extended with the real drones Mads wants to see.
+
+**How.**
+```
+uv run python scripts/steady_suite.py --tag baseline_local
+```
+On Mads's PC, CPU, with the PC's 97 stems.
+
+**Result.** The share of windows alarmed at each model's frozen threshold (window-weighted over
+the files of a set). For the drones it is recall on the excerpts; for everything else it is the
+false-alarm share. "Drone score" is the mean network output over the drone windows. Not
+detection performance on a held-out source: ten excerpts from one dataset, and the noise sets are
+short clips.
+
+| | Drone score | Drone alarm | Birds | Stems eval (no aircraft) | Aircraft eval | Stems dev | War clips | Tank | War track | White | Pink | Brown |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| it6 CNN | 0.606 | 87.5% | 1.4% | 32.9% | 39.5% | 50.1% | 8.4% | 56.8% | 1.2% | 0.0% | 94.8% | 90.2% |
+| it9 CNN | 0.519 | 67.3% | 0.0% | 29.4% | 37.0% | 40.4% | 7.8% | 52.3% | 0.6% | 2.6% | 100% | 11.1% |
+| it9 CRNN | 0.690 | 78.2% | 0.0% | 21.2% | 29.0% | 29.4% | 7.2% | 45.0% | 0.7% | 0.0% | 52.9% | 37.9% |
+
+Per class, the classes where the it9 CRNN alarms most (it6 / it9 CNN / it9 CRNN):
+- prop plane, eval: 97 / 92 / 85%
+- buzzing insect, eval: 89 / 82 / 68%
+- car, eval: 81 / 69 / 65%
+- truck, eval: 68 / 67 / 63%
+- chainsaw, dev: 69 / 53 / 66%
+- scooter, dev: 82 / 66 / 52%
+- stream, eval: 49 / 48 / 45%
+- tank, dev: 57 / 52 / 45%
+- birds stem, eval: 43 / 41 / 44%
+- motorcycle, eval: 78 / 68 / 43%
+
+Where the CRNN is far better than the CNNs: rain (83 / 63 / 2%), generator dev (100 / 99 / 28%),
+mower dev (33 / 24 / 1%), traffic (30 / 30 / 7%), helicopter eval (25 / 21 / 1%) and insects
+(14 / 14 / 1%). No model alarms on wind, dogs, shouts, sirens or the mosquito clips. The war
+clips and the war track reproduce entry 101 (7-8% and 0.6-1.2%), and the colours reproduce
+entry 100 within 1 point.
+
+**Assessment.**
+- **The CRNN is the best of the three** on the drones (mean score 0.69, 78% of windows) and on
+  almost every noise set.
+- **Its largest remaining false alarms are harmonic engines** (car, truck, motorcycle, scooter,
+  prop plane, chainsaw, tank) and buzzing insects, at 43-85%. Those are not steady broadband
+  noise. Pink and brown noise (53%, 38%) and the stream (45%) are the steady part.
+- Iteration 11's steady-noise negatives target the steady part. The engine part needs harder
+  real negatives, the council's arm R1 of entry 086 (real confusers in training). That is the
+  likely next iteration whatever iteration 11 shows.
+
+**Next.** The iteration 11 runs on the server: three seeds, `simdist` and `simdist_steady`, the
+CRNN, on the pooled arm (nothing held out, for the GUI) and the five leave-one-unit-out folds:
+```
+CUDA_VISIBLE_DEVICES=k .venv/bin/python -u scripts/run_range.py --name it11c_s<k> --pool --arms none nightjar d3set fpv:ariel_25.02 fpv:palmahim_10.02 fpv:palmahim_27.05 --recipes simdist simdist_steady --models crnn --device cuda --windows 200000 --speed 0.8 1.25 --deploy-fa 0.05 --seed <k> --frontend mfe
+```
+Started 2026-11-05 on GPUs 0-2, k = 0, 1, 2.
+
+## 125 - Iteration 11, pooled arm: steady negatives remove the colour alarms but break two recall guards
+
+- Date: 2026-11-05
+- Iteration: 11
+- Type: Evaluation
+- Commit: ad25f45 plus the uncommitted `scripts/steady_suite.py` and `scripts/judge_runs.py`
+
+**What changed.** Nothing. The first six checkpoints of the entry 124 runs finished: the pooled arm
+(nothing held out) for both recipes and seeds 0-2. They were scored on the steady suite and
+judged from the run files. The five leave-one-unit-out folds are still running.
+
+**How.** On the server:
+```
+.venv/bin/python scripts/steady_suite.py --device cuda --model "it9 CRNN" --model "s<k> <recipe>=artifacts/models/it11c_s<k>_none_<recipe>_crnn.pt,artifacts/runs/it11c_s<k>.json" ... --tag it11c_none
+.venv/bin/python scripts/judge_runs.py artifacts/runs/it11c_s?.json
+```
+New `scripts/judge_runs.py`: seed means per recipe from `run_range.py` run files. It reads the
+pooled arm's validation, mower and Lund figures, and recall at 10% own false alarms per held-out
+unit, with the FPV mean.
+
+**Result.** CRNN, MFE, `simdist` with speed 0.8-1.25, 200,000 windows, threshold frozen at 5%
+false alarms on validation (21 segments from the training rigs). Seed means (seeds 0 / 1 / 2 in
+brackets where it matters).
+
+From the run files:
+
+| | `simdist` | `simdist_steady` | Change | Rule |
+|---|---|---|---|---|
+| Validation recall at the deployment threshold | 0.787 | 0.761 | -2.6 | at most -2: **broken** |
+| Validation recall at 10% FA | 0.798 | 0.776 | -2.2 | (reported) |
+| Mower session, false alarms at deployment | 37.9% (31 / 47 / 35) | 12.8% (15 / 15 / 8) | -25.1 | at most 20%: met |
+| Lund recall at deployment, all ranges | 0.342 (0.366 / 0.343 / 0.316) | 0.172 (0.183 / 0.170 / 0.163) | -17.0 | at most -3: **broken** |
+| Lund recall at deployment, 0-50 m | 0.903 | 0.723 | -18.0 | (reported) |
+
+Steady suite (`artifacts/steady_suite/it11c_none.csv` on the server, scored as the GUI scores):
+
+| | it9 CRNN (entry 096) | `simdist` | `simdist_steady` |
+|---|---|---|---|
+| ARIS drones, mean score | 0.690 | 0.630 | 0.489 |
+| ARIS drones, windows alarmed | 78.2% | 71.4% | 36.8% |
+| Stems eval, no aircraft (unseen) | 20.9% | 20.2% | 13.4% |
+| Aircraft eval | 29.0% | 28.8% | 14.4% |
+| Stems dev | 29.4% | 30.8% | 20.3% |
+| War clips | 7.2% | 6.3% | 1.9% |
+| Tank | 45.0% | 42.3% | 15.3% |
+| War track | 0.7% | 0.5% | 0.0% |
+| Pink / brown (tripwires) | 52.9 / 37.9% | 29.9 / 60.8% | 0.0 / 0.0% |
+
+The `simdist` arm is close to entry 096's CRNN, the same recipe on seed 0: validation recall at
+deployment 0.787 against 0.798, with seeds 0-2 between 0.784 and 0.791. The cause of the
+difference is not checked; it may be GPU nondeterminism or code changed since entry 096. Its
+pink and brown alarms swing from 5 to 76% between seeds.
+
+**Assessment.**
+- **The steady negatives do what they target.** Pink and brown noise go to 0% on all three
+  seeds, the mower to 13%, the tank to 15%, and the unseen stems fall by a third: 20.2% to 13.4%,
+  short of the "halved" rule.
+- **But they cost recall on real drones the network never trained on.** Lund falls 17 points
+  (from 0.34 to 0.17) and the ARIS excerpts from 71% to 37% of windows. Validation, which comes
+  from the training rigs, loses only 2.6 points. Two of the box's recall guards are broken on every
+  seed. This is the failure the Scholar and the Devil's Advocate warned about in entry 100: steady
+  negatives teach "steady means no drone", and a distant or hovering drone is steady.
+- The verdict waits for the leave-one-unit-out folds, but no fold result can repair a broken
+  guard. As boxed, `simdist_steady` fails.
+
+**Next.** Iteration 12, without synthetic steady noise: real FSD50K confusers as hard negatives,
+started next to the remaining iteration 11 folds (the server has spare CPU and GPU).
+
+# Iteration 12 - Real confusers as hard negatives
+
+> **Changed from iteration 11:** the training negatives and maskers are real sounds, not
+> synthetic steady noise. FSD50K dev `train` clips whose labels (ancestors included) contain
+> Vehicle, Engine, Power_tool, Mechanical_fan, Sawing, Insect, Buzz or Water (3,369 clips) are
+> drawn for 25% of the negatives, each over a training rig's background at -5 to +15 dB in-band
+> (confuser over background). 30% of the positives get one under the drone at -5 to +15 dB (drone
+> over confuser). Recipe `simdist_conf` (`src/dad/rangerun.py`), against `simdist`.
+> **Why:** entry 124. The it9 CRNN's largest false alarms are engines, vehicles, buzzing insects
+> and running water (43-85% on prop plane, buzzing insect, car, truck, chainsaw, scooter, stream,
+> motorcycle). Training draws FSD50K for only about 8% of its negatives, and about 10% of those
+> carry these labels, so the network almost never sees an engine without a drone. Entry 125:
+> synthetic steady noise lowers false alarms but costs 17 points of Lund recall, so the next lever
+> is real sounds with their own texture, not idealised noise. This is the council's arm R1 of
+> entry 086, which was never run.
+> **Kept the same:** the CRNN, MFE, `simdist` with speed 0.8-1.25, 200,000 windows, seeds 0-2,
+> the deployment threshold at 5% false alarms on validation, the validation set, the pooled arm
+> and the five leave-one-unit-out folds. The `simdist` reference is iteration 11's `simdist` arm
+> on the same seeds.
+> **Hypothesis:** with real confusers in training, the network learns to tell a drone from an
+> engine or water by their structure, not by steadiness. False alarms on those classes fall on
+> unseen clips, without the recall loss of entry 125.
+> **Judged by** (seed means against `simdist`, decided before any run):
+> - The unseen FSD50K eval stems of the confuser classes (aircraft, buzzing insect, car, idling,
+>   motorcycle, power tool, prop plane, truck, helicopter, traffic, rain, stream, insects) fall by
+>   at least a third, pooled over windows.
+> - Recall guards: validation recall at the deployment threshold drops at most 2 points; Lund
+>   recall at the deployment threshold (all ranges) drops at most 3 points; the FPV mean at 10% own
+>   false alarms drops at most 3 points and no held-out unit more than 5.
+> - Reported without a rule: the mower session, every other suite set, the colour tripwires, and
+>   the ARIS drones' mean score and alarm share (Mads's real goal, entry 123).
+> - Caveat fixed in advance: the eval stems are other clips than training's dev clips, but
+>   uploaders shared between FSD50K dev and eval have not been checked (entry 105).
+
+## 126 - Iteration 12 result: real confusers cut confuser false alarms by 42% but break two recall guards
+
+- Date: 2026-11-05
+- Iteration: 12
+- Type: Evaluation
+- Commit: ad25f45 plus the uncommitted `src/dad/rangerun.py` (recipe `simdist_conf`),
+  `scripts/steady_suite.py` and `scripts/judge_runs.py`
+
+**What changed.** Nothing new. All 18 `simdist_conf` checkpoints finished: the pooled arm and the five
+leave-one-unit-out folds, seeds 0-2. They were judged against iteration 11's `simdist` arm on the same
+seeds (the reference fixed in the iteration 12 box).
+
+**How.** On the server, in `~/dad`:
+```
+CUDA_VISIBLE_DEVICES=k .venv/bin/python -u scripts/run_range.py --name it12_s<k> --pool --arms none nightjar d3set fpv:ariel_25.02 fpv:palmahim_10.02 fpv:palmahim_27.05 --recipes simdist_conf --models crnn --device cuda --windows 200000 --speed 0.8 1.25 --deploy-fa 0.05 --seed <k>
+.venv/bin/python scripts/judge_runs.py artifacts/runs/it12_s?.json      # and it11c_s?.json for the reference
+.venv/bin/python scripts/steady_suite.py --device cuda --model "it9 CRNN" --model "s<k> simdist=..." --model "s<k> steady=..." --model "s<k> conf=..." --tag it11_12_none
+```
+
+**Result.** CRNN, MFE, 1 s window, 200,000 training windows, threshold frozen at 5% false alarms on
+validation (21 segments from the training rigs). Run files: 0.5 s hop. Suite: 0.125 s hop, as the GUI
+scores. Seed means, with seeds 0 / 1 / 2 in brackets.
+
+From the run files:
+
+| | `simdist` (ref.) | `simdist_conf` | Change | Rule |
+|---|---|---|---|---|
+| Validation recall at deployment | 0.787 | 0.764 (0.764 / 0.770 / 0.758) | -2.3 | at most -2: **broken** |
+| Validation recall at 10% FA | 0.798 | 0.776 | -2.2 | (reported) |
+| Mower session, false alarms at deployment | 37.9% | 18.7% (12.8 / 28.0 / 15.2) | -19.2 | (reported) |
+| Lund recall at deployment, all ranges | 0.342 | 0.212 (0.220 / 0.253 / 0.162) | -13.0 | at most -3: **broken** |
+| Lund recall at deployment, 0-50 m | 0.903 | 0.790 | -11.3 | (reported) |
+| Nightjar held out, recall at 10% own FA | 0.279 | 0.274 | -0.5 | at most -5: met |
+| d3set held out | 0.471 | 0.421 | -5.0 | at most -5: met, at the limit |
+| FPV ariel_25.02 held out | 0.640 | 0.634 | -0.6 | at most -5: met |
+| FPV palmahim_10.02 held out | 0.770 | 0.773 | +0.3 | at most -5: met |
+| FPV palmahim_27.05 held out | 0.467 (seeds 0-1 only) | 0.442 | -2.5 | at most -5: met |
+| FPV mean | not yet: the reference's seed 2 fold is still running | 0.616 | | at most -3: pending |
+
+Steady suite (`artifacts/steady_suite/it11_12_none.csv` on the server). Per-seed values are shares
+of windows alarmed at each checkpoint's frozen threshold, then averaged over seeds:
+
+| | it9 CRNN (096) | `simdist` | `simdist_steady` (it. 11) | `simdist_conf` |
+|---|---|---|---|---|
+| ARIS drones, mean score | 0.690 | 0.630 | 0.489 | 0.503 |
+| ARIS drones, windows alarmed | 78.2% | 71.4% | 36.8% | 41.7% |
+| **Confuser classes, eval (judged)** | 32.2% | **31.0%** | 20.7% | **17.9%** |
+| Stems eval, no aircraft | 20.9% | 20.2% | 13.4% | 10.4% |
+| Aircraft eval | 29.0% | 28.8% | 14.4% | 17.1% |
+| Stems dev | 29.4% | 30.8% | 20.3% | 23.0% |
+| War clips / tank / war track | 7.2 / 45.0 / 0.7% | 6.3 / 42.3 / 0.5% | 1.9 / 15.3 / 0.0% | 2.5 / 20.7 / 0.0% |
+| Pink / brown (tripwires) | 52.9 / 37.9% | 29.9 / 60.8% | 0.0 / 0.0% | 0.9 / 10.7% |
+
+**Assessment.**
+- **The target is met.** Unseen confuser-class stems fall from 31.0% to 17.9%, a 42% cut against
+  the third the box asked for. The cut holds on every seed (18.5 / 19.6 / 15.7% against 31.6 / 30.1 /
+  31.4%). It also carries to sounds the recipe never targeted: pink and brown noise nearly vanish
+  without any synthetic noise in training.
+- **Two recall guards are broken on every seed**: validation -2.3 points and Lund -13 points. The
+  ARIS drones fall from 71% to 42% of windows. The leave-one-unit-out folds hold: no unit loses more
+  than 5 points at 10% of its own false alarms. As boxed, `simdist_conf` **fails**.
+- **The pattern matches iteration 11.** Both recipes trade drone recall at the frozen threshold for
+  fewer false alarms in about the same ratio. Here, recall at 10% of each held-out unit's own false
+  alarms hardly moves (iteration 11's folds are not finished yet). That suggests the recipes move where the threshold lands on validation more
+  than they improve how well the network separates drones from noise. Entry 127 tests this directly.
+
+**Next.** A threshold-free comparison of the iteration 11 and 12 checkpoints on the suite (entry 127).
+
+## 127 - At matched false alarms the recipes do not separate better: they move the operating point
+
+- Date: 2026-11-05
+- Iteration: 12
+- Type: Evaluation
+- Commit: ad25f45 plus the uncommitted `scripts/steady_suite.py` (functions `matched` and `smooth`)
+
+**What changed.** `scripts/steady_suite.py` gained a threshold-free view and a `--smooth k` option:
+- `matched()`: per model, the AUC of the ARIS drone windows against the unseen no-drone windows
+  (FSD50K eval stems, `Fugle.wav`, war clips from eval, the war track; 9,164 windows at 0.125 s hop),
+  and the ARIS recall at the thresholds where those no-drone windows alarm 10% and 5%.
+- `--smooth k`: each score is averaged with the k-1 scores before it (causal). The frozen thresholds
+  were set for single windows, so with k > 1 only the matched figures are fair.
+
+**Why.** Entries 125 and 126: both recipes lower false alarms and drone recall together at the
+frozen threshold. The question is whether any of them separates drones from noise better, or only
+lands the threshold elsewhere.
+
+**How.** On the server (`~/dad`, GPU), outputs in `artifacts/steady_suite/*.txt`:
+```
+.venv/bin/python scripts/steady_suite.py --device cuda --model "it9 CRNN" --model "s<k> simdist=..." --model "s<k> steady=..." --model "s<k> conf=..." --tag it11_12_none
+.venv/bin/python scripts/steady_suite.py --device cuda --model "it9 CRNN" --model "s0 simdist=..." --smooth <4|8|16> --tag smooth<k>
+```
+
+**Result.** ARIS drones (ten 10 s excerpts, 1 s window, 0.125 s hop) against 9,164 unseen no-drone
+windows. Seed means of the per-seed figures (seeds 0 / 1 / 2 in brackets):
+
+| | AUC | Recall at 10% FA | Recall at 5% FA | Alarmed at frozen threshold (entry 126) |
+|---|---|---|---|---|
+| it9 CRNN (entry 096, one seed) | 0.937 | 0.767 | 0.452 | 78.2% |
+| `simdist` | 0.930 (0.932 / 0.930 / 0.929) | 0.729 (0.707 / 0.742 / 0.738) | 0.393 | 71.4% |
+| `simdist_steady` (it. 11) | 0.917 (0.917 / 0.903 / 0.932) | 0.625 (0.605 / 0.503 / 0.767) | 0.332 | 36.8% |
+| `simdist_conf` (it. 12) | 0.932 (0.930 / 0.934 / 0.933) | 0.736 (0.742 / 0.723 / 0.742) | 0.418 | 41.7% |
+
+Causal smoothing of the scores (one seed of each model):
+
+| k (decision span) | it9 CRNN: AUC / recall @10% / @5% | `simdist` s0: AUC / recall @10% / @5% |
+|---|---|---|
+| 1 (1 s) | 0.937 / 0.767 / 0.452 | 0.932 / 0.707 / 0.389 |
+| 4 (1.4 s) | 0.938 / 0.771 / 0.485 | 0.933 / 0.711 / 0.400 |
+| 8 (1.9 s) | 0.940 / 0.782 / 0.507 | 0.935 / 0.711 / 0.408 |
+| 16 (2.9 s) | 0.945 / 0.834 / 0.545 | 0.939 / 0.789 / 0.441 |
+
+**Assessment.**
+- **`simdist_conf` separates exactly as well as `simdist`** (AUC 0.932 against 0.930; recall at 10%
+  matched false alarms 0.736 against 0.729). Its lower false alarms and lower drone recall at the
+  frozen threshold are the same curve read at a stricter point: validation's 5% false-alarm threshold
+  lands higher once validation-like negatives get harder. Iteration 12's confuser gain is real at that
+  threshold, but a `simdist` network with a higher threshold would buy the same.
+- **`simdist_steady` separates slightly worse** (0.917, with the widest seed spread). Synthetic steady
+  noise costs separation, as entry 125 suspected.
+- **No recipe beats the it9 CRNN** (0.937). Within seed spread, all CRNNs trained on this pool reach
+  about the same separation. The training-data levers tried in iterations 11-12 have run out.
+- **Smoothing helps a little, and only at long spans**: 16 decisions (2.9 s) lift recall at 10%
+  matched false alarms from 0.77 to 0.83 for the it9 CRNN. A cheap deployment option, but it costs
+  time to detection and does not fix the separation.
+- Limit: the positives are ten excerpts from one source (ITU ARIS), and entry 123 opened them as a
+  readout, so these figures guide but do not prove. Nothing here was tuned on them.
+
+**Verdict for iteration 12.** Fails as boxed (entry 126). The confuser negatives do not improve
+separation; they move the operating point. Next, iteration 13 changes the representation, not the
+data.
+
+# Iteration 13 - A frozen pretrained audio network (PANNs Cnn14_16k) as the frontend
+
+> **Changed from iteration 12:** the model, not the training data. Each 1 s window is embedded by
+> PANNs `Cnn14_16k` (AudioSet-trained, frozen; the 2048-d layer before its classifier), and a
+> logistic regression on the standardised embedding gives the drone score (`src/dad/panns.py`,
+> `--models panns`). Every window is scaled to one RMS before the network. This is entry 053's
+> modified B, which entry 054 deferred until after the field test. Mads lifted that wait on
+> 2026-11-05 (entry 123: free to change the model) and approved the 358.7 MB download of the
+> weights (Zenodo record 3987831, CC BY 4.0). No new package: the checkpoint's STFT kernels and mel
+> matrix are loaded into plain torch. Load check: on `Fugle.wav` the AudioSet head's top classes
+> include Bird / Bird vocalization / Chirp (indices 111-113); on `Drone_01.wav` they are vehicle and
+> aircraft classes. The council of entry 053 covers this model family; it was not reconvened.
+> **Why:** entries 125-127. Two training-data recipes (synthetic steady noise, real confusers) each
+> cut false alarms but cost the same drone recall at the frozen threshold. At matched false alarms
+> the CRNN's AUC on the suite does not move (entry 127). The training data shifts the operating
+> point; the remaining lever is a representation that separates drones from engines better. AudioSet
+> holds thousands of hours of engines, vehicles, insects and aircraft.
+> **Kept the same:** recipe `simdist` (pool, simulated distance, speed 0.8-1.25), 200,000 sampled
+> windows (the log-mel EQ is not applied; it acts on log-mel bands), seeds 0-2, threshold frozen at
+> 5% false alarms on validation, the pooled arm and the five leave-one-unit-out folds, the suite.
+> Reference: iteration 11's CRNN `simdist` arm on the same seeds. Comb and lgbm run on seed 0.
+> **Hypothesis:** a frozen AudioSet embedding separates drones from engine-like noise better than a
+> CRNN trained on about six rigs, so false alarms fall without the recall loss of iterations 11-12.
+> **Judged by** entry 053's rule, fixed then, with the CRNN `simdist` reference in place of dscnn:
+> - *Success:* mower false alarms at most 25% at the deployment threshold, and Lund recall at the
+>   deployment threshold at least 0.45, and the mean held-out recall at 10% own false alarms within
+>   0.05 of the reference, with no unit worse by more than 0.10. Seed means, three seeds.
+> - *Failure:* mower false alarms above 40%, or Lund recall below 0.35.
+> - *In between:* a probe on the embedding plus the CRNN score.
+> - Caveat fixed in advance: the reference CRNN itself has Lund 0.342 (entry 125), under the failure
+>   line. The Lund bar is kept as written, and the change against the reference is reported next to it.
+> - Reported without a rule: the suite at the frozen threshold, and the matched-false-alarm AUC and
+>   recall against the CRNN (entry 127's measure; Mads's real goal is the ARIS drones).
+> - **Departure from entry 053:** its two pre-checks (a within-rig drone-against-mower probe and a
+>   rig-ID probe) are not run first. They were meant to spare an expensive full run, and with a frozen
+>   embedding the full run costs about as much as the probes. The leave-one-unit-out folds test the
+>   rig-encoding worry directly.
+
+## 128 - Iteration 13, pooled arm: a frozen PANNs embedding fails; it separates worse than the CRNN
+
+- Date: 2026-11-05
+- Iteration: 13
+- Type: Evaluation
+- Commit: ad25f45 plus the uncommitted `src/dad/panns.py`, `scripts/run_range.py`, `src/dad/wavio.py`,
+  `scripts/steady_suite.py`, `scripts/judge_runs.py`, `tests/test_panns.py`, `tests/test_steady_suite.py`
+
+**What changed.** The iteration 13 box ran. A smoke run (2,048 windows) checked the pipeline end to
+end and was deleted. Then the full runs, three seeds, one GPU each; seed 0 also trained comb and lgbm.
+The leave-one-unit-out folds are still running; this entry covers the pooled arm, which decides
+entry 053's failure line. It also completes the references of entries 125 and 126.
+
+**How.** On the server, in `~/dad`:
+```
+CUDA_VISIBLE_DEVICES=k .venv/bin/python -u scripts/run_range.py --name it13_s<k> --pool --arms none nightjar d3set fpv:ariel_25.02 fpv:palmahim_10.02 fpv:palmahim_27.05 --recipes simdist --models panns --device cuda --windows 200000 --speed 0.8 1.25 --deploy-fa 0.05 --seed <k>     # seed 0: --models comb lgbm panns
+.venv/bin/python scripts/judge_runs.py artifacts/runs/it13_s?.json
+.venv/bin/python scripts/steady_suite.py --device cuda --model "it9 CRNN" --model "s<k> simdist=..." --model "s<k> panns=artifacts/models/it13_s<k>_none_simdist_panns.pkl,artifacts/runs/it13_s<k>.json" --tag it13_none
+```
+A one-off fusion check (`_fuse.py` on the server, not in the repo) scored the CRNN `simdist` and PANNs
+checkpoints of each seed on the suite and averaged their probabilities with PANNs weight 0, 0.25,
+0.5, 0.75, 1, through `steady_suite.matched`.
+
+**Result.** Pooled arm, threshold frozen at 5% false alarms on validation, seed means (seeds 0 / 1 / 2).
+The logistic regression fits its 200,000 training windows to 0.813 accuracy (seeds 1 and 2).
+
+| | comb (s0) | lgbm (s0) | CRNN `simdist` (ref.) | PANNs + LR | Entry 053 rule |
+|---|---|---|---|---|---|
+| Validation recall at deployment | 0.305 | 0.702 | 0.787 | 0.699 (0.694 / 0.698 / 0.705) | (reported) |
+| Validation recall at 10% FA | 0.307 | 0.750 | 0.798 | 0.738 | (reported) |
+| Mower session, false alarms at deployment | 24.8% | 16.8% | 37.9% | **46.1%** (48.0 / 43.2 / 47.2) | success ≤ 25%, **failure > 40%** |
+| Lund recall at deployment, all ranges | 0.022 | 0.023 | 0.342 | **0.545** (0.527 / 0.538 / 0.570) | success ≥ 0.45, failure < 0.35 |
+| Lund recall at deployment, 0-50 m | 0.038 | 0.122 | 0.903 | 0.778 | (reported) |
+
+Suite (`artifacts/steady_suite/it13_none.csv` and `.txt`), seed means:
+
+| | it9 CRNN | CRNN `simdist` | PANNs + LR |
+|---|---|---|---|
+| ARIS drones, mean score / windows alarmed | 0.690 / 78.2% | 0.630 / 71.4% | 0.510 / 33.4% |
+| Birds | 0.0% | 0.0% | 2.7% |
+| Stems eval, no aircraft / aircraft eval | 20.9 / 29.0% | 20.2 / 28.8% | 12.0 / 19.0% |
+| Confuser classes, eval | 32.2% | 31.0% | 19.7% |
+| War clips / tank / war track | 7.2 / 45.0 / 0.7% | 6.3 / 42.3 / 0.5% | 7.3 / 28.8 / 2.7% |
+| Pink / brown | 52.9 / 37.9% | 29.9 / 60.8% | 0.0 / **100.0%** (every seed) |
+| **AUC, ARIS against unseen no-drone** | 0.937 | 0.930 | **0.840** (0.819 / 0.850 / 0.850) |
+| Recall at 10% / 5% matched FA | 0.767 / 0.452 | 0.729 / 0.393 | 0.430 / 0.274 |
+
+Fusion (AUC; recall at 10% / 5% matched FA), per seed:
+
+| PANNs weight | 0 | 0.25 | 0.5 | 0.75 | 1 |
+|---|---|---|---|---|---|
+| s0 | 0.932; 0.707 / 0.389 | 0.929; 0.700 / 0.405 | 0.912; 0.630 / 0.421 | 0.876; 0.500 / 0.316 | 0.819; 0.385 / 0.234 |
+| s1 | 0.930; 0.742 / 0.367 | 0.930; 0.700 / 0.407 | 0.918; 0.670 / 0.463 | 0.891; 0.574 / 0.403 | 0.850; 0.468 / 0.305 |
+| s2 | 0.929; 0.738 / 0.423 | 0.931; 0.692 / 0.458 | 0.920; 0.675 / 0.459 | 0.893; 0.585 / 0.378 | 0.850; 0.437 / 0.284 |
+
+References completed (all iteration 11 folds have now finished), recall at 10% own false alarms:
+
+| Held-out unit | CRNN `simdist` | `simdist_steady` (it. 11) | `simdist_conf` (it. 12) |
+|---|---|---|---|
+| Nightjar | 0.279 | 0.327 | 0.274 |
+| d3set | 0.471 | **0.592** | 0.421 |
+| FPV ariel_25.02 | 0.640 | 0.603 | 0.634 |
+| FPV palmahim_10.02 | 0.770 | 0.785 | 0.773 |
+| FPV palmahim_27.05 | 0.476 (0.494 / 0.476 / 0.459) | 0.449 | 0.442 |
+| FPV mean | 0.629 | 0.612 | 0.616 |
+
+**Correction to entry 126.** Its palmahim_27.05 reference "0.467 (seeds 0-1 only)" was the mean of
+seeds 1 and 2, the two folds then finished. With all three seeds it is 0.476. Against it,
+`simdist_conf` loses 3.4 points there (within the 5-point guard), and its FPV mean loses 1.3 points
+(within the 3-point guard). Entry 126's verdict stands: validation and Lund broke their guards.
+
+**Assessment.**
+- **By entry 053's rule, iteration 13 fails**: mower false alarms are 46% (above 40%) on every seed.
+  The Lund bar is cleared (0.545 against 0.45), but the rule needs both.
+- **The frozen embedding with a linear probe separates worse than the CRNN.** AUC on the suite is
+  0.84 against 0.93, and brown noise alarms on 100% of windows on every seed. The linear probe fits
+  its own training windows only to 0.81: the drone/no-drone boundary in this sampled data is not
+  linear in AudioSet's embedding.
+- **The Lund gain is real but narrow.** PANNs keeps more recall at long range on Lund (0.545 all
+  ranges against 0.342) but less at 0-50 m (0.778 against 0.903). At the frozen threshold that is a
+  flatter score over distance, not better separation; the suite's matched figures show no gain.
+- **Fusion does not help**: AUC is flat at weight 0.25 and falls after. The weights were not tuned,
+  and these are readout figures (entry 123).
+- **Iteration 11 in full**: `simdist_steady` lifts d3set by 12 points and Nightjar by 5 at their own
+  matched false alarms, while losing 17 points of Lund and 34 of ARIS alarms at the frozen threshold.
+  Steady negatives suit rigs whose background is steady, and hurt elsewhere. The verdict of entry 125
+  stands (guards broken).
+- Baselines: comb and lgbm hold the mower at 25% and 17%, but at Lund recall 0.02.
+
+**Verdict.** Iteration 13 fails. Three iterations in a row (11, 12, 13) have moved the operating
+point without improving separation on unseen real drones and noise. The leave-one-unit-out folds
+keep running and will be added, but they cannot reverse a failure fixed by the pooled arm.
+
+**Next.** The remaining levers are bigger than a recipe change: fine-tuning the pretrained network
+(entry 053's LP-FT), a different evaluation focus (the ARIS drones are ten excerpts), or new real data.
+That is a decision on a model family and on abandoning a line of work, so the council is convened
+first (CLAUDE.md section 4).
+
+## 129 - Council: what follows three iterations that moved the operating point, not the separation
+
+- Date: 2026-11-05
+- Iteration: 13 (decision for 14)
+- Type: Council
+- Commit: uncommitted (on top of ad25f45)
+
+**Question.** What should iteration 14 be?
+- (A) Fine-tune PANNs Cnn14_16k end to end (linear probe, then fine-tune), on the same sampler.
+- (B) Keep the CRNN and engineer the operating point: causal score smoothing and a threshold set on a
+  confuser-aware validation set.
+- (C) A bigger or better-pretrained network on new real drone data.
+- (D) More real drone diversity among the positives.
+- (E) Keep the it9 CRNN as is.
+
+The full brief (to the Devil's Advocate and the Problem Solver) gave the figures of entries 096 and
+125-128, the MoSCoW requirements and the constraints. The Scholar got the problem class only: binary
+detection of one mechanical sound source in 1 s windows, about six recording setups, unseen
+conditions with stationary noise, and a from-scratch CNN that has plateaued while hard negatives
+move only the threshold.
+
+**Devil's Advocate.**
+
+*Decisive objections:*
+1. **The suite cannot tell the options apart.** The positives are ten clips from one ARIS session,
+   so each clip moves recall by about 10 points. Seed spread already reaches 0.03 AUC, and the 0.937
+   reference is a single seed.
+   *Answered.* ARIS leaves the deciding rule; it is reported only. Entries 126-128 already judged by
+   the run files' figures.
+2. **Source is confounded with label in the suite.** Every positive is ARIS and every negative is
+   from elsewhere; ARIS's same-session background is not used as negatives.
+   *Stands as a limit.* Only the ten drone excerpts were extracted (`data/extracted/sealed_peek`);
+   the ARIS session background was never extracted, and entry 027 sealed the source. The suite AUC
+   is labelled "ARIS against unseen sources" and does not decide.
+3. **The readout has become a tuning set.** Since entry 123, ARIS was read for four recipes, three
+   seeds, four smoothing spans, PANNs and five fusion weights.
+   *Accepted.* No smoothing span or fusion weight is chosen from ARIS; any span is chosen on
+   validation. The count of ARIS readings is stated here: at least nine suite scorings since entry 123 (baseline,
+  it11c, it12, it11+12 twice, smoothing 4/8/16, it13), plus the fusion check.
+4. **None of the options addresses R5.** At 50 m/s, 3 s means 150 m, and validation recall at
+   100-200 m and 10% FA is 0.021 (entry 096, checked). Smoothing delays the first alarm.
+   *Stands, and goes to Mads.* Mads withdrew range as a main criterion (entry 038), but R5's 3 s at
+   50 m/s implies it. Whether R5 is reachable with this data is a requirement question only Mads can
+   answer.
+
+*Serious objections:*
+- **A: every sign points to data, not capacity.** About 80M parameters (from memory, not checked) on
+  about six rigs may learn the rig.
+  *Built into the experiment.* The leave-one-unit-out folds decide, with a go/no-go after one seed,
+  so a rig-learning network fails cheaply.
+- **B: the smoothing gain is one seed on one source.** *Accepted.* B is not iteration 14.
+- **D: public drone sets bring no same-rig no-drone audio**, which strengthens the "rig means drone"
+  shortcut. *Accepted as a condition on D:* only sources with same-rig no-drone audio, or used only
+  inside a leave-one-out arm.
+
+**Scholar.** The plateau is a domain gap; capacity alone does not close it. Best practice:
+- Start from features pretrained on large, varied audio, and fine-tune with LP-FT (Kumar et al.
+  2022; vision paper, transfer to audio unverified).
+- Make the positives and the recording chain more varied: device impulse responses and Freq-MixStyle
+  (DCASE unseen-device work, arXiv 2305.07499; a 2026 acoustic drone preprint, arXiv 2605.31329,
+  calls pretraining the dominant factor; abstracts only).
+- Decision-stage aggregation (B) is standard for deployment but does not fix separation.
+- Evaluate leave-one-setup-out, select models on validation, and treat gains smaller than the
+  across-setup spread as unproven.
+
+Placement: A standard; D standard and probably the largest gain; B standard but not the fix; C a
+defensible variation; E against practice.
+
+**Problem Solver.** Verdict: modified A as iteration 14. Learning rate in two stages, BatchNorm
+statistics frozen, the same RMS scaling. Go/no-go after the pooled arm of seed 0; then seeds 1-2 and
+the folds. Run B's smoothing sweep on validation as a deployment add-on, with R5 lead time against
+the span. Ask Mads now for D's data, so it can follow. Confidence: low to medium.
+
+**Weighing.**
+- The Scholar and the Problem Solver agree on A, done as LP-FT, and both rank D as the larger lever.
+- The disagreement is about timing. D needs Mads to release held-back datasets (`docs/datasets.md`:
+  six were held back at his request), so it cannot start now.
+- The Devil's Advocate's case against A (data, not capacity) is the same fact the Scholar calls a
+  domain gap. The experiment answers it: if the folds do not improve, A has failed cheaply.
+
+**Decision.**
+- Iteration 14 is fine-tuned Cnn14_16k (LP-FT), with a go/no-go on seed 0's pooled arm. The rule
+  is judged on the run files only; ARIS is reported.
+- In parallel, ask Mads to:
+  - approve D's sources;
+  - say how R5 should be read, given the 0.02 recall at 100-200 m.
+- B is not run as an iteration. A smoothing span, if wanted for deployment, is chosen on validation.
+
+# Iteration 14 - Fine-tuned PANNs Cnn14_16k (LP-FT)
+
+> **Changed from iteration 13:** the Cnn14 backbone is trained, not frozen. A one-logit head on the
+> 2048-d embedding is trained alone first (linear probe, the first 10% of steps). Then the whole
+> network is trained: backbone at learning rate 1e-4, head at 1e-3, AdamW, cosine decay, batch 32.
+> BatchNorm keeps AudioSet's running statistics (eval mode throughout). The input is each window
+> scaled to one RMS, as in iteration 13. There is no SpecAugment (the CRNN has it; Cnn14 computes its
+> own log-mel inside the network) and no early stopping (the CRNN has none). Code: `PannsFtScorer` in `src/dad/panns.py`, `--models pannsft`.
+> **Why:** entry 128 (the frozen embedding underfits: training accuracy 0.81) and entry 129 (the
+> council: LP-FT is standard practice; the Problem Solver's modified A).
+> **Kept the same:** recipe `simdist`, 200,000 windows, seeds 0-2, threshold frozen at 5% false
+> alarms on validation, the pooled arm and the five leave-one-unit-out folds. Reference: the CRNN
+> `simdist` arm of iteration 11 on the same seeds (entry 128's table).
+> **Hypothesis:** an AudioSet prior that may adapt separates drones from noise on unseen rigs better
+> than a CRNN trained from scratch on about six rigs.
+> **Judged by** (seed means, decided before any run; run files only):
+> - *Go/no-go after the pooled arm of seed 0:* validation recall at 10% FA at least 0.768
+>   (reference 0.798 - 0.03), mower false alarms at most 40%, Lund recall at deployment at least
+>   0.30. If any fails, stop; iteration 14 fails.
+> - *Success, all of:*
+>   - mean leave-one-unit-out recall at 10% own false alarms at least 0.03 above the reference
+>     (reference mean over the five units 0.527), with no unit more than 0.05 worse;
+>   - Lund recall at deployment at least 0.34;
+>   - mower false alarms at most 25%;
+>   - validation recall at deployment within 0.03 of the reference (at least 0.757).
+> - *Failure:* leave-one-unit-out mean not above the reference, or Lund below 0.30, or mower above 40%.
+> - *In between:* the it9 CRNN stays the model; iteration 15 is more drone diversity (D), if Mads
+>   releases the data.
+> - Reported, not judged: the suite at the frozen threshold and matched (ARIS is a readout, entry 129).
+
+## 130 - Iteration 14 fails at its go/no-go; iteration 13's folds confirm its failure
+
+- Date: 2026-11-05
+- Iteration: 14
+- Type: Evaluation
+- Commit: uncommitted (on top of ad25f45): `PannsFtScorer` in `src/dad/panns.py`, `pannsft` in
+  `scripts/run_range.py` and `src/dad/wavio.py`, a save/load test in `tests/test_panns.py`
+
+**What changed.** The iteration 14 box ran up to its go/no-go. A smoke run (32,000 windows) checked
+the code end to end and was deleted. The runs were paused for about 10 minutes at Mads's request
+(`kill -STOP`, then `kill -CONT`); no state was lost. Iteration 13's leave-one-unit-out folds also
+finished.
+
+**How.** On the server, in `~/dad`:
+```
+CUDA_VISIBLE_DEVICES=0 .venv/bin/python -u scripts/run_range.py --name it14go_s0 --pool --arms none --recipes simdist --models pannsft --device cuda --windows 200000 --speed 0.8 1.25 --deploy-fa 0.05 --seed 0
+.venv/bin/python scripts/judge_runs.py artifacts/runs/it14go_s0.json
+.venv/bin/python scripts/judge_runs.py artifacts/runs/it13_s?.json
+```
+
+**Result.** Iteration 14, seed 0, pooled arm, threshold frozen at 5% false alarms on validation:
+
+| | Go/no-go | Fine-tuned Cnn14 | CRNN `simdist` (ref.) |
+|---|---|---|---|
+| Validation recall at 10% FA | at least 0.768 | **0.594** | 0.798 |
+| Validation recall at deployment | (reported) | 0.506 | 0.787 |
+| Mower false alarms at deployment | at most 40% | 19.2% | 37.9% |
+| Lund recall at deployment, all ranges | at least 0.30 | **0.000** (0-50 m: 0.001) | 0.342 |
+
+The training loss (binary cross-entropy, averaged over the last 1,000 steps) ended at 0.493.
+
+Iteration 13 (frozen Cnn14 + logistic regression), recall at 10% own false alarms, seed means
+(seeds 0 / 1 / 2):
+
+| Held-out unit | Frozen PANNs | CRNN `simdist` |
+|---|---|---|
+| Nightjar | 0.285 (0.277 / 0.296 / 0.282) | 0.279 |
+| d3set | 0.527 (0.532 / 0.527 / 0.522) | 0.471 |
+| FPV ariel_25.02 | 0.520 | 0.640 |
+| FPV palmahim_10.02 | 0.650 | 0.770 |
+| FPV palmahim_27.05 | 0.347 | 0.476 |
+| Mean over the five units | 0.466 | 0.527 |
+
+**Assessment.**
+- **Iteration 14 fails at its go/no-go** on two of three gates: validation recall 0.594 and Lund
+  0.000. As boxed, seeds 1-2 and the folds are not run.
+- A loss of 0.49 after 200,000 windows means the network hardly learned beyond the frozen probe
+  (entry 128: training accuracy 0.81). One configuration was tried. Its learning rates, frozen
+  BatchNorm statistics and per-window RMS scaling were not tuned, so this is a failure of this
+  setup, not proof that fine-tuning cannot work. A Lund recall of exactly zero at a threshold that
+  lets 5% of validation background through suggests Lund's drones score below the training rigs'
+  background. That was not checked.
+- **Iteration 13's folds confirm its failure**: the five-unit mean is 0.466 against 0.527. It
+  is better only on d3set (+5.6) and worse on all three FPV campaigns (-12 to -13).
+- Three iterations (12, 13, 14) leave the it9 CRNN (entry 096) as the best model.
+
+**Next.** Mads asked to push iteration 12's CRNN (`it12_s0_none_simdist_conf_crnn.pt`) and
+iteration 14's fine-tuned PANNs (`it14go_s0_none_simdist_pannsft.pt`, 324 MB, through git LFS),
+both added to the GUI's model list, so he can try them himself. Iteration 15 waits for his answers
+on more drone data (D) and on how R5 is read (entry 129).
+
+## 131 - Mads: only the report is kept; code and models of iterations 11-14 are not committed
+- Date: 2026-11-05
+- Iteration: 14
+- Type: Requirements
+- Commit: this entry's commit (the report only)
+
+**What changed.** Mads decided to keep the report of iterations 11-14 (entries 123-130), its changes
+and conclusions, and to merge only the report into `master`. The code those entries name stays
+uncommitted in the working copy on the machine that ran them, and on the university server
+(`~/dad`). It is not in git: `scripts/steady_suite.py`, `scripts/judge_runs.py`, `src/dad/panns.py`,
+the recipes `simdist_steady` (already in git before iteration 11) and `simdist_conf` in `src/dad/rangerun.py`, the `panns`
+and `pannsft` scorers, and their tests. The checkpoints and run files are on the server only.
+Neither the iteration 12 CRNN nor the iteration 14 PANNs model was pushed.
+
+**Renumbering.** These entries were written as 120-127 on branch `Automatic-iteration(Mads)`, while
+`master` gained its own entries 120-122 (the detection window and `Complete_Test_Gui`). Before the
+merge they were renumbered 123-130, cross-references included; nothing else in them changed.
+
+**Next.** Iteration 15 waits for Mads: more real drone data (the six held-back datasets) and how R5
+is read (entry 129).
+## 123 - Complete_Test_Gui: a playhead over the graphs while sound plays
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 1fb0db7 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked for a line over the log-mel that shows where the
+sound being played is on the timeline.
+
+**What.** `scripts/Complete_Test_Gui.py`, results window: Play mix, Play drone
+and Play background start a vertical line across the log-mel (cyan) and the
+confidence and dB graphs (black) at the time being played. The clock starts
+when the sound starts. Only the line is redrawn, by blitting over a saved
+background (saved again if the figure is redrawn, for example on resize), so
+it moves smoothly. Stop sound, selecting another round, or the sound ending
+removes it.
+
+**Checks.** Driven by a script with the Tk event loop running, a made-up
+11 s round: the line was at 0.95 s about 1 s after Play and at 1.93 s about
+2 s after, the same on all three graphs; 22 updates a second; gone after
+Stop, after selecting another round and after the 11 s sound ended by itself.
+A first version that redrew the whole figure managed about 10 updates a
+second and lagged the sound by about 0.17 s; both fixed. `uv run pytest`: all
+pass. Not checked: the line seen on screen (the screenshot caught another
+window) and the sound heard.
+
+## 124 - Complete_Test_Gui: a Conclusions window, true and false confidence per setting
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 1fb0db7 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked for a button that plots the parameters: for each value
+of a setting (for example the soundscape at 80 dB, at 60 dB) the true and the
+false confidence, as bars, and as a curve when a setting has more than 4
+values.
+
+**What.** `scripts/Complete_Test_Gui.py`: "Conclusions" in the results
+window opens a window with one graph per setting that takes more than one
+value in the test (drone, drone level, drone start, each background layer).
+For the chosen detector and each value: true confidence = mean confidence
+over every drone window of the rounds with that value; false confidence =
+mean over every no-drone window, the no-drone rounds included where the
+setting applies (background layers), each window counted once (round means
+weighted by their window counts). Up to 4 values: grouped bars with their
+percentages; more than 4 numeric values: two curves. The dashed line is the
+detector's threshold (comb 50 %, as drawn). The same numbers are written
+below the title bar as text; "Save PNG" saves the figure into the run
+folder.
+
+**Checks.** Driven by a script, made-up files, a 108-round test (2 drones x
+2 drone levels x 2 starts x 6 war levels x 2 war-shaped-noise levels, plus 12
+no-drone rounds), it6 CNN and comb: five graphs, four as bars and war
+soundscape (6 values) as a curve; the war 80 dB values (true 18.7 %, false
+17.6 %, 18 rounds) equal a hand computation from rounds.csv; drone settings
+leave out the no-drone rounds (48 rounds at drone level 55), layer settings
+include them; switching to comb redraws; a test with nothing varied says so.
+Rendered to PNG and looked at; one shared legend, after a first version
+whose legends covered bar labels. `uv run pytest`: all pass. Made-up audio,
+not detection figures (section 5).
+
+## 125 - Complete_Test_Gui: SNR stored per round; the drone-level graph on a 0-1 signal-share axis
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 1fb0db7 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked for the x-axis of the drone-level conclusion graph to
+be the signal-to-noise ratio on a 0 to 1 scale.
+
+**What.**
+- `scripts/complete_test_engine.py`: `snr()` measures each drone round over
+  the drone's truth span: `snr_db` = 10 log10(P_drone / P_background) and
+  `signal_share` = P_drone / (P_drone + P_background), 0 (only noise) to 1
+  (only drone), 0.5 at 0 dB. Both go into every detector row of the round and
+  into rounds.csv. An SNR bounded to 0-1 has to be a share; a plain ratio is
+  not bounded.
+- `scripts/Complete_Test_Gui.py`, Conclusions: the drone-level graph places
+  each level at the mean signal share of its rounds (x from 0 to 1), each
+  point labelled with its dB SPL; with 4 levels or fewer the bars are
+  labelled "60 dB, share 0.21". Runs made before the columns existed are
+  measured by rebuilding their rounds.
+- The share is measured in the actual stretch of the background during the
+  drone, not from the long-term levels: a 60 dB drone against the war track
+  at 60 dB (long-term) had share 0.21 in the stretch used, because that
+  stretch is louder than the track's average.
+
+**Checks.** Made-up file, drone levels 30 to 90 dB against the war track at
+60 dB: round 1 share 0.0003 and SNR -35.87 dB, both equal to a hand
+computation from the rebuilt parts; graph x = 0.000, 0.003, 0.025, 0.205,
+0.720, 0.963, 0.996, increasing, axis 0 to 1; an older run without the
+columns gives a share (0.156 at 55 dB) by rebuilding. Rendered and looked
+at. `uv run pytest`: all pass. A share axis bunches low and high levels near
+0 and 1 (it is an S-curve in dB), so mid-range SNRs get most of the width.
+
+## 126 - Complete_Test_Gui: layer levels as min, max and #
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 1fb0db7 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked for each background layer's levels to be three boxes,
+min, max and # (how many), with drone_war_gui's logic, instead of a typed
+list.
+
+**What.** `scripts/Complete_Test_Gui.py`: every layer row has min (dB SPL),
+max (dB SPL) and # boxes; the levels come from `drone_war_grid.steps`, the
+same function drone_war_gui uses: # values from min to max, both included,
+evenly spaced; # 1 needs min = max, # above 1 needs min different from max,
+min not above max. # is 1 to 50, levels -20 to 140 dB SPL. Each row shows
+the levels it gives next to its boxes, or what is wrong; the round count
+and its breakdown update as the boxes change. Defaults: one level, 60 dB for
+the war soundscape, 50 dB for war-shaped noise and wind. The drone levels
+stay a typed list.
+
+**Checks.** Driven by a script, 20 s soundscape, 3 drones, no no-drone
+rounds: war 40 to 60, # 3 gives 40, 50, 60 dB and 99 rounds (Nicolai's
+example); 0 to 70, # 8 gives 264; 60, # 1 gives 33; # 1 with min != max,
+# 3 with min = max, min above max, a non-number and # 0 are each refused
+with a message and no count; adding war-shaped noise 30 to 50, # 2 gives 6
+backgrounds and 198 rounds. Screenshot looked at. `uv run pytest`: all pass.
+
+## 127 - Complete_Test_Gui: the drone level as min, max and # too
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 1fb0db7 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai asked for the drone level to use the same min, max and #
+boxes as the background layers (entry 126).
+
+**What.** `scripts/Complete_Test_Gui.py`: the drone level is three boxes on
+both pages, read by the same rule (`drone_war_grid.steps`), with the levels
+it gives, or what is wrong, beside them. On the synthetic page "as rendered"
+greys the three boxes out and keeps each render's physical level. The typed
+list and its parser are gone.
+
+**Checks.** Driven by a script: 60/60/1 gives 60 dB and 99 rounds in
+Nicolai's example; 40/80/5 gives 40, 50, 60, 70, 80 dB and 495 rounds; # 1
+with min != max and min above max are refused with a message; the synthetic
+page starts as rendered (boxes disabled, plan levels None) and unticking it
+enables the boxes (plan levels [60]). `uv run pytest`: all pass. Not looked
+at on screen (the screenshot caught another window and was deleted).
+
+## 128 - Complete_Test_Gui: level graphs on drone dB / layer dB, as Nicolai defined it (replaces 125's axis)
+
+- Date: 2026-11-05
+- Type: Tooling
+- Commit: on top of 1fb0db7 (`NicolaiBranchGUI`), uncommitted
+
+**Why.** Nicolai: the x-axis he wanted is the ratio of the levels in dB, so a
+drone and a soundscape at the same level sit at 1, and a 30 dB drone in a
+60 dB war soundscape at 0.5. Entry 125's 0-1 power share was not that.
+
+**What.** `scripts/Complete_Test_Gui.py`, Conclusions: every background
+layer's graph, and the drone-level graph (against the first ticked layer),
+now have x = drone level (dB SPL) / layer level (dB SPL), per round; drone
+rounds are grouped by that ratio (3 decimals) and give window-weighted true
+and false confidence as before. Bars up to 4 ratios, a curve above (with a
+dotted line at 1). A layer at 0 dB SPL or below has no ratio and is left
+out. A drone "as rendered" uses its measured level: `snr()` in
+`scripts/complete_test_engine.py` now also stores `drone_db`, and older runs
+are rebuilt to measure it. The 0-1 share of entry 125 stays in rounds.csv
+(`signal_share`, `snr_db`) but is no longer drawn.
+
+Caveat, told to Nicolai: a ratio of dB values is not a signal-to-noise ratio
+in the usual sense. 30 dB against 60 dB (0.5) is a 30 dB difference, 1000
+times less power; 70 against 80 dB gives 0.875 for a 10 dB difference. The
+same ratio therefore means different SNRs at different absolute levels.
+
+**Checks.** Made-up file: war 0 to 90 dB (# 10) with a 60 dB drone gives x =
+0.667, 0.75, 0.857, 1, 1.2, 1.5, 2, 3, 6 (war 0 dB left out), drawn as a
+curve; drone 30 and 60 dB against war 60 gives 0.5 and 1 (bars); a
+synthetic drone as rendered, measured at 59.10 dB SPL, gives 0.985 and 1.182
+against 60 and 50 dB. Rendered and looked at. `uv run pytest`: all pass.
+
+## 129 - CleanDrone.wav: a steady, denoised drone from the opened ITU ARIS clips
+
+- Date: 2026-11-05
+- Type: Data
+- Commit: none (data/ is git-ignored)
+
+**Why.** Nicolai asked for a WAV made from the sealed test sounds with a
+constant drone level and no background noise, named CleanDrone, in
+`data/extracted/sealed_peek/`.
+
+**How.** A scratch script (not in the repo), on files already opened only,
+so no further sealed segments were opened: the ten drone excerpts and
+`Fugle.wav` (the background excerpt, entries 101, 106, 119).
+- Everything is high-passed at 90 Hz (4th-order Butterworth, zero phase):
+  85 % of the background's energy is below 100 Hz (wind and handling rumble
+  on the dynamic microphone), and so was the loudest "line" of the first
+  choice (82.6 Hz). The detectors' band starts at 50 Hz, so this removes a
+  little of what they can hear.
+- Source: the excerpt loudest over the background in that band and steadiest
+  over 1 s windows: `Drone_03.wav` (= `aris_peek_03`, interval 18), -38.2
+  dBFS against -40.4 for the background, 2.8 dB spread.
+- Background removal: two soft masks on a 1024-point STFT (hop 256),
+  multiplied: harmonic/percussive separation (median over about 0.5 s of
+  time against median over about 400 Hz of frequency) and a tonal-peak mask
+  (a bin 6 dB above the median of its +-15 bins); smoothed over 3 bins x 5
+  frames; floor -30 dB. A first try with a noise-profile gate from
+  `Fugle.wav` (as `build_stems.gate`) lowered the background only 1.1 dB,
+  because that clip has footsteps and voices in it.
+- Level: RMS in 100 ms frames smoothed over 0.5 s, gain to the median,
+  limited to +-12 dB.
+
+**Result.** `data/extracted/sealed_peek/CleanDrone.wav`, 10.0 s, 22.05 kHz,
+16-bit, -40.7 dBFS RMS, peak -25.5 dBFS. The same processing lowers
+`Fugle.wav` by 7.2 dB; the drone's strongest line (180 Hz) changes -0.6 dB;
+the 1 s level spread goes from 2.80 to 0.26 dB. Spectrograms before and
+after were looked at: the harmonic lines (about 620, 1250, 1900, 2400 Hz)
+are kept and the space between them is darker.
+
+**Limits.** The background is reduced, not gone: steady tonal background
+and noise right at the drone's lines pass the masks, and the masks leave
+some processing texture. The level is constant; the pitch is not: the
+drone's harmonics dip between about 7 and 8.5 s (a manoeuvre), as in the
+recording. It is processed sealed-set audio: not a test file for a sealed
+score.
+# Iteration 15 - Decision stage on the it9 CRNN: model averaging and a causal median
+
+> **Changed from iteration 14:** no network is trained. The networks stay as they are, and what changes is
+> the decision stage after them:
+> - a causal median over the last 8 scores (1 s at the 0.125 s hop);
+> - the mean of several networks' scores (the it9 CRNN with the it9 CNN, and with both CNNs), at the mean
+>   of their frozen thresholds;
+> - both together.
+>
+> A new readout, the **war coupling**, also measures how much the war soundscape moves the drone's score:
+> d = score(drone + war) - score(drone alone), on drone windows, hop by hop. Script:
+> `scripts/war_influence.py`, which runs `scripts/complete_test_engine.py` (the engine of
+> `Complete_Test_Gui.py`).
+>
+> **Why:** Mads (2026-11-05). In the war soundscape without a drone the it9 CRNN's score has spikes, below
+> about 0.5. When a drone is present, those spikes visibly lift its score. The CRNN's frozen threshold is
+> 0.483 (entry 096), so "below 0.5" sits at the alarm line. Two facts from iterations 11-14 point at
+> the decision stage rather than the training data:
+> - training-data recipes move the operating point, not the separation (entry 127);
+> - the false responses differ wildly between seeds of the same recipe (pink/brown noise 5-76%,
+>   entry 125), while the drone response is shared, which is what averaging models removes.
+>
+> War events are short (shots, blasts) next to a drone, which a median over 1 s removes. Entry 127 showed
+> a causal mean over 16 hops lifting matched recall from 0.77 to 0.83. The CRNN seeds of iteration 11 are
+> on the server only, so the local ensemble uses the networks on this PC (it9 CRNN, it9 CNN, it6 CNN).
+>
+> **Departure from entry 129:** the council said B (smoothing) is not an iteration, and that a span is
+> chosen on validation. Mads asked to try it (2026-11-05). The span is fixed here, before any run, at
+> 1 s (one window length), and is not tuned. No validation check of the span is run in this iteration.
+>
+> **Kept the same:** the networks and their frozen thresholds (CRNN 0.483), MFE, 1 s window, 0.125 s hop.
+> Comb and lgbm (it6) are reported raw.
+>
+> **Test (fixed before any run):**
+> - the ten ITU ARIS excerpts at 50 and 60 dB SPL;
+> - mixed into 20 s stretches of the war track at 55 and 65 dB SPL (long-term level);
+> - drone starts every 2 s (0-10 s);
+> - four stretches drawn with seed 15;
+> - plus the same drones with no background, and one war-only round per stretch and level.
+>
+> **Hypothesis:** the war's spikes are short and model-specific, so a median and model averaging shrink
+> the coupling without losing drone recall.
+>
+> **Judged by** (each decision variant against the raw it9 CRNN, on this test):
+> - mean |d| falls by at least 30% at both war levels;
+> - the war-only false-alarm share at the variant's threshold is not higher at either war level;
+> - drone recall at the threshold drops at most 2 points, in war (both levels) and with no background;
+> - AUC (drone + war hops against war-only hops) drops at most 0.005.
+>
+> Reported without a rule: corr(d, war-only score), the war-only 99th percentile, and recall at 5%
+> matched false alarms.
+>
+> Limits fixed in advance:
+> - this is a readout, not detection performance (CLAUDE.md section 5);
+> - ARIS has been a readout since entry 123;
+> - the war track is built from FSD50K stems, some from FSD50K dev, which training draws from (entry 105);
+> - judging four variants on one readout is a mild selection;
+> - a causal median of 8 needs at least 4 alarmed windows, so it delays the first alarm by about 0.5 s
+>   (R5's cost, not measured here).
+
+## 132 - Mads: try the decision stage on the it9 CRNN with Complete_Test_Gui's engine
+
+- Date: 2026-11-05
+- Iteration: 15
+- Type: Requirements, Evaluation
+- Commit: uncommitted (on top of 6f454d4): new `scripts/war_influence.py`
+
+**What changed.** New `scripts/war_influence.py`: drives `complete_test_engine.Test` over the plan in the
+iteration 15 box, then computes the war coupling and the other readouts for each decision variant.
+
+**Why.** Mads asked how the it9 CRNN can be improved, given the war-soundscape spikes that lift the
+drone's score. The answer proposed:
+1. measure the coupling first;
+2. average models;
+3. a causal median;
+4. impulsive war sounds as negatives and maskers (needs training);
+5. a robust level normalisation (a frontend change, needs a council).
+
+Mads said to try it with `Complete_Test_Gui`'s engine. This iteration covers 1-3, which need no
+training.
+
+**Next.** Run the test (entry 133).
+
+## 133 - Iteration 15 result: the war mostly lowers the drone's score; median and averaging do not fix it
+
+- Date: 2026-11-05
+- Iteration: 15
+- Type: Evaluation
+- Commit: uncommitted (on top of 7ac6b5a): `scripts/war_influence.py` (with `--reuse` and the d_up / d_down
+  columns added after the run; the second pass reproduced every first-pass figure)
+
+**What changed.** Nothing new. The iteration 15 test ran as boxed.
+
+**How.** On Mads's PC, CPU, 1,088 rounds of 20 s, about 40 min:
+```
+uv run python scripts/war_influence.py --stretches 4 --out artifacts/war_influence/it15
+uv run python scripts/war_influence.py --stretches 4 --out artifacts/war_influence/it15 --reuse
+```
+Run details:
+- War track stretches start at 401, 409, 473 and 540 s (seed 15). The first two overlap by 12 s, so the
+  war material is about 68 s, not 80 s. This was noticed after the draw, and the plan was kept.
+- Thresholds frozen on validation: it9 CRNN 0.483, it9 CNN 0.380, it6 CNN 0.297, lgbm 0.612, and comb 1.91
+  (comb squashed to 0-1, threshold at 0.5).
+- Outputs: `artifacts/war_influence/it15/` (per-test `rounds.csv` and `scores.npz`, `summary.json`) and
+  `it15_table.md`.
+- During the run, Nicolai's d3ade00 (SNR fields in `complete_test_engine.py`, scoring unchanged) and
+  7ac6b5a landed in the working copy. Nicolai's report entries 123-129 sit above iteration 15, with
+  numbers that again clash with Mads's 123-131. This entry continues after 131.
+
+**Result.** Data: the ten ITU ARIS excerpts at 50 and 60 dB SPL, starting every 2 s, in 20 s of the war
+track at 55 or 65 dB SPL long-term. 1 s window, 0.125 s hop.
+- Drone hops: 4,800 per war level, windows straddling the drone's start or end left out.
+- War-only hops: 612 per war level.
+- d = score(drone + war) - score(drone alone) on the same hop.
+- "Lifts" / "lowers" = the share of drone hops where d > +0.1 / d < -0.1.
+
+War at 55 dB SPL:
+
+| Variant | War-only FA | War p99 | Mean d | Mean \|d\| | Lifts | Lowers | corr(d, war score) | Recall | AUC | Recall at 5% matched FA |
+|---|---|---|---|---|---|---|---|---|---|---|
+| it9 CRNN | 0.0% | 0.279 | -0.138 | 0.166 | 4.6% | 37.3% | 0.265 | 0.546 | 0.957 | 0.824 |
+| it9 CRNN + median | 0.0% | 0.255 | -0.129 | 0.164 | 5.5% | 36.3% | 0.277 | 0.534 | 0.954 | 0.837 |
+| mean CRNN, it9 CNN | 0.0% | 0.302 | -0.085 | 0.132 | 7.8% | 31.3% | 0.206 | 0.596 | 0.979 | 0.873 |
+| mean CRNN, it9 CNN + median | 0.0% | 0.259 | -0.078 | 0.132 | 8.9% | 30.6% | 0.219 | 0.586 | 0.979 | 0.862 |
+| mean of 3 nets | 0.0% | 0.308 | -0.072 | 0.131 | 9.9% | 28.9% | 0.195 | 0.692 | 0.980 | 0.882 |
+| mean of 3 nets + median | 0.0% | 0.271 | -0.066 | 0.131 | 11.0% | 28.3% | 0.204 | 0.682 | 0.982 | 0.877 |
+| it9 CNN | 1.3% | 0.384 | -0.033 | 0.126 | 15.5% | 23.2% | 0.274 | 0.643 | 0.969 | 0.796 |
+| it6 CNN | 3.1% | 0.349 | -0.045 | 0.148 | 15.7% | 25.0% | 0.181 | 0.791 | 0.973 | 0.819 |
+| lgbm (it6) | 0.0% | 0.297 | -0.048 | 0.095 | 7.9% | 22.7% | 0.001 | 0.049 | 0.842 | 0.371 |
+| comb | 17.6% | 0.998 | +0.207 | 0.241 | 23.8% | 2.0% | 0.595 | 0.298 | 0.847 | 0.079 |
+
+War at 65 dB SPL:
+
+| Variant | War-only FA | War p99 | Mean d | Mean \|d\| | Lifts | Lowers | corr(d, war score) | Recall | AUC | Recall at 5% matched FA |
+|---|---|---|---|---|---|---|---|---|---|---|
+| it9 CRNN | 1.8% | 0.501 | -0.241 | 0.272 | 5.5% | 50.9% | 0.260 | 0.419 | 0.857 | 0.532 |
+| it9 CRNN + median | 2.0% | 0.498 | -0.229 | 0.270 | 6.9% | 49.7% | 0.278 | 0.412 | 0.855 | 0.512 |
+| mean CRNN, it9 CNN | 2.1% | 0.463 | -0.185 | 0.225 | 6.8% | 50.1% | 0.186 | 0.441 | 0.910 | 0.542 |
+| mean CRNN, it9 CNN + median | 1.3% | 0.452 | -0.176 | 0.224 | 8.4% | 49.2% | 0.210 | 0.433 | 0.910 | 0.500 |
+| mean of 3 nets | 3.9% | 0.480 | -0.180 | 0.222 | 7.0% | 48.6% | 0.167 | 0.497 | 0.918 | 0.536 |
+| mean of 3 nets + median | 3.9% | 0.445 | -0.171 | 0.222 | 8.6% | 47.9% | 0.189 | 0.486 | 0.918 | 0.508 |
+| it9 CNN | 4.7% | 0.501 | -0.130 | 0.199 | 11.9% | 42.7% | 0.200 | 0.476 | 0.907 | 0.490 |
+| it6 CNN | 7.7% | 0.523 | -0.168 | 0.231 | 10.2% | 45.3% | 0.141 | 0.593 | 0.915 | 0.549 |
+| lgbm (it6) | 0.0% | 0.390 | -0.088 | 0.122 | 5.7% | 32.3% | 0.070 | 0.034 | 0.777 | 0.213 |
+| comb | 17.6% | 0.998 | +0.162 | 0.223 | 20.7% | 3.5% | 0.717 | 0.254 | 0.834 | 0.052 |
+
+Drone alone (no background), recall at the threshold:
+
+| Variant | Recall |
+|---|---|
+| it9 CRNN | 0.738 |
+| + median | 0.714 |
+| mean CRNN, it9 CNN | 0.740 |
+| + median | 0.717 |
+| mean of 3 | 0.823 |
+| + median | 0.798 |
+| it9 CNN | 0.692 |
+| it6 CNN | 0.857 |
+| lgbm | 0.091 |
+| comb | 0.082 |
+
+Comb is level-invariant: its war-only scores are the same at both levels.
+
+**Assessment against the box.**
+
+| Variant | Mean \|d\| -30% at both levels | War FA not higher | Recall within 2 points (war 55 / 65 / alone) | AUC within 0.005 | Verdict |
+|---|---|---|---|---|---|
+| + median | **no** (-1%, -1%) | **no** at 65 (1.8% to 2.0%) | **no** (-1.2 / -0.7 / -2.4) | yes | fails |
+| mean CRNN, it9 CNN | **no** (-20%, -17%) | **no** at 65 (2.1%) | yes (+5.0 / +2.2 / +0.2) | yes (+0.022 / +0.053) | fails |
+| mean CRNN, it9 CNN + median | **no** (-20%, -18%) | yes (0.0%, 1.3%) | **no** alone (-2.1) | yes | fails |
+| mean of 3 nets (+ median) | **no** (-21%, -18%) | **no** at 65 (3.9%) | yes | yes | fails |
+
+**The hypothesis is rejected:** every variant fails the coupling rule. What the test shows instead:
+- **For the it9 CRNN, the war mostly lowers the drone's score; it seldom lifts it.**
+  - A drone hop loses more than 0.1 on 37% (55 dB) and 51% (65 dB) of hops.
+  - It gains more than 0.1 on only 5% and 6%.
+  - The lift Mads sees is real: d rises with the war's own score at that hop (corr +0.26). But it is the
+    smaller effect. The larger one is masking: the drone's score drops while war is present.
+  - At 65 dB SPL, drone recall falls from 0.74 (alone) to 0.42.
+- **The coupling is not short spikes.** A 1 s median leaves |d| unchanged (-1%). Whatever the war does
+  to the score lasts as long as a window or longer.
+- **Averaging helps less than its AUC suggests.** The mean of the three networks reaches AUC
+  0.980 / 0.918 against the CRNN's 0.957 / 0.857. But the it6 CNN alone already reaches 0.973 / 0.915, and
+  the it9 CNN 0.969 / 0.907. Most of the gain is that both CNNs separate drone-in-war from war better
+  than the CRNN on this test. The ensemble beats the best single network by only 0.007 / 0.003. The CNNs
+  are lifted by the war more often (10-16% of hops) and alarm more on war alone (it6 CNN 7.7% at 65 dB).
+- On this test, the it9 CRNN is not the best network; on the suite of entries 124-127 it was. The two
+  readouts disagree. Neither is detection performance: one source of drones, a war track built from
+  FSD50K stems, and ARIS used as a readout since entry 123.
+- Baselines: lgbm hardly detects the drones (recall 0.03-0.09). Comb alarms on 18% of war-only hops, is
+  lifted by the war on 21-24% of drone hops, and its score follows the war's (corr 0.60-0.72).
+
+**Verdict for iteration 15.** Fails as boxed: neither a causal median nor averaging networks removes the
+war's effect on the drone's score. The effect that matters is masking (the war lowers the drone's score),
+not lifting.
+
+**Next.** Two levers act on masking. Both need Mads:
+- (a) **War-like maskers under the positives in training:** impulsive FSD50K dev sounds (explosion,
+  gunshot, machine gun, artillery), not the war-track stems. Iteration 12 did this for engines, which are
+  not impulsive. It needs the server's GPUs and its uncommitted iteration 12 code.
+- (b) **A level normalisation that one loud event cannot dominate:** today each window is normalised by
+  its mean power (`realrun.level_normalise`). This is a frontend change, so a council comes first
+  (CLAUDE.md section 4).
+
+Separately, the CNNs' better separation in war contradicts entry 127's suite. It should be checked on
+validation and the leave-one-unit-out folds before it steers anything.
+
+## 134 - Mads: run the complete test on the server, split over the GPUs
+
+- Date: 2026-11-05
+- Iteration: 15 (infrastructure, no new result)
+- Type: Infrastructure
+- Commit: uncommitted (on top of 2ffffcc): new `scripts/complete_test_run.py`; small changes to
+  `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`, `scripts/drone_war_grid.py`
+
+**What changed.** Mads asked to run `Complete_Test_Gui.py`'s mixing and scoring on the JupyterLab server,
+split over its GPUs the way the training runs are (`CUDA_VISIBLE_DEVICES=k`, one process per GPU, entry
+123). The GUI itself cannot start there: it is Tkinter and the server's terminal has no display.
+- `complete_test_run.py PLAN.json [--gpus N]`: deals the plan's rounds round-robin to N worker processes,
+  worker k with `CUDA_VISIBLE_DEVICES=k` and the networks on `cuda` (comb and the mixing stay on the
+  CPU). Each writes `OUT/shard_k/`; the shards are then merged into `OUT/` (rounds.csv, scores.npz,
+  summary.csv, config.json), which the GUI's "Open results..." opens like any run.
+- GUI: a "Save plan..." button writes the plan as JSON. The config.json of an earlier run also works as
+  a plan.
+- Engine: `Test(..., device=)` and `load_detectors(..., device)`, passed to `drone_war_grid._detectors`
+  (was always CPU). `portable()`: a drone file that does not exist at its path is looked up from its
+  `data/` folder on, under this clone, so a plan saved on Windows runs on the server and the merged run
+  opens on the PC. The rounds.csv reader moved from the GUI to `complete_test_engine.read_results`.
+
+**Checks (on the PC, CPU only).** A 17-round plan (two `data/extracted/static_drone` files, one given as
+a Windows path to another clone and one as a server path; 60 and 70 dB SPL; war soundscape 60, wind 50;
+it9 CRNN and comb; no-drone round on):
+`uv run python scripts/complete_test_run.py plan.json --gpus 0`, against the same plan run as two shards
+(`--shard 0/1 --of 2`) and merged. rounds.csv and summary.csv are byte-identical, and all 34 per-hop
+score arrays are equal. `Complete_Test_Gui.load_test` opens the merged folder and rebuilds a round.
+`uv run pytest`: 34 pass. **Not checked:** the `cuda` path and a run on the server (needs the code
+there; the server clone is on `Automatic-iteration(Mads)`, which does not have the complete test).
+These mixes are synthetic scaffolding (CLAUDE.md section 5); no number here is detection performance.
+
+## 130 - Same SNR, different absolute level: what the detectors do, and why the dB ratio axis is wrong
+
+- Date: 2026-11-05
+- Type: Evaluation (synthetic scaffolding, section 5)
+- Commit: none (engine as on top of 1fb0db7, uncommitted)
+
+**Why.** Nicolai asked whether the dB-ratio axis of entry 128 is wrong (30:60
+and 60:120 both read 0.5) and whether 120:120 would give other results than
+60:60.
+
+**The axis.** It is wrong for SNR. dB is logarithmic, so a ratio of dB values
+has no physical meaning: 30 against 60 dB is -30 dB SNR (1000 times less
+power), 60 against 120 dB is -60 dB (a million times less), and both read
+0.5; 70 against 80 dB is -10 dB and reads 0.875. SNR in dB is the
+difference: drone dB SPL - background dB SPL (0 = the same level). Entry
+128's axis followed the definition asked for; this entry says it should not
+be read as SNR.
+
+**The check.** Complete-test engine, synthetic Pure Data drone (cached
+150 km/h render; no sealed audio), war track from 150 s, 12 s soundscape,
+starts 0, 1, 2 s, drone and war at the same SNR and four absolute levels.
+True / false mean confidence and recall:
+
+| drone : war (dB SPL) | SNR | it6 CNN | it9 CNN | it9 CRNN | comb |
+|---|---|---|---|---|---|
+| 30 : 30 | 0 | 14.2 / 2.2, 14 % | 14.2 / 2.4, 13 % | 15.7 / 6.3, 10 % | 4.8 / 0.0, 6 % |
+| 60 : 60 | 0 | 49.7 / 5.2, 56 % | 35.4 / 4.1, 43 % | 35.3 / 8.0, 33 % | 4.8 / 0.0, 6 % |
+| 90 : 90 | 0 | 49.6 / 5.4, 56 % | 35.1 / 4.0, 42 % | 35.4 / 8.1, 33 % | 4.8 / 0.0, 6 % |
+| 120 : 120 | 0 | 49.6 / 5.4, 56 % | 35.1 / 4.0, 42 % | 35.4 / 8.1, 33 % | 4.8 / 0.0, 6 % |
+| 20 : 30 | -10 | 6.2 / 2.2, 4 % | 5.4 / 2.4, 2 % | 10.1 / 6.3, 4 % | 0 / 0, 0 % |
+| 50 : 60 | -10 | 21.1 / 5.2, 25 % | 17.4 / 4.1, 15 % | 15.9 / 8.0, 4 % | 0 / 0, 0 % |
+| 80 : 90 | -10 | 21.2 / 5.4, 24 % | 17.2 / 4.0, 15 % | 15.8 / 8.1, 4 % | 0 / 0, 0 % |
+| 110 : 120 | -10 | 21.2 / 5.4, 24 % | 17.2 / 4.0, 15 % | 15.8 / 8.1, 4 % | 0 / 0, 0 % |
+
+**Reading.**
+- From about 50-60 dB SPL up, the networks give the same answer at the same
+  SNR whatever the absolute level: their level normalisation removes it.
+  comb is a level-free ratio and is the same at every level.
+- At 30 dB SPL (and 20:30) the networks score far lower at the same SNR: a
+  quiet signal falls toward the frontend's floor (the log's epsilon and the
+  normalisation), so absolute level matters there. Where that starts between
+  30 and 60 dB SPL was not measured.
+- At 90 and 120 dB SPL the mix peaks at +8 to +39 dBFS: above the WAV full
+  scale (110 dB SPL). The engine works in floats and never clips; a real
+  microphone chain would, so results above about 100 dB SPL are optimistic.
+
+**Defining the problem.** Two variables, not one: (1) SNR = drone dB -
+background dB, measured over the drone's sound (the engine's `snr_db`
+column, entry 125, measures it in the actual stretch); (2) absolute level
+(drone or mix dB SPL), which matters below about 50 dB SPL (frontend floor)
+and above about 100 dB SPL (clipping, not modelled). Detection should be
+plotted against SNR in dB, with the absolute level held in the range where
+it does not matter, or varied on purpose as a second axis.
+
+**Next.** Proposed to Nicolai: SNR in dB as the conclusions' x-axis in
+place of the dB ratio.
+
+## 135 - The complete test runs on the server's GPUs; `uv sync` there breaks torch again
+
+- Date: 2026-11-06
+- Iteration: 15 (infrastructure, no new result)
+- Type: Infrastructure / server setup
+- Commit: server clone on `master` at 00ee4e8; nothing in the repo changed
+
+**What happened.** First run of `scripts/complete_test_run.py` on the JupyterLab server (entry 134
+left the `cuda` path unchecked).
+- The server clone `~/drone-acoustic-detection` was on `iteration9-frontends` (242b3b4) with
+  uncommitted changes, not on `Automatic-iteration(Mads)` as entry 134 assumed. They were kept in
+  `git stash` ("server WIP before switching to master"), then the clone was switched to `master`.
+- The plan `plan_real.json` was saved on the PC with "Save plan..." and uploaded with the inputs the
+  server lacked: `data/processed/war/war_track.wav` (the PC's copy) and
+  `data/extracted/sealed_peek/CleanDrone.wav`. They were copied in with `cp -n` (nothing on the
+  server overwritten). The server's `sealed_peek` excerpts are the same draw as the PC's (same
+  `draw.json` seed and segments). The upload also left a copy in `~/server_upload` and
+  `~/drone-acoustic-detection/server_upload`.
+- **Dead end, caused by the instructions given:** `uv sync --group dev --extra dl` was run on the
+  server after the switch. It re-synced the venv to `uv.lock`, putting the CUDA 13 libraries back
+  (nvidia-cudnn-cu13 and so on) next to the server's torch 2.14.1+cu126, so torch failed at import:
+  `ImportError: libcudnn.so.9`. Entry 091 already said so: on the server, never `uv sync` or
+  `uv run`; call `.venv/bin/python`. `~/dad` shares this venv through a symlink, so it was broken
+  too until the fix.
+- Fix (run by Mads): `uv pip install --python .venv/bin/python --reinstall-package torch
+  torch==2.14.1 --index-url https://download.pytorch.org/whl/cu126`, then
+  `nohup .venv/bin/python scripts/complete_test_run.py data/extracted/test_plans/plan_real.json`.
+
+**Result.** 6100 rounds x 2 detectors (it9 CRNN, comb) on 3 workers, one TITAN X each, about 300 s.
+`merged 3 shards: 6100 of 6100 rounds` into
+`artifacts/complete_test/20261106_094257_real/` on the server (rounds.csv, scores.npz, summary.csv,
+config.json). The `cuda` path of entry 134 works. Not checked yet: opening that folder in the GUI on
+the PC. These mixes are synthetic scaffolding (CLAUDE.md section 5); no number here is detection
+performance.
+
+**Next.** Download the run folder to the PC and open it with "Open results...".
+
+## 136 - The server run opens on the PC
+
+- Date: 2026-11-06
+- Iteration: 15 (infrastructure, no new result)
+- Type: Check
+- Commit: as entry 135; nothing in the repo changed
+
+The four merged files of entry 135 were zipped on the server and downloaded by Mads to
+`artifacts/complete_test/Jupyter/` (sizes equal the server's: rounds.csv 2573479, scores.npz 7084143,
+summary.csv 24885, config.json 3571 bytes). `Complete_Test_Gui.load_test` opens the folder:
+6100 of 6100 rounds, detectors it9 CRNN and comb. The plan saved on Windows, run on Linux and opened
+back on Windows works end to end. Synthetic scaffolding (CLAUDE.md section 5); no detection numbers.
+
+Also on 2026-11-06: `data/extracted/sealed_peek/CleanDrone.wav` had been removed from the PC, so the
+Results window (which rebuilds rounds from the drone files) failed with `LibsndfileError`. On Mads's
+yes it was put back from the unchanged copy in `data/extracted/test_plans/server_upload.zip`
+(441044 bytes); the run then opened.
+
+## 137 - Ten steady (hovering) drone excerpts from ITU ARIS
+
+- Date: 2026-11-06
+- Iteration: none (data for listening and the complete test; no model change)
+- Type: Data
+- Commit: uncommitted: new `scripts/steady_aris.py`
+
+**Why.** Mads asked for 10 new excerpts of about 10 s (5-15 s allowed) where the drone just hovers
+and gives a near-constant sound, as an alternative to the randomly drawn `sealed_peek` clips of
+entry 101. ITU ARIS is no longer sealed (entry 101), so looking at it steers nothing that is scored.
+
+**How.** `scripts/steady_aris.py` joins each of the 35 drone intervals back into continuous audio
+(every second 1 s segment) and measures every 5-15 s window (hop 0.5 s) on 125 ms frames: level
+spread (L90-L10, 120-5000 Hz), spectral flux (std over time of 48 level-normalised log bands), and the
+stability in semitones of the frequency that stands highest above the background. Score = sum of the
+three z-scores; gates: drone band >= 10 dB over the background, rotor lines >= 20 dB over it. Best
+10 s window per interval, grown towards 15 s while the score holds; the 10 best intervals are kept.
+
+**Two dead ends first (same session, not kept).**
+1. Spectra and lines measured from 80 Hz, with "tonal" (peak over median) rewarded in the score:
+   picks with 10-13 dB level spread and the "line" jumping 5-6 semitones; the strongest peaks were
+   82 Hz, the top of the site's wind/traffic rumble.
+2. From 120 Hz, tonal only a gate: spreads 2-3.5 dB and lines within 1.2 semitones, but every pick's
+   line sat at 177-183 Hz, only ~6 dB over the background RMS. The background segments' own
+   strongest line in 120-1500 Hz is 178 Hz (45 of 200 sampled segments) or 183 Hz: a steady machine
+   tone at the site. Those picks were faint drones under the site's hum, not hovering drones.
+   Hence the measurement against the background spectrum (median per bin over all background
+   frames).
+
+**Result.** 29 of the 35 intervals pass the gates. `uv run python scripts/steady_aris.py` writes
+`data/extracted/steady_peek/Steady_01.wav` ... `Steady_10.wav` (22.05 kHz PCM16, samples unchanged)
+and `picks.json` (interval, segments, start, every measure, and all 29 intervals' scores).
+
+| File | Interval | Start | Length | Spread dB | Flux | Line st @ Hz | SNR dB |
+|---|---|---|---|---|---|---|---|
+| Steady_01 | 31 | 46.0 s | 11 s | 1.7 | 2.11 | 2.90 @ 743 | 12.4 |
+| Steady_02 | 22 | 137.0 s | 14 s | 2.5 | 3.21 | 1.62 @ 1190 | 10.3 |
+| Steady_03 | 05 | 16.0 s | 5 s | 2.6 | 3.70 | 0.61 @ 1184 | 11.2 |
+| Steady_04 | 13 | 1.5 s | 10 s | 2.2 | 3.97 | 0.41 @ 1087 | 11.5 |
+| Steady_05 | 06 | 13.5 s | 5 s | 2.7 | 3.80 | 0.55 @ 1136 | 12.4 |
+| Steady_06 | 00 | 15.5 s | 12 s | 1.9 | 4.32 | 1.25 @ 1351 | 11.2 |
+| Steady_07 | 30 | 181.0 s | 10 s | 1.9 | 2.90 | 4.24 @ 1408 | 12.7 |
+| Steady_08 | 23 | 87.5 s | 11 s | 2.0 | 3.80 | 2.89 @ 1252 | 10.4 |
+| Steady_09 | 08 | 26.0 s | 5 s | 3.1 | 4.08 | 2.20 @ 1055 | 10.6 |
+| Steady_10 | 15 | 8.5 s | 10 s | 1.8 | 3.80 | 3.63 @ 1082 | 11.5 |
+
+**Limits.** Not checked by ear. No interval is more than ~13 dB over the background in the drone band,
+so these are steady but not loud: ITU ARIS flies from ~5 m to ~2 km and holds no close hover. Lines
+of 3-4 semitones (01, 07, 08, 10) probably mean the top bin hops between rotor harmonics rather than
+the rotor speed changing; not verified. Three picks are 5 s because their intervals are short.
+
+**Next.** Mads listens; the files can be chosen as drones in `Complete_Test_Gui.py`.
+
+## 138 - Steady excerpts: at least 10 s, because the complete test needs it
+
+- Date: 2026-11-06
+- Type: Data (fix)
+- Commit: uncommitted: `scripts/steady_aris.py` gets `--min-s` (default 10)
+
+**Why.** Mads chose `Steady_03.wav` in `Complete_Test_Gui.py` and got
+`ValueError: Steady_03.wav is 5.0 s; drone files must be at least 10 s`: the engine uses 10 s of
+drone (`complete_test_engine.DRONE_S`). Entry 137 allowed 5 s excerpts for short intervals.
+
+**Change.** Windows now run from `--min-s` (10) to 15 s; intervals shorter than that are skipped. The
+files of entry 137 were deleted and rewritten by `uv run python scripts/steady_aris.py`. The three
+5 s picks (intervals 05, 06, 08) drop out; intervals 28, 17 and 16 come in, and the names shift:
+
+| File | Interval | Start | Length | Spread dB | Flux | Line st @ Hz | SNR dB |
+|---|---|---|---|---|---|---|---|
+| Steady_01 | 31 | 46.0 s | 11 s | 1.7 | 2.11 | 2.90 @ 743 | 12.4 |
+| Steady_02 | 22 | 137.0 s | 14 s | 2.5 | 3.21 | 1.62 @ 1190 | 10.3 |
+| Steady_03 | 13 | 1.5 s | 10 s | 2.2 | 3.97 | 0.41 @ 1087 | 11.5 |
+| Steady_04 | 00 | 15.5 s | 12 s | 1.9 | 4.32 | 1.25 @ 1351 | 11.2 |
+| Steady_05 | 30 | 181.0 s | 10 s | 1.9 | 2.90 | 4.24 @ 1408 | 12.7 |
+| Steady_06 | 23 | 87.5 s | 11 s | 2.0 | 3.80 | 2.89 @ 1252 | 10.4 |
+| Steady_07 | 15 | 8.5 s | 10 s | 1.8 | 3.80 | 3.63 @ 1082 | 11.5 |
+| Steady_08 | 28 | 27.5 s | 11 s | 3.1 | 4.61 | 1.56 @ 1265 | 12.2 |
+| Steady_09 | 17 | 4.0 s | 10 s | 2.7 | 4.11 | 3.18 @ 980 | 11.2 |
+| Steady_10 | 16 | 57.5 s | 10 s | 1.9 | 4.43 | 3.49 @ 1163 | 10.8 |
+
+Not checked by ear; limits as entry 137.
+
+## 139 - The complete test takes real drone files of 5-10 s; entry 138 undone
+
+- Date: 2026-11-06
+- Type: Engineering (test harness), Data
+- Commit: uncommitted: `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py` (labels),
+  `scripts/steady_aris.py` (`--min-s` default back to 5)
+
+**Why.** Mads: change the code so 5 s clips are allowed, and give back the best clips. This replaces
+entry 138, which went the other way (made the clips fit the engine).
+
+**Change.** `complete_test_engine`: new `MIN_DRONE_S = 5.0`. A real drone file must be at least 5 s
+(was 10 s); files over 10 s are still cut to their first 10 s (`DRONE_S`), and a 5-10 s file is used
+whole. Its span (truth, SNR window, level calibration) is its own length instead of a fixed 10 s.
+Start times are unchanged (`length_s - DRONE_S`), so a short file simply ends earlier inside the
+same grid. Synthetic drones are unchanged (always 10 s). GUI labels say "up to 10 s".
+
+**Clips.** `uv run python scripts/steady_aris.py --min-s 5` rewrote `data/extracted/steady_peek/`:
+the set of entry 137 again, byte for byte the same selection (Steady_03, 05 and 09 are 5 s).
+
+**Checks.** A 7-round plan (Steady_03 at 5 s, Steady_01 at 11 s; 70 dB SPL; war soundscape 60; comb;
+20 s soundscape, step 5 s; no-drone round on) ran with
+`uv run python scripts/complete_test_run.py plan_short.json --gpus 0`: 7 of 7 rounds, `drone_spans`
+`Steady_03 [0, 5]`, `Steady_01 [0, 10]`; `Complete_Test_Gui.load_test` reopens it. `uv run pytest`:
+106 pass. Synthetic scaffolding (section 5); no number here is detection performance.
+**Note for results:** a 5 s drone gives half as many drone windows as a 10 s one, so its recall
+rests on fewer windows; compare per-file results with that in mind. The server clone does not have
+this change until it is committed and pulled.
+
+## 140 - All 35 ITU ARIS drone intervals as full recordings (`data/extracted/All/`)
+
+- Date: 2026-11-06
+- Type: Data
+- Commit: uncommitted: new `scripts/aris_intervals.py`; `data/extracted/All/` is git-ignored data
+
+**Why.** Mads asked for a folder "All", next to `sealed_peek` and `steady_peek`, holding all 35 full
+drone recordings of ITU ARIS, after reading every README to get it right.
+
+**Read first.** The dataset's README, `metadata.json`, `build_acolab_groups.py` and LICENSE, and
+`docs/datasets.md`. Key facts used: 4491 drone segments of 1 s at 22.05 kHz, cut with a 0.5 s hop
+from 35 hand-annotated intervals (2263 s) of one 44.1 kHz session that is not published; an interval
+of D s gives 2D - 1 segments (the build script's own check), numbered consecutively across intervals.
+
+**How.** `uv run python scripts/aris_intervals.py` joins segments 0, 2, 4, ... of each interval
+(published int16 samples, unchanged) into `data/extracted/All/ITU_ARIS_interval_NN.wav`, NN =
+`groups.json` group_id, plus `index.json` (session start/end, segments, checks) and a `README.md`
+(method, file table, limits, credit). The raw dataset folder was only read.
+
+**Checks, all passed.** Per interval: segment count = `groups.json` n_segments = 2D - 1; every
+overlap identical (max int16 difference 0); joined length = D s exactly. Total 2263 s = the README.
+Independent check: all 4491 published segments re-cut from the new files at 0.5 k s: 0 mismatches;
+segment numbers run 1-4491 without gaps across intervals; `sealed_peek/Drone_01-10` equal the new
+files at the `draw.json` offsets.
+
+**Result.** 35 files, 1 s (interval 07) to 296 s (interval 31). For the complete test (entry 139):
+interval 07 is under 5 s and cannot be used; 04, 09 and 29 (7-9 s) are used whole; the rest are cut
+to their first 10 s. ITU ARIS is not sealed (entry 101). No model or metric changed.
+
+## 141 - Complete test: a third page, "Modified drone test" (real recordings flown at the microphone)
+
+- Date: 2026-11-06
+- Type: Engineering (test harness; no model, metric or split changed)
+- Commit: uncommitted: `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`
+
+**Why.** Mads asked for a third page next to Real and Synthetic: upload drone audio, give a speed in
+km/h, treat the drone as steady and move it straight at the microphone so that the very end of the
+file is the impact, with the dB changed by the distance at each moment for that speed.
+
+**Decisions taken without asking (Mads said to go ahead unless there were questions), all settable on
+the page:**
+- The set drone level is the level **at 1 m**: the file's RMS (over the part used) is set to it as if
+  the recording were made at 1 m, then lowered by the distance. Default 80 dB SPL (the synthetic
+  drones' L_1m is 78.5).
+- Path: a straight line that is `closest_m` (default 1 m) from the microphone at the last sample:
+  r(t) = hypot(closest_m, v/3.6 x (T - t)). With 1 m the level at impact is the set level.
+- Part of the file: its **last** 10 s (a 5-10 s file whole, entry 139), since the end is the impact.
+- Level change: spherical spreading 1/r and ISO 9613-1 air absorption at each moment's distance
+  (`dad.propagation`, default weather 10 C, 70 % RH), applied frame by frame. **Doppler** (pitch and
+  travel time) is a tick box, **off by default**, because the request was about dB; with it on, the
+  first sound reaches the microphone (r0 - closest)/c later and the truth span starts there.
+- Every file at every speed is one drone (`Plan.speeds`; round key `path|speed`, label
+  `file @ v km/h`). Truth: the drone from 0 (or first arrival) to the end, impact at the end, so lead
+  times are reported as for synthetic drones. The summary also groups by file and by speed.
+- Conclusions' dB-ratio axis uses the measured drone level for modified rounds (the set level is at
+  1 m, not what the microphone hears).
+
+**Checks.**
+- Model, white noise 10 s, RMS 1 at 1 m, closest 1 m (no Doppler): start distance 139 / 278 / 417 m
+  at 50 / 100 / 150 km/h; the first 0.25 s is -46.2 / -53.9 / -58.5 dB against -42.6 / -48.6 / -52.1
+  from spreading alone (the rest is air absorption of the noise's treble); at 9 s -23.5 / -30.0 /
+  -34.0 against -22.9 / -28.9 / -32.4; the last 20 ms 0.0 / -0.3 / -0.7 dB. With Doppler the first
+  sound arrives at 0.41 / 0.82 / 1.23 s and levels at a given heard time are 2-4 dB lower (that sound
+  left the drone earlier, farther away).
+- Run: `uv run python scripts/complete_test_run.py plan_mod.json --gpus 0` (Steady_03 at 5 s and
+  Drone_01; 50 and 150 km/h; 80 dB SPL at 1 m; war soundscape 50; it9 CRNN and comb; 20 s, step 5 s;
+  no-drone round): 13 of 13 rounds; spans `[0, 5, 5]` and `[0, 10, 10]`; measured drone level
+  62.3 / 57.1 dB SPL (Steady_03 at 50 / 150 km/h) and 60.8 / 56.4 (Drone_01); `lead_s` filled;
+  `load_test` reopens it.
+- The page builds (Tk, no clicks): 2 files x 3 speeds -> 67 rounds; the preview line says where each
+  speed starts and how many dB below impact. An older real run (`artifacts/complete_test/Jupyter`)
+  still opens. `uv run pytest`: 106 pass.
+
+**Limits.** The recording is treated as a clean source at 1 m: its own background noise and the
+distance it was really recorded at (ITU ARIS: up to ~2 km) are moved and scaled with it. No ground
+reflection. Not tried by hand in the GUI (no clicks). Synthetic scaffolding (section 5): no number
+here is detection performance. The server needs this code committed and pulled before it can run
+modified plans.
