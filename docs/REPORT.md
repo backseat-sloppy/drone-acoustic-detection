@@ -8486,3 +8486,60 @@ score arrays are equal. `Complete_Test_Gui.load_test` opens the merged folder an
 `uv run pytest`: 34 pass. **Not checked:** the `cuda` path and a run on the server (needs the code
 there; the server clone is on `Automatic-iteration(Mads)`, which does not have the complete test).
 These mixes are synthetic scaffolding (CLAUDE.md section 5); no number here is detection performance.
+
+## 130 - Same SNR, different absolute level: what the detectors do, and why the dB ratio axis is wrong
+
+- Date: 2026-11-05
+- Type: Evaluation (synthetic scaffolding, section 5)
+- Commit: none (engine as on top of 1fb0db7, uncommitted)
+
+**Why.** Nicolai asked whether the dB-ratio axis of entry 128 is wrong (30:60
+and 60:120 both read 0.5) and whether 120:120 would give other results than
+60:60.
+
+**The axis.** It is wrong for SNR. dB is logarithmic, so a ratio of dB values
+has no physical meaning: 30 against 60 dB is -30 dB SNR (1000 times less
+power), 60 against 120 dB is -60 dB (a million times less), and both read
+0.5; 70 against 80 dB is -10 dB and reads 0.875. SNR in dB is the
+difference: drone dB SPL - background dB SPL (0 = the same level). Entry
+128's axis followed the definition asked for; this entry says it should not
+be read as SNR.
+
+**The check.** Complete-test engine, synthetic Pure Data drone (cached
+150 km/h render; no sealed audio), war track from 150 s, 12 s soundscape,
+starts 0, 1, 2 s, drone and war at the same SNR and four absolute levels.
+True / false mean confidence and recall:
+
+| drone : war (dB SPL) | SNR | it6 CNN | it9 CNN | it9 CRNN | comb |
+|---|---|---|---|---|---|
+| 30 : 30 | 0 | 14.2 / 2.2, 14 % | 14.2 / 2.4, 13 % | 15.7 / 6.3, 10 % | 4.8 / 0.0, 6 % |
+| 60 : 60 | 0 | 49.7 / 5.2, 56 % | 35.4 / 4.1, 43 % | 35.3 / 8.0, 33 % | 4.8 / 0.0, 6 % |
+| 90 : 90 | 0 | 49.6 / 5.4, 56 % | 35.1 / 4.0, 42 % | 35.4 / 8.1, 33 % | 4.8 / 0.0, 6 % |
+| 120 : 120 | 0 | 49.6 / 5.4, 56 % | 35.1 / 4.0, 42 % | 35.4 / 8.1, 33 % | 4.8 / 0.0, 6 % |
+| 20 : 30 | -10 | 6.2 / 2.2, 4 % | 5.4 / 2.4, 2 % | 10.1 / 6.3, 4 % | 0 / 0, 0 % |
+| 50 : 60 | -10 | 21.1 / 5.2, 25 % | 17.4 / 4.1, 15 % | 15.9 / 8.0, 4 % | 0 / 0, 0 % |
+| 80 : 90 | -10 | 21.2 / 5.4, 24 % | 17.2 / 4.0, 15 % | 15.8 / 8.1, 4 % | 0 / 0, 0 % |
+| 110 : 120 | -10 | 21.2 / 5.4, 24 % | 17.2 / 4.0, 15 % | 15.8 / 8.1, 4 % | 0 / 0, 0 % |
+
+**Reading.**
+- From about 50-60 dB SPL up, the networks give the same answer at the same
+  SNR whatever the absolute level: their level normalisation removes it.
+  comb is a level-free ratio and is the same at every level.
+- At 30 dB SPL (and 20:30) the networks score far lower at the same SNR: a
+  quiet signal falls toward the frontend's floor (the log's epsilon and the
+  normalisation), so absolute level matters there. Where that starts between
+  30 and 60 dB SPL was not measured.
+- At 90 and 120 dB SPL the mix peaks at +8 to +39 dBFS: above the WAV full
+  scale (110 dB SPL). The engine works in floats and never clips; a real
+  microphone chain would, so results above about 100 dB SPL are optimistic.
+
+**Defining the problem.** Two variables, not one: (1) SNR = drone dB -
+background dB, measured over the drone's sound (the engine's `snr_db`
+column, entry 125, measures it in the actual stretch); (2) absolute level
+(drone or mix dB SPL), which matters below about 50 dB SPL (frontend floor)
+and above about 100 dB SPL (clipping, not modelled). Detection should be
+plotted against SNR in dB, with the absolute level held in the range where
+it does not matter, or varied on purpose as a second axis.
+
+**Next.** Proposed to Nicolai: SNR in dB as the conclusions' x-axis in
+place of the dB ratio.
