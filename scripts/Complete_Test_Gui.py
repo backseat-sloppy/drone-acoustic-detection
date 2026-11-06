@@ -76,6 +76,17 @@ DEFAULT_LEVELS = {"war soundscape": ("60", "60", "1"), "war-shaped noise": ("50"
                   "cars": ("", "", ""), "helicopter": ("", "", ""), "insects": ("", "", "")}
 COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it10 CNN": "#d93025",
           "comb": "#1baf7a"}
+# Iteration 11.2 (report entries 143-146): CRNNs trained under entry 143's rule with one rig held out, seed 0.
+# "N" was trained on d3set (Nightjar held out), "D" on Nightjar (d3set held out); each at the threshold frozen
+# at 5% FA on its training rig's validation (or site-calibrated, entry 148). Fold models, not final candidates.
+_IT112 = {"it11.2 N CRNN": ("it11_2_s0_nightjar", "nightjar", "simdist"),
+          "it11.2 N steady CRNN": ("it11_2_s0_nightjar", "nightjar", "simdist_steady"),
+          "it11.2 D CRNN": ("it11_2_s0_d3set", "d3set", "simdist"),
+          "it11.2 D steady CRNN": ("it11_2_s0_d3set", "d3set", "simdist_steady")}
+E.dwg.MODELS.update({k: (E.dwg.ROOT / f"artifacts/runs/{run}.json", E.dwg.ROOT / f"artifacts/models/{run}_{held}_{rec}_crnn.pt")
+                     for k, (run, held, rec) in _IT112.items()})
+COLORS.update({"it11.2 N CRNN": "#ef6c00", "it11.2 N steady CRNN": "#f9a825",
+               "it11.2 D CRNN": "#2e7d32", "it11.2 D steady CRNN": "#00acc1"})
 PART_COLORS = {"drone": "#d93025", "war soundscape": "#6b4e16", "war-shaped noise": "#7a7a7a", "wind": "#2a9d8f",
                "mix": "#111111"}
 BG, PANEL, ACCENT, MUTED = "#f4f5f7", "#ffffff", "#2a78d6", "#6b7280"
@@ -310,6 +321,21 @@ class Page(ttk.Frame):
             tk.Checkbutton(f, text="DSP (comb)" if d == "comb" else d, variable=v, command=self.update_count,
                            fg=COLORS.get(d, "#333"), bg=PANEL, activebackground=PANEL, selectcolor=PANEL,
                            font=("Segoe UI", 10, "bold")).grid(row=0, column=i, padx=(0, 14), sticky="w")
+        # Site calibration (entry 148): thresholds set on the site's own background instead of the frozen ones.
+        cal = tk.Frame(f, bg=PANEL)
+        cal.grid(row=1, column=0, columnspan=max(len(detector_names()), 1), sticky="w", pady=(8, 0))
+        self.v_cal = tk.BooleanVar(value=False)
+        self.v_cal_fa = tk.StringVar(value="5")
+        self.v_cal_s = tk.StringVar(value="120")
+        tk.Checkbutton(cal, text="Calibrate thresholds on the site background", variable=self.v_cal,
+                       command=self.update_count, bg=PANEL, activebackground=PANEL, selectcolor=PANEL,
+                       font=("Segoe UI", 10)).pack(side="left")
+        ttk.Label(cal, text="  at false alarms %").pack(side="left")
+        ttk.Entry(cal, textvariable=self.v_cal_fa, width=5).pack(side="left", padx=(4, 0))
+        ttk.Label(cal, text="  on seconds of background").pack(side="left")
+        ttk.Entry(cal, textvariable=self.v_cal_s, width=6).pack(side="left", padx=(4, 0))
+        ttk.Label(cal, text="  (taken right after the test's stretch, never the test audio)",
+                  style="Muted.TLabel").pack(side="left")
 
     def _build_run(self, f):
         f.columnconfigure(0, weight=1)
@@ -387,10 +413,16 @@ class Page(ttk.Frame):
                              elev_deg=float(self.v_elev.get()))
             except ValueError:
                 raise ValueError("drone sound seed, pitch scale and elevation must be numbers") from None
+        cal = {}
+        if self.v_cal.get():
+            try:
+                cal = dict(calibrate_fa=float(self.v_cal_fa.get()) / 100.0, calibrate_s=float(self.v_cal_s.get()))
+            except ValueError:
+                raise ValueError("calibration: false alarms % and seconds must be numbers") from None
         p = E.Plan(self.kind, length, drones, levels, layers, [d for d, v in self.v_det.items() if v.get()],
                    step_s=step, no_drone_rounds=self.v_nodrone.get(),
                    soundscape_start_s=float(start) if start else None, **({"synth": synth} if synth else {}),
-                   **({"speeds": speeds, "approach": approach} if self.kind == "modified" else {}))
+                   **({"speeds": speeds, "approach": approach} if self.kind == "modified" else {}), **cal)
         return p
 
     def update_count(self, *_):
@@ -1015,7 +1047,7 @@ def load_test(folder: Path) -> E.Test:
     p = cfg["plan"]
     plan = E.Plan(**{k: p[k] for k in ("kind", "length_s", "drones", "drone_levels", "layers", "detectors", "step_s",
                                        "no_drone_rounds", "soundscape_start_s", "synth")},
-                  **{k: p[k] for k in ("speeds", "approach") if k in p})        # modified runs only
+                  **{k: p[k] for k in ("speeds", "approach", "calibrate_fa", "calibrate_s") if k in p})
     t = E.Test(plan, folder)
     t.start_s = cfg["soundscape_start_s"]
     t.prepare(progress=lambda s: None)

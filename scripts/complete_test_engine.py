@@ -146,6 +146,8 @@ class Plan:
     detectors: list                                          # model names (dwg.MODELS) and/or "comb"
     step_s: float = 1.0
     no_drone_rounds: bool = False
+    calibrate_fa: float | None = None                        # site calibration (entry 148): thresholds at this FA
+    calibrate_s: float = 120.0                               # on this many seconds of each background, no drone
     soundscape_start_s: float | None = None                  # None: drawn from seed 1000 per batch
     synth: dict = field(default_factory=lambda: dict(drone_seed=1, pscale=0.85, elev_deg=40.0))
     speeds: list | None = None                               # modified only
@@ -214,6 +216,13 @@ class Plan:
             out.append("tick at least one detector")
         if not self.layers and not self.drones:
             out.append("nothing to test")
+        if self.calibrate_fa is not None:
+            if not self.layers:
+                out.append("site calibration needs at least one background layer to listen to")
+            if not 0 < self.calibrate_fa < 1:
+                out.append("calibration false-alarm rate must be between 0 and 100 %")
+            if self.calibrate_s < 10:
+                out.append("calibrate on at least 10 s of background")
         return out
 
 
@@ -353,6 +362,36 @@ def load_detectors(names: list[str], device: str = "cpu") -> tuple[dict, dict]:
     return thr, sc
 
 
+def calibrate(plan: Plan, layers: dict, scorers: dict, frozen: dict, start_s: float) -> tuple[dict, dict]:
+    """Site calibration (report entry 148): each detector's threshold set on the site's own background.
+
+    For every background of the plan (each combination of the enabled layers' levels), `calibrate_s`
+    seconds of the layers with no drone are mixed, from the stretch that follows the test's own stretch
+    ([start_s + length_s, ...), so the calibration audio is never the audio the rounds are cut from unless
+    a source is shorter than length_s + calibrate_s and wraps: `overlaps_test` says so per layer). Every
+    detector streams it as in a round (1 s window, 0.125 s hop); the windows of all backgrounds are pooled
+    and the threshold is rangerun.fa_threshold at `calibrate_fa`. This is what a fielded system does when
+    it is commissioned on a recording of where it stands, instead of keeping a threshold frozen on
+    another rig's validation (entries 141, 147)."""
+    from dad.rangerun import fa_threshold
+    n = int(round(plan.calibrate_s * SR))
+    c0 = start_s + plan.length_s
+    pooled = {k: [] for k in scorers}
+    for bg in plan.backgrounds():
+        mix = np.sum([layers[name].window(n, c0, lv) for name, lv in bg.items()], axis=0)
+        clip = Clip("site calibration", mix.astype(np.float32), SR, 1, "FLOAT")
+        for k, sc in scorers.items():
+            pooled[k].append(np.asarray(stream(clip, sc, DEFAULT, frozen[k]).score, dtype=np.float64))
+    thr = {k: float(fa_threshold(np.concatenate(v), plan.calibrate_fa)) for k, v in pooled.items()}
+    info = dict(fa=plan.calibrate_fa, seconds=plan.calibrate_s, start_s=c0, backgrounds=len(plan.backgrounds()),
+                windows={k: int(sum(len(x) for x in v)) for k, v in pooled.items()},
+                fa_at_frozen={k: float((np.concatenate(v) >= frozen[k]).mean()) for k, v in pooled.items()},
+                overlaps_test={name: bool((plan.length_s + plan.calibrate_s) * SR > len(layers[name].signal()[0]))
+                               for name in plan.layers},
+                frozen_thresholds=frozen)
+    return thr, info
+
+
 # ------------------------------------------------------------------ a round
 
 def mix_round(r: dict, plan: Plan, layers: dict[str, Layer], drones: Drones, start_s: float) -> dict:
@@ -457,6 +496,7 @@ class Test:
         self.start_s = plan.soundscape_start_s
         self.drones = None
         self.thr = self.scorers = None
+        self.calibration = None
 
     def prepare(self, progress=print):
         if self.start_s is None:                             # one start per batch, so the longest window fits
@@ -466,8 +506,13 @@ class Test:
         self.drones = Drones(self.plan, progress)
         progress("loading detectors")
         self.thr, self.scorers = load_detectors(self.plan.detectors, self.device)
+        if self.plan.calibrate_fa is not None:
+            progress(f"calibrating thresholds on {self.plan.calibrate_s:g} s of each background "
+                     f"({len(self.plan.backgrounds())} backgrounds) at {100 * self.plan.calibrate_fa:g}% false alarms")
+            self.thr, self.calibration = calibrate(self.plan, self.layers, self.scorers, self.thr, self.start_s)
         self.out.mkdir(parents=True, exist_ok=True)
         cfg = dict(plan=asdict(self.plan), soundscape_start_s=self.start_s, thresholds=self.thr,
+                   calibration=self.calibration,
                    count=self.plan.count(), drone_spans={drone_label(k): v for k, v in self.drones.span.items()})
         (self.out / "config.json").write_text(json.dumps(cfg, indent=1, default=str), encoding="utf-8")
 

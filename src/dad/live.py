@@ -48,6 +48,16 @@ PRESETS = {
     "it9 CNN": ("artifacts/runs/final_dscnn.json", "artifacts/models/final_dscnn_none_simdist_dscnn.pt"),
     "it9 CRNN": ("artifacts/runs/final_crnn.json", "artifacts/models/final_crnn_none_simdist_crnn.pt"),
     "it10 CNN": ("artifacts/it10_clean/clean_s0.json", "artifacts/it10_clean/clean_s0_dscnn.pt"),
+    # Iteration 11.2 (report entries 143-146): seed-0 CRNNs under entry 143's rule, one rig held out.
+    # N = trained on d3set (Nightjar held out), D = trained on Nightjar (d3set held out).
+    "it11.2 N CRNN": ("artifacts/runs/it11_2_s0_nightjar.json",
+                      "artifacts/models/it11_2_s0_nightjar_nightjar_simdist_crnn.pt"),
+    "it11.2 N steady CRNN": ("artifacts/runs/it11_2_s0_nightjar.json",
+                             "artifacts/models/it11_2_s0_nightjar_nightjar_simdist_steady_crnn.pt"),
+    "it11.2 D CRNN": ("artifacts/runs/it11_2_s0_d3set.json",
+                      "artifacts/models/it11_2_s0_d3set_d3set_simdist_crnn.pt"),
+    "it11.2 D steady CRNN": ("artifacts/runs/it11_2_s0_d3set.json",
+                             "artifacts/models/it11_2_s0_d3set_d3set_simdist_steady_crnn.pt"),
 }
 COMB_RUN = "artifacts/runs/it6_final.json"     # comb keeps model 6's frozen threshold, as in detect_gui
 RESAMPLE_MARGIN_S = 0.05                       # extra input kept so the resampler's start-up falls outside the window

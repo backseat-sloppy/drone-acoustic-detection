@@ -11371,3 +11371,36 @@ distance it was really recorded at (ITU ARIS: up to ~2 km) are moved and scaled 
 reflection. Not tried by hand in the GUI (no clicks). Synthetic scaffolding (section 5): no number
 here is detection performance. The server needs this code committed and pulled before it can run
 modified plans.
+
+## 149 - The master merge dropped entry 148's site calibration and the 11.2 detectors; restored, and the 11.2 CRNNs added to live_gui
+- Date: 2026-11-06
+- Iteration: 11.2
+- Type: Infrastructure, Correction
+- Commit: this entry's commit (on top of e15edfb)
+
+**What happened.** The merge of master into 11.1 (e15edfb, 14:41) took master's `scripts/Complete_Test_Gui.py`
+and `scripts/complete_test_engine.py`. Master's versions come from e4c7880 (14:18, "Add modified drone test
+workflow": modified drone files, approach speeds, 5-10 s drone files).
+- **Lost:** site calibration (entry 148, c5e7e62) and the four 11.2 detectors (a9d0d83).
+- **Also lost:** the three e123 arms and "it11r CRNN 600k real-thr" (entry 129), which the it11-soundscapes
+  version of the GUI had registered.
+- **Survived:** `src/dad/wavio.py` (rule-143 arms) and REPORT entries 145-148.
+
+**What changed.**
+- Site calibration and the 11.2 detectors were re-applied on top of master's new engine and GUI, and all of
+  master's changes were kept:
+  - `Plan.calibrate_fa` and `calibrate_s`, `calibrate()`, and the call in `prepare()` (now
+    `load_detectors(..., self.device)`);
+  - the GUI switch (below the one-row detector list) and `load_test` reading the new fields.
+- `src/dad/live.py` `PRESETS` gains "it11.2 N CRNN", "it11.2 N steady CRNN", "it11.2 D CRNN" and "it11.2 D steady
+  CRNN". So `scripts/live_gui.py --detector "it11.2 D steady CRNN"` and `dad live` load them, each with the threshold
+  frozen on its training rig's validation: 0.2616, 0.2480, 0.4129 and 0.3544, as in entry 147.
+- The e123 arms and "it11r CRNN 600k real-thr" were not restored; that is for Marius and Mads to decide.
+
+**Check (Mac).**
+- `py_compile` passes for the three files, and `tests/test_live.py` passes.
+- `load_detector` returns the four 11.2 presets with the thresholds above.
+- A calibrated smoke run on the merged engine (Drone_08 at 60 dB, war soundscape at 60 dB, 30 s of calibration
+  from 130 s, no overlap with the test) moved it9's threshold from 0.4828 to 0.2651, and D steady's from 0.3544
+  to 0.0307.
+
