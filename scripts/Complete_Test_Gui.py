@@ -260,6 +260,22 @@ class Page(ttk.Frame):
             tk.Checkbutton(f, text="DSP (comb)" if d == "comb" else d, variable=v, command=self.update_count,
                            fg=COLORS.get(d, "#333"), bg=PANEL, activebackground=PANEL, selectcolor=PANEL,
                            font=("Segoe UI", 10, "bold")).grid(row=i // 6, column=i % 6, padx=(0, 14), sticky="w")
+        # Site calibration (entry 148): thresholds set on the site's own background instead of the frozen ones.
+        row = len(detector_names()) // 6 + 1
+        cal = tk.Frame(f, bg=PANEL)
+        cal.grid(row=row, column=0, columnspan=6, sticky="w", pady=(8, 0))
+        self.v_cal = tk.BooleanVar(value=False)
+        self.v_cal_fa = tk.StringVar(value="5")
+        self.v_cal_s = tk.StringVar(value="120")
+        tk.Checkbutton(cal, text="Calibrate thresholds on the site background", variable=self.v_cal,
+                       command=self.update_count, bg=PANEL, activebackground=PANEL, selectcolor=PANEL,
+                       font=("Segoe UI", 10)).pack(side="left")
+        ttk.Label(cal, text="  at false alarms %").pack(side="left")
+        ttk.Entry(cal, textvariable=self.v_cal_fa, width=5).pack(side="left", padx=(4, 0))
+        ttk.Label(cal, text="  on seconds of background").pack(side="left")
+        ttk.Entry(cal, textvariable=self.v_cal_s, width=6).pack(side="left", padx=(4, 0))
+        ttk.Label(cal, text="  (taken right after the test's stretch, never the test audio)",
+                  style="Muted.TLabel").pack(side="left")
 
     def _build_run(self, f):
         f.columnconfigure(0, weight=1)
@@ -334,9 +350,15 @@ class Page(ttk.Frame):
                              elev_deg=float(self.v_elev.get()))
             except ValueError:
                 raise ValueError("drone sound seed, pitch scale and elevation must be numbers") from None
+        cal = {}
+        if self.v_cal.get():
+            try:
+                cal = dict(calibrate_fa=float(self.v_cal_fa.get()) / 100.0, calibrate_s=float(self.v_cal_s.get()))
+            except ValueError:
+                raise ValueError("calibration: false alarms % and seconds must be numbers") from None
         p = E.Plan(self.kind, length, drones, levels, layers, [d for d, v in self.v_det.items() if v.get()],
                    step_s=step, no_drone_rounds=self.v_nodrone.get(),
-                   soundscape_start_s=float(start) if start else None, **({"synth": synth} if synth else {}))
+                   soundscape_start_s=float(start) if start else None, **({"synth": synth} if synth else {}), **cal)
         return p
 
     def update_count(self, *_):
@@ -670,7 +692,8 @@ def load_test(folder: Path) -> E.Test:
     cfg = json.loads((folder / "config.json").read_text(encoding="utf-8"))
     p = cfg["plan"]
     plan = E.Plan(**{k: p[k] for k in ("kind", "length_s", "drones", "drone_levels", "layers", "detectors", "step_s",
-                                       "no_drone_rounds", "soundscape_start_s", "synth")})
+                                       "no_drone_rounds", "soundscape_start_s", "synth", "calibrate_fa", "calibrate_s")
+                     if k in p})
     t = E.Test(plan, folder)
     t.start_s = cfg["soundscape_start_s"]
     t.prepare(progress=lambda s: None)

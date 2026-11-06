@@ -9810,3 +9810,105 @@ Only the held-out rig counts for a fold; the other column is that model's in-rig
 **Not run.** Glasgow d1-d16 in the pool; per-rig negative balancing (entry 131's fallback); the
 FPV/DroneNoise ablation of the room inversion. These are the candidate next steps.
 
+## 147 - Mads's Complete_Test_Gui run with the 11.2 CRNNs: low recall at the frozen thresholds, comparable ranking (sealed data, diagnostic only)
+- Date: 2026-11-06
+- Iteration: 11.2
+- Type: Evaluation (sealed ARIS excerpt; not used for design decisions, entry 131)
+- Commit: uncommitted (Mac; `Complete_Test_Gui.py` with the four 11.2 CRNNs registered, `wavio.threshold_from_run` accepting rule-143 arms)
+
+**Run.** `artifacts/complete_test/20261106_141549_real` on the Mac, started by Mads.
+- Drone: `sealed_peek/Drone_08.wav` at 60 dB, in the war soundscape at 60 and 90 dB.
+- 20 s rounds with drone starts at 0-10 s (drone span 0-10 s of the clip), 24 rounds including no-drone rounds.
+- Detectors: it6 CNN, it9 CRNN, the four 11.2 seed-0 CRNNs (entry 146), and comb.
+- Each detector at its own frozen threshold: it9 0.4828; 11.2 N 0.2616, N steady 0.2480, D 0.4129,
+  D steady 0.3544.
+- **Mads's verdict: "the test results are really bad".**
+
+**GUI figures** (recall / FPR at the frozen threshold, all drone rounds, from `summary.csv`):
+- it6 0.32 / 0.00;
+- it9 0.41 / 0.00;
+- 11.2 N 0.17, N steady 0.15, D 0.11, D steady 0.06, all at 0.00 FPR;
+- comb 0.00 / 0.01.
+- In the war soundscape at 60 dB: it9 0.67 against 0.10-0.29 for 11.2. At 90 dB: it9 0.16 against 0.03-0.06.
+
+**Diagnostic** (Mac, no training). The hop labels were rebuilt from `rounds.csv`, `config.json` and
+`wavio.window_labels`' rule, and checked against the GUI: round 1, it9, tp 69 and fn 4, identical. Pooled over
+all 24 rounds (1606 drone and 1786 no-drone windows), from `scores.npz`:
+
+| Detector | AUC | Recall at 1% FA | Recall at 5% FA |
+|---|---|---|---|
+| it9 CRNN | 0.809 | 0.532 | 0.548 |
+| it6 CNN | 0.831 | 0.435 | 0.486 |
+| 11.2 D steady CRNN | 0.839 | 0.474 | 0.542 |
+| 11.2 D CRNN | 0.820 | 0.369 | 0.499 |
+| 11.2 N steady CRNN | 0.807 | 0.415 | 0.457 |
+| 11.2 N CRNN | 0.795 | 0.391 | 0.478 |
+| comb | 0.498 | 0.003 | 0.003 |
+
+The FA thresholds in this table are set on this run's own no-drone windows. They are an oracle, not
+deployable.
+
+**Reading.**
+- On this clip the 11.2 fold CRNNs rank drone against war soundscape about as well as it9: AUC 0.80-0.84
+  against 0.81. At matched 5% FA, D steady is level with it9 (0.542 against 0.548).
+- The low GUI recall is the operating point. Each 11.2 threshold was frozen on one rig's validation
+  background (entry 144) and sits far too high for this audio, with zero false alarms and most drones missed.
+- At 1% FA, it9 is still ahead (0.532 against at most 0.474). it9 trained on FPV and DroneNoise drones (entry
+  145), which may matter for this clip. This is not tested.
+- This repeats entry 141's finding (P1, pooled recall 0.491 at AUC 0.908): **thresholds do not transfer across
+  recording setups.**
+- One sealed clip. Nothing here changes a design decision (entry 131).
+
+**Options put to Mads** (not decided):
+1. Calibrate the threshold on the deployment site's own no-drone recording (the README's "record 30 minutes of
+   local background").
+2. A final candidate trained on both rigs, no rig held out, plus DDL and Glasgow d1-d16.
+3. Revisit whether one FPV campaign may train, with another kept as test.
+
+## 148 - Site calibration of the threshold in Complete_Test_Gui (Mads's choice); on entry 147's test it doubles to quintuples 11.2 recall
+- Date: 2026-11-06
+- Iteration: 11.2
+- Type: Algorithm (deployment step), Evaluation (sealed ARIS excerpt, diagnostic only, entry 131)
+- Commit: uncommitted (Mac)
+
+**Decision.** Mads chose "Site calibration of the threshold". The alternatives were a final candidate trained on
+both rigs, admitting one FPV campaign to training, and stopping to report.
+
+**What changed.**
+- `complete_test_engine.calibrate()`, with plan fields `calibrate_fa` and `calibrate_s` (defaults off, 120 s).
+  - For every background of the plan, `calibrate_s` seconds of the enabled layers are mixed at the plan's
+    levels, with no drone.
+  - The audio is taken from the stretch right after the test's own stretch, `[start_s + length_s, ...)`, so it is
+    never the audio the rounds are cut from. A source shorter than `length_s + calibrate_s` wraps; `overlaps_test`
+    records that per layer.
+  - Each detector streams it as in a round (1 s window, 0.125 s hop). The windows of all backgrounds are pooled,
+    and the threshold is `rangerun.fa_threshold` at `calibrate_fa`.
+  - `config.json` keeps the frozen thresholds, the calibrated ones, the stretch, the window count, each
+    detector's FA on the calibration audio at its frozen threshold, and the overlap flags.
+- `Complete_Test_Gui.py`: a "Calibrate thresholds on the site background" switch under Detectors, with false
+  alarms % and seconds. `load_test` reads the new fields when present.
+- No model changed. The step is how a fielded system would be commissioned on a recording of where it stands.
+
+**Check.** Entry 147's plan rerun on the Mac, headless (`Test.run`, scoring only):
+- `Drone_08` at 60 dB, war soundscape at 60 and 90 dB, start 118 s, 24 rounds;
+- calibration at 5% FA on 120 s per background, from 138 s (1906 windows), with no overlap with the test.
+
+| Detector | Frozen → site threshold | FA on the calibration audio at the frozen threshold | Recall, frozen (entry 147) | Recall, site | War 60 / 90 dB, site | Test FPR, site |
+|---|---|---|---|---|---|---|
+| it9 CRNN | 0.4828 → 0.3084 | 0.001 | 0.41 | **0.47** | 0.75 / 0.18 | 0.00 |
+| 11.2 N CRNN | 0.2616 → 0.0432 | 0.012 | 0.17 | **0.30** | 0.52 / 0.08 | 0.00 |
+| 11.2 N steady CRNN | 0.2480 → 0.0367 | 0.023 | 0.15 | **0.29** | 0.50 / 0.08 | 0.00 |
+| 11.2 D CRNN | 0.4129 → 0.0966 | 0.009 | 0.11 | **0.31** | 0.53 / 0.09 | 0.00 |
+| 11.2 D steady CRNN | 0.3544 → 0.0711 | 0.008 | 0.06 | **0.29** | 0.50 / 0.08 | 0.00 |
+| comb | 1.914 → 3.606 | 0.113 | 0.00 | 0.00 | 0.00 / 0.00 | 0.00 |
+
+**Reading.**
+- Site calibration removes most of entry 147's threshold failure. The 11.2 thresholds fall four- to sevenfold,
+  and recall rises to 0.29-0.31 for all four, still at zero false alarms in the test rounds.
+- it9 also gains, 0.41 → 0.47, and stays ahead. The remaining gap is ranking at low FA (entry 147: 1% FA,
+  it9 0.532 against at most 0.474), not the operating point.
+- The comb's frozen threshold alarms on 11% of this background. Calibration makes it stricter, as intended.
+- The calibrated thresholds leave slack. The calibration stretch (138-258 s of the war track, at both
+  levels) is harsher than the test stretch (118-138 s): 5% FA there became 0% on the test's no-drone windows.
+- One sealed clip; nothing here is a test result or a design decision (entry 131).
+
