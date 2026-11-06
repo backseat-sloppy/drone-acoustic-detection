@@ -10,12 +10,13 @@
 #   bash scripts/experiments/run_it11_1.sh gates     # real-rig and Glasgow gates, where the data exists here
 #   bash scripts/experiments/run_it11_1.sh pack      # one tar of artifacts/it11_1 (no checkpoints over 100 MB) + MD5
 #
-# Every stage writes under artifacts/it11_1/ and logs to artifacts/it11_1/logs/. Runs the repo's own
-# .venv/bin/python, never `uv run`: uv may re-sync torch, and recent CUDA builds of torch dropped the
-# Pascal GPUs (TITAN X) this server has. fp32 throughout (Pascal fp16 is slow).
+# Every stage writes under artifacts/it11_1/ and logs to artifacts/it11_1/logs/. The interpreter is
+# $PY (default: the repo's .venv/bin/python), the one the CRNN runs already train with; never `uv run`:
+# uv may re-sync torch, and recent CUDA builds of torch dropped the Pascal GPUs (TITAN X) this server
+# has. fp32 throughout (Pascal fp16 is slow). Example: PY=$(which python) bash scripts/experiments/run_it11_1.sh test
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-PY=.venv/bin/python
+PY=${PY:-.venv/bin/python}
 OUT=artifacts/it11_1
 PRE=artifacts/pretrained
 CK="$PRE/Cnn14_16k_mAP=0.438.pth"
@@ -27,6 +28,12 @@ DATA=(--drones "$SCENES/glasgow_d1_16" "$SCENES/it11s_valdrone" "$SCENES/it11s/n
 mkdir -p "$OUT/logs" "$PRE"
 stamp() { date +%Y%m%d_%H%M%S; }
 note() { echo "$(date +%H:%M:%S) $*" | tee -a "$OUT/logs/run.log"; }
+
+preflight() {   # the interpreter must exist and have torch, CUDA and the repo's other dependencies
+  command -v "$PY" >/dev/null 2>&1 || { echo "No interpreter at PY=$PY. Set PY to the python the CRNN runs use, e.g. PY=\$(which python)"; exit 1; }
+  "$PY" -c "import torch, numpy, scipy, sklearn, soundfile, lightgbm; print('python', __import__('sys').executable, '| torch', torch.__version__, '| cuda', torch.cuda.is_available(), torch.cuda.device_count())" \
+    | tee -a "$OUT/logs/run.log"
+}
 
 case "${1:-}" in
 fetch)
@@ -41,21 +48,26 @@ fetch)
   note "fetch done: $(cat $PRE/MD5SUMS | tr '\n' ' ')"
   ;;
 test)
+  preflight
   $PY -m pytest -q -p no:cacheprovider tests/test_panns.py 2>&1 | tee "$OUT/logs/test_$(stamp).log"
   ;;
 smoke)
+  preflight
   CUDA_VISIBLE_DEVICES=${GPU:-0} $PY -u scripts/train_panns.py --mode probe --name smoke --limit 20 --windows 512 \
       --device cuda --out "$OUT/smoke" "${DATA[@]}" 2>&1 | tee "$OUT/logs/smoke_$(stamp).log"
   ;;
 p0)
+  preflight
   CUDA_VISIBLE_DEVICES=${GPU:-0} $PY -u scripts/panns_p0.py --device cuda --out "$OUT/p0.json" \
       --drones "$SCENES/it11s_valdrone" --nodrone "$NODRONE" 2>&1 | tee "$OUT/logs/p0_$(stamp).log"
   ;;
 p1)
+  preflight
   CUDA_VISIBLE_DEVICES=${GPU:-0} $PY -u scripts/train_panns.py --mode probe --name p1_s0 --seed 0 \
       --windows ${WINDOWS:-100000} --device cuda --out "$OUT" "${DATA[@]}" 2>&1 | tee "$OUT/logs/p1_$(stamp).log"
   ;;
 p2)
+  preflight
   [ -f "$OUT/p1_s0_panns.pt" ] || { echo "run p1 first (LP-FT starts from its probe)"; exit 1; }
   for s in 0 1 2; do
     log="$OUT/logs/p2_s${s}_$(stamp).log"
@@ -67,6 +79,7 @@ p2)
   echo "Running in the background; follow with: tail -f $OUT/logs/p2_s*_*.log"
   ;;
 gates)
+  preflight
   models=()
   for f in "$OUT"/p1_s0_panns.pt "$OUT"/p2_s*_panns.pt; do [ -f "$f" ] && models+=("$(basename "$f" _panns.pt)=$f"); done
   [ ${#models[@]} -gt 0 ] || { echo "no checkpoints in $OUT"; exit 1; }
