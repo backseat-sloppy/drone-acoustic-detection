@@ -65,7 +65,7 @@ PAGES = [("real", "Real drone test"), ("synthetic", "Synthetic drone test")]
 DEFAULT_LEVELS = {"war soundscape": ("60", "60", "1"), "war-shaped noise": ("50", "50", "1"), "wind": ("50", "50", "1"),
                   "cars": ("", "", ""), "helicopter": ("", "", ""), "insects": ("", "", "")}
 COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it10 CNN": "#d93025",
-          "comb": "#1baf7a"}
+          "it9.2 CRNN": "#0b8a8a", "comb": "#1baf7a"}
 PART_COLORS = {"drone": "#d93025", "war soundscape": "#6b4e16", "war-shaped noise": "#7a7a7a", "wind": "#2a9d8f",
                "mix": "#111111"}
 BG, PANEL, ACCENT, MUTED = "#f4f5f7", "#ffffff", "#2a78d6", "#6b7280"

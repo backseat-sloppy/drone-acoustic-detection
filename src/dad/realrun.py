@@ -505,7 +505,9 @@ class NetScorer:
     def fit(self, sampler: WindowSampler, n_windows: int = 200_000, batch_size: int = 64,
             lr: float = 2e-3, weight_decay: float = 1e-2, workers: int = 3,
             on_progress: Callable[["NetScorer", int], None] | None = None,
-            progress_every: int = 50_000, log: Callable[[str], None] = print) -> "NetScorer":
+            progress_every: int = 50_000, log: Callable[[str], None] = print,
+            augment: bool = True) -> "NetScorer":
+        """`augment=False` turns SpecAugment off (iteration 9.2: the network sees the windows as recorded)."""
         import torch
         import torch.nn.functional as F
         from .models.zoo import build
@@ -537,7 +539,9 @@ class NetScorer:
         for step, b in enumerate(prefetch(source, steps, batch_size, workers), start=1):
             L = features(b)
             mu, sigma = torch.from_numpy(self.mu).to(L.device), torch.from_numpy(self.sigma).to(L.device)
-            xb = spec_augment((L - mu) / sigma, rng, max_freq=max_freq)
+            xb = (L - mu) / sigma
+            if augment:
+                xb = spec_augment(xb, rng, max_freq=max_freq)
             loss = F.cross_entropy(self.model(xb[:, None].to(self.device)),
                                    torch.from_numpy(b[-1]).to(self.device))
             opt.zero_grad(set_to_none=True)

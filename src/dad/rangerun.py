@@ -22,6 +22,13 @@ Recipes (`RECIPES`):
     simdist near drones summed into the training rig's own background at a
             signal-to-noise ratio of -10 to +5 dB, in place of real far
             positives (D'; gain only, as the LOCKED data rule allows)
+    unmodified  iteration 9.2: every window exactly as recorded. Near and
+            unranged drone windows and the rigs' own no-drone windows, with
+            no mixing, no burying and no EQ. DDL and DroneNoise are left out,
+            because they have no no-drone audio of their own and unburied
+            they would let the recording chain predict the label (iteration 1)
+    unmodified_fsd  iteration 9.3: as `unmodified`, plus FSD50K dev windows as
+            recorded for half of the no-drone windows
 """
 from __future__ import annotations
 
@@ -130,12 +137,16 @@ class Recipe:
     near_bury: bool = True                       # near positives buried in FSD50K, as iteration 2
     steady_neg: float = 0.0                      # share of negatives that are steady noise alone (iteration 11)
     steady_mask: float = 0.0                     # share of positives with steady noise under the drone
+    unmodified: bool = False                     # iteration 9.2: no mixing, no EQ, no DDL / DroneNoise
+    fsd_neg: float = 0.0                         # iteration 9.3: share of negatives that are a bare FSD50K window
 
 
 RECIPES = {
     "near": Recipe("near", {(0, 50): 1.0}),
     "range": Recipe("range", {(0, 50): 0.20, (50, 100): 0.25, (100, 150): 0.30, (150, 200): 0.25}),
     "simdist": Recipe("simdist", {(0, 50): 1.0}, sim_share=0.80),
+    "unmodified": Recipe("unmodified", {(0, 50): 1.0}, near_bury=False, unmodified=True),
+    "unmodified_fsd": Recipe("unmodified_fsd", {(0, 50): 1.0}, near_bury=False, unmodified=True, fsd_neg=0.5),
     "simdist_steady": Recipe("simdist_steady", {(0, 50): 1.0}, sim_share=0.80, steady_neg=0.15, steady_mask=0.30),
 }
 
@@ -251,8 +262,9 @@ class RangeSampler:
                     wn = neg.astype(float)
                 idx = np.flatnonzero(wn > 0)
                 self._rigs[src] = (cw, idx, np.cumsum(wn[idx] / wn[idx].sum()))
-        cells.append(_pool_cell(rr.ddl_pool(splits.ddl_train, n, 50.0, name="ddl <=50 m"), "ddl"))
-        cells.append(_pool_cell(rr.dronenoise_pool(splits.dronenoise, n), "dronenoise"))
+        if not recipe.unmodified:
+            cells.append(_pool_cell(rr.ddl_pool(splits.ddl_train, n, 50.0, name="ddl <=50 m"), "ddl"))
+            cells.append(_pool_cell(rr.dronenoise_pool(splits.dronenoise, n), "dronenoise"))
         set_weights(cells, recipe)
         self.cells = [c for c in cells if c.weight > 0]
         w = np.array([c.weight for c in self.cells] + [recipe.sim_share])
@@ -279,6 +291,10 @@ class RangeSampler:
             parts.append(f"{s} negatives share {sh:.3f} ({len(idx) * self._grid / 16_000 / 60:.1f} min)")
         if self.speed:
             parts.append(f"speed {self.speed[0]:g}-{self.speed[1]:g}")
+        if self.recipe.unmodified:
+            parts.append("unmodified: no mixing, no EQ")
+        if self.recipe.fsd_neg:
+            parts.append(f"FSD50K as recorded: {self.recipe.fsd_neg:.0%} of negatives")
         if self.recipe.steady_neg or self.recipe.steady_mask:
             parts.append(f"steady noise: {self.recipe.steady_neg:.0%} of negatives, "
                          f"under {self.recipe.steady_mask:.0%} of positives")
@@ -343,13 +359,15 @@ class RangeSampler:
     def negative(self, rng: np.random.Generator) -> np.ndarray:
         if self.recipe.steady_neg and rng.random() < self.recipe.steady_neg:
             return self.steady(rng)[0]
+        if self.recipe.fsd_neg and rng.random() < self.recipe.fsd_neg:
+            return self.fsd._background(rng)[0]
         u = rng.random()
         if u < self.rig_neg_share:
             k = min(int(np.searchsorted(np.cumsum(self._rig_share), u, side="right")), len(self._rig_names) - 1)
             a, pa = self._rig_background(rng, self._rig_names[k])
         else:
             a, pa = self.fsd._background(rng)
-        if rng.random() < self.variant.mix_prob_neg:
+        if not self.recipe.unmodified and rng.random() < self.variant.mix_prob_neg:
             b, pb = self.fsd._background(rng)
             rel = rng.uniform(*self.variant.neg_rel_db)
             a = a + b * math.sqrt(pa * 10.0 ** (rel / 10.0) / pb)
@@ -366,6 +384,8 @@ class RangeSampler:
             audio.append(self.positive(rng) if t else self.negative(rng))
             down.append(SPEED_UP if self.speed is None else speed_down(rng.uniform(*self.speed)))
         eq = np.stack([rr._eq_curve(rng, self.fe._fb.shape[0]) for _ in y])
+        if self.recipe.unmodified:
+            eq[:] = 0.0   # drawn anyway, so the other draws keep their order
         return np.stack(audio), np.array(down), eq, y
 
     def batch(self, index: int, batch_size: int) -> tuple[np.ndarray, np.ndarray]:

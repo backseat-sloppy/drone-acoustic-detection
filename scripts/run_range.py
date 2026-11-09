@@ -69,6 +69,8 @@ def main() -> None:
     p.add_argument("--eval-hop", type=float, default=0.5)
     p.add_argument("--deploy-fa", type=float, default=0.10)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--no-specaugment", action="store_true",
+                   help="train the networks without SpecAugment (iteration 9.2)")
     p.add_argument("--load-from", default=None, help="score checkpoints of this run name instead of training")
     p.add_argument("--integrate", nargs="+", type=int, default=[1],
                    help="also score the average of k consecutive windows, for each k given")
@@ -161,7 +163,7 @@ def main() -> None:
                     continue
                 net = rr.NetScorer(arch, variant, cfg, args.device)
                 t = time.time()
-                net.fit(sampler, n_windows=args.windows)
+                net.fit(sampler, n_windows=args.windows, augment=not args.no_specaugment)
                 net.save(ckpt)
                 evaluate(net, arch, rname, dict(train_seconds=round(time.time() - t, 1), history=net.history,
                                                 windows=args.windows))

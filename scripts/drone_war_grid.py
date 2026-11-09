@@ -61,7 +61,9 @@ COLORS = {"CNN": "#2a78d6", "comb": "#1baf7a"}
 MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file with its threshold, checkpoint)
           "it9 CNN": (ROOT / "artifacts/runs/final_dscnn.json", MODEL_DIR / "final_dscnn_none_simdist_dscnn.pt"),
           "it9 CRNN": (ROOT / "artifacts/runs/final_crnn.json", MODEL_DIR / "final_crnn_none_simdist_crnn.pt"),
-          "it10 CNN": (ROOT / "artifacts/it10_clean/clean_s0.json", ROOT / "artifacts/it10_clean/clean_s0_dscnn.pt")}
+          "it10 CNN": (ROOT / "artifacts/it10_clean/clean_s0.json", ROOT / "artifacts/it10_clean/clean_s0_dscnn.pt"),
+          # iteration 9.2: the it9 CRNN on unmodified windows, every rig, nothing held out (report entry 135)
+          "it9.2 CRNN": (ROOT / "artifacts/runs/it92_s0a.json", MODEL_DIR / "it92_s0a_none_unmodified_crnn.pt")}
 OFF = float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
 NO_DRONE = 0.0                                               # drone "speed" of the no-drone row (war only)
 

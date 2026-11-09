@@ -32,6 +32,8 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 13 | 127 to 128 | Frozen PANNs Cnn14_16k embedding plus logistic regression (entry 053's modified B) | Training-data levers ran out: every CRNN recipe reaches about the same separation (entry 127) | **Failed** (entry 053's rule). Mower false alarms 46% (> 40%); Lund recall 0.545 (CRNN 0.342), but suite AUC 0.84 against the CRNN's 0.93, brown noise 100%; fusing with the CRNN does not help. Folds: mean 0.466 against 0.527 (entry 130). |
 | Iteration 14 | 129 to 130 | Cnn14_16k fine-tuned end to end (LP-FT), after a council (entry 129) | The frozen embedding underfits (training accuracy 0.81) | **Failed at its go/no-go** (seed 0): validation recall at 10% FA 0.594 (gate 0.768), Lund 0.000 (gate 0.30). One untuned setup. The it9 CRNN stays the best model. |
 | Iteration 15 | 132 to 133 | Decision stage on the it9 CRNN, no training: a causal 1 s median, and the mean of several networks; a new war-coupling readout (score of drone + war minus drone alone) through `Complete_Test_Gui`'s engine | Mads saw war spikes lift the drone's score; iterations 11-14 changed the training data or the model without better separation | **Hypothesis rejected.** The war mostly *lowers* the CRNN's drone score (more than 0.1 on 37-51% of drone hops, lifts on 5-6%). A median leaves the coupling unchanged; averaging cuts it by 17-21% (30% required). Both CNNs separate drone-in-war better than the CRNN on this readout (AUC 0.91-0.92 against 0.86 at 65 dB SPL). |
+| Iteration 9.2 | 135 to 137, 139 | The it9 CRNN trained on unmodified windows: no simulated distance, no burying or mixing, no EQ, no speed change, no SpecAugment; DDL, DroneNoise and (as a side effect) FSD50K left out | Mads asked to go back to data that is not modified in any way; in the it9 recipe no drone window reaches the network as recorded | **Pooled model fails a sanity check** (entry 137): it alarms on birds (92%), white noise (100%) and Lund beyond 300 m (93%); it learned "not one of four rig backgrounds = drone". **Failed** (entry 139): five-unit mean 0.536 (rule 0.557, reference 0.527), mower 60.8% (guard 42.9%); held-out units get 28-79% false alarms at deployment. |
+| Iteration 9.3 | 138 to 140 | 9.2 plus FSD50K windows as recorded for half the negatives | 9.2 had no varied negatives | **Failed screen** (entry 140): birds and noise now quiet, but Lund beyond 300 m 0.690 (gate 0.30) and mower 60.8% (gate 42.9%); the threshold set on the training rigs is too low elsewhere. Unmodified line stopped; decision to Mads. |
 
 ## Templates
 
@@ -8543,3 +8545,342 @@ it does not matter, or varied on purpose as a second axis.
 
 **Next.** Proposed to Nicolai: SNR in dB as the conclusions' x-axis in
 place of the dB ratio.
+# Iteration 9.2 - The it9 CRNN on unmodified data
+
+> **Changed from the it9 CRNN** (`final_crnn`, entry 096; the same recipe is iteration 11's
+> `simdist` arm): only what is done to the training windows. Every training window is now
+> exactly as recorded. Recipe `unmodified`: no simulated distance (was 80% of drone windows,
+> a near drone summed into a rig background at -10 to +5 dB), no burying of real drone windows
+> in FSD50K (was the other 20%), no second background summed into half the negatives, no random
+> EQ, no speed perturbation (was 0.8-1.25 on every window), and no SpecAugment. DDL and
+> DroneNoise are left out: they have no no-drone audio of their own, and unburied they would let
+> the recording chain predict the label (iteration 1). FSD50K is then no longer drawn, because
+> in this sampler it only balanced those two. Drone windows: d3set, FPV, Glasgow and Nightjar at
+> 0-50 m or unranged, a quarter each; no-drone windows: the same four rigs' own background, a
+> quarter each.
+> **Why:** Mads (2026-11-06): go back to data that is not modified in any way, with no speed
+> change and no distance change, and train it. In the it9 recipe no drone window reaches the
+> network as recorded. Iterations 11 and 12 changed the training data and moved the operating
+> point without better separation (entry 127); this tests the opposite end: no manipulation.
+> **Kept the same:** the CRNN (739,747 parameters), MFE frontend (64 log-mel, 25/10 ms, level
+> normalisation, which is part of the frontend and also runs at inference), 1 s window, 200,000
+> training windows, the pooled arm and the five leave-one-unit-out folds, 0.5 s evaluation hop,
+> deployment threshold frozen at 5% false alarms on validation (21 segments from the training
+> rigs), the mower session and Lund as further readouts.
+> **Hypothesis (Mads's):** without artificial changes the network learns the sound of a real
+> drone, not the artefacts of the mixing and resampling, and so transfers at least as well to
+> rigs it never trained on. **Expected by Claude:** validation (in distribution) goes up, and
+> the unseen units and Lund go down, because iterations 2, 3 and 5 added the mixing, the
+> simulated distance and the speed change for transfer between rigs (entry 033: speed
+> perturbation +12 points on the unseen X500).
+> **Judged by** (fixed before any result; reference: the CRNN `simdist` arm of iteration 11,
+> seeds 0-2 means, entries 125 and 128): `unmodified` beats it if
+> (1) the five-unit mean of recall on all drone windows at 10% false alarms on the held-out
+> unit's own no-drone audio is at least 3 points above 0.527;
+> (2) Lund recall at the deployment threshold is not more than 5 points below 0.342; and
+> (3) mower-session false alarms at the deployment threshold are not more than 5 points above
+> 37.9%. Seed 0 first, on this PC's CPU (the AMD GPU cannot run the GRU through DirectML, and
+> the server needs Mads's browser login). If the five-unit mean lands within 3 points of the
+> reference, seeds 1-2 decide; if it is clearly outside, one seed is reported as a screen.
+> Baselines `comb` and `lgbm` (`lgbm` trained on the same unmodified windows) in every run.
+
+## 135 - Recipe `unmodified` and a switch for SpecAugment
+
+- Date: 2026-11-06
+- Iteration: 9.2
+- Type: Preprocessing, Infrastructure
+- Commit: uncommitted, on top of 00ee4e8
+
+**What changed.**
+- `rangerun.Recipe.unmodified` and recipe `unmodified` (`near_bury=False`): the sampler leaves
+  out the DDL and DroneNoise cells, never sums a second background into a negative, and sets the
+  EQ curve to zero (it is still drawn, so the other random draws keep their order). With no
+  `--speed` every window keeps its speed.
+- `NetScorer.fit(..., augment=True)`; `augment=False` skips SpecAugment. `run_range.py
+  --no-specaugment` passes it.
+
+**How.** Checked on this PC with a scratch script (not in the repo): 20 batches of 64 from the
+pooled arm; every window is identical (`np.array_equal`) to a slice read from a store by a cell
+or the rig-background draw; the speed is unchanged, the EQ zero, and FSD50K is never drawn.
+`pytest`: all pass (run as `.venv/Scripts/python.exe -m pytest`; `uv run` could not re-sync the
+venv while another process held it). Sampler shares (pooled arm):
+
+| Source | Drone min (0-50 m or unranged) | Share of drone windows | No-drone min | Share of no-drone windows |
+|---|---|---|---|---|
+| d3set | 62.6 | 0.25 | 12.4 | 0.25 |
+| FPV | 131.0 | 0.25 | 107.7 | 0.25 |
+| Glasgow | 517.6 | 0.25 | 60.5 | 0.25 |
+| Nightjar | 36.2 | 0.25 | 61.5 | 0.25 |
+
+For comparison the it9 recipe: 80% simulated distance, then 3.3% each for the six real sources
+(DDL and DroneNoise included), all buried in FSD50K; negatives 93% rig background, 7% FSD50K.
+
+CRNN training speed on this PC: CPU 68 windows/s (6 threads), about 50 minutes per 200,000
+windows. DirectML (AMD RX 5700) fails: the GRU falls back to the CPU and then stops with an
+error.
+
+**Result.** Not a result; the runs started: `it92_s0a` (pooled arm, Nightjar, d3set) and
+`it92_s0b` (the three FPV campaigns), seed 0, two processes in parallel:
+```
+.venv/Scripts/python.exe -u scripts/run_range.py --name it92_s0a --pool --arms none nightjar d3set --recipes unmodified --models comb lgbm crnn --device cpu --windows 200000 --deploy-fa 0.05 --seed 0 --frontend mfe --no-specaugment
+.venv/Scripts/python.exe -u scripts/run_range.py --name it92_s0b --pool --arms fpv:ariel_25.02 fpv:palmahim_10.02 fpv:palmahim_27.05 --recipes unmodified --models comb lgbm crnn --device cpu --windows 200000 --deploy-fa 0.05 --seed 0 --frontend mfe --no-specaugment
+```
+
+**Next.** Score the runs against the rule in the box (entry 136).
+
+## 136 - The pooled it9.2 CRNN in the test GUIs
+
+- Date: 2026-11-06
+- Iteration: 9.2
+- Type: Infrastructure
+- Commit: uncommitted, on top of 00ee4e8
+
+**What changed.** Mads: the model to try in `Complete_Test_Gui.py` must be the one trained on all
+the data, since the GUI has its own test set. That is the pooled arm of `it92_s0a` (nothing held
+out, seed 0), which finished first. `scripts/drone_war_grid.py` `MODELS` gained
+`"it9.2 CRNN"`: `artifacts/runs/it92_s0a.json` with
+`artifacts/models/it92_s0a_none_unmodified_crnn.pt`; `Complete_Test_Gui.py` gave it a colour.
+`detect_gui.py` reads the same list, so it appears there too.
+
+"All the data" here means every rig of the `unmodified` recipe (d3set, FPV, Glasgow, Nightjar,
+drone and no-drone). DDL, DroneNoise and FSD50K are not in it, by the design of entry 135.
+
+**How.** Checked: `wavio.threshold_from_run` finds the deployment threshold 0.157 (5% false
+alarms on validation) and `wavio.load_scorer` loads the checkpoint as an MFE CRNN.
+
+**Result.** Not a result. Validation figures of this checkpoint (in distribution, 21 segments):
+recall at the deployment threshold 0.914 (it9 CRNN 0.798, entry 096); mower session false alarms
+60.8% (it9 CRNN arm of iteration 11: 37.9%). Lund recall 0.973 at the deployment threshold,
+0.929 even beyond 300 m, where the drone is hardly audible: Lund has no no-drone audio, so this
+more likely means the network calls most Lund audio "drone" than that it hears the drone. The
+fold results (entry 137) decide the iteration. Complete-test numbers are synthetic scaffolding
+(CLAUDE.md section 5).
+
+## 137 - The pooled it9.2 CRNN calls almost anything it has not heard "drone"
+
+- Date: 2026-11-06
+- Iteration: 9.2
+- Type: Evaluation
+- Commit: uncommitted, on top of 00ee4e8
+
+**What changed.** Nothing trained. While the folds run, the pooled it9.2 CRNN (entry 136) and the
+it9 CRNN (`final_crnn`, entry 096), each at its frozen deployment threshold (0.157 and 0.483),
+were compared on audio from outside their training rigs, to test the suspicion of entry 136.
+
+**How.** Scratch scripts (not in the repo), torch on 2 CPU threads next to the training runs:
+`wavio.stream` as the GUIs score (1 s window, 0.125 s hop, channel 0, 16 kHz). Lund from the run
+files (`final_crnn.json`, `it92_s0a.json`, deployment threshold, 0.5 s hop).
+
+**Result.**
+
+Lund (never trained on by either), recall at the deployment threshold by slant range:
+
+| Range | Windows | it9 CRNN | it9.2 CRNN |
+|---|---|---|---|
+| 0-50 m | 1,086 | 0.926 | 1.000 |
+| 50-100 m | 1,787 | 0.675 | 0.998 |
+| 100-200 m | 1,115 | 0.454 | 0.996 |
+| 200-300 m | 1,060 | 0.158 | 0.993 |
+| beyond 300 m (control) | 2,823 | 0.063 | 0.929 |
+
+Real clips, share of windows alarmed (mean score in brackets):
+
+| Clip | Drone? | it9 CRNN | it9.2 CRNN |
+|---|---|---|---|
+| ITU ARIS `Drone_01`-`Drone_10` (sealed_peek, entry 101), mean of 10 | yes | 78.2% (0.690) | 99.2% (0.951) |
+| `Fugle.wav` (birds) | no | 0.0% (0.226) | 91.8% (0.807) |
+| PeterDrones, Glasgow hover d03 / d06 / d07 / d10 (trained on by both) | yes | 0 / 96 / 12 / 10% | 100% each |
+| PeterDrones, DDL P4 Pro 12 m and 23 m (trained on by it9 only) | yes | 100 / 100% | 100 / 100% |
+| PeterDrones, d3set X500 3 m / Nightjar Mini 2 13 m (validation sessions) | yes | 100 / 88% | 100 / 100% |
+
+Synthetic tripwires (not detection performance, CLAUDE.md section 5; 10 s, -30 dBFS, seed 0):
+
+| Signal | it9 CRNN | it9.2 CRNN |
+|---|---|---|
+| White noise | 0% | 100% |
+| Pink noise | 55% | 90% |
+| Brown noise | 48% | 74% |
+| 50 Hz hum with 6 harmonics | 0% | 100% |
+
+The it9 CRNN's mower figure from its own run file is 26.4% (seed 0); entry 136's 37.9% is the
+three-seed mean of iteration 11's `simdist` arm.
+
+**Assessment.**
+- **The suspicion is confirmed.** The it9.2 CRNN alarms on 93% of Lund beyond 300 m, where the
+  it9 CRNN's recall falls with range as it should. It alarms on birds, white noise and a mains hum.
+  Its 99% on the ARIS drones is therefore not evidence of hearing drones.
+- **Why.** In recipe `unmodified` the only no-drone audio is the background of four rigs (about
+  4 hours, and only 12 minutes from d3set). The network learns "one of these four backgrounds
+  means no drone, anything else means drone". In it9, FSD50K's varied sounds were negatives too,
+  and the mixing put the same backgrounds under drones. Leaving FSD50K out was a side effect of
+  dropping DDL and DroneNoise (entry 135), not something Mads asked for: FSD50K clips are
+  themselves unmodified recordings.
+- The 9.2 rule is judged on the folds (entry 139), but this already makes the pooled model unfit
+  for the GUI tests as a candidate: its alarms there would say little about drones.
+
+**Next.** Iteration 9.3: recipe `unmodified` plus FSD50K windows as recorded (entry 138), queued
+to start on this PC when the 9.2 folds finish.
+
+# Iteration 9.3 - Unmodified data, with FSD50K as recorded among the negatives
+
+> **Changed from iteration 9.2:** half of the no-drone windows are bare FSD50K dev windows
+> (licence-filtered training split, a 1 s slice as stored, no mixing, digital silence skipped);
+> the other half are the four rigs' own background as in 9.2. Recipe `unmodified_fsd`.
+> **Why:** entry 137: with only four rig backgrounds as negatives, the 9.2 network calls any
+> unfamiliar sound "drone" (birds 92%, white noise 100%, Lund beyond 300 m 93%). FSD50K is real,
+> unmodified audio, so it fits Mads's "no modification" instruction.
+> **Kept the same:** everything else of 9.2: no simulated distance, no mixing, no EQ, no speed
+> change, no SpecAugment, no DDL or DroneNoise, CRNN, MFE, 1 s window, 200,000 windows, threshold
+> at 5% false alarms on validation, seed 0. **Known cost:** each rig now gives twice as many drone
+> as no-drone windows (a quarter of drone windows, an eighth of no-drone windows each), so "this
+> rig" is weakly tied to "drone"; FSD50K is tied to "no drone".
+> **Hypothesis:** the network loses the "unfamiliar means drone" shortcut and keeps most of 9.2's
+> in-distribution recall.
+> **Judged by** (fixed before any result). First a screen on the pooled arm; it passes if Lund
+> recall beyond 300 m at the deployment threshold is at most 0.30 while Lund 0-50 m is at least
+> 0.80, `Fugle.wav` alarms at most 20%, and mower false alarms are at most 42.9% (9.2's guard).
+> White, pink, brown noise and the hum are reported without a rule. If the screen passes, the five
+> leave-one-unit-out folds are judged by iteration 9.2's rule (five-unit mean at least 0.557,
+> Lund at deployment within 5 points of 0.342, mower within 5 points of 37.9%). If it fails, the
+> unmodified line stops and is reported to Mads.
+
+## 138 - Recipe `unmodified_fsd`, queued
+
+- Date: 2026-11-06
+- Iteration: 9.3
+- Type: Preprocessing
+- Commit: uncommitted, on top of 00ee4e8
+
+**What changed.** `Recipe.fsd_neg` and recipe `unmodified_fsd` (`fsd_neg=0.5`): a negative is a
+bare `WindowSampler._background` window (FSD50K dev training split) with that probability.
+
+**How.** Same scratch check as entry 135, on this recipe: 20 batches of 64; every window identical
+to a slice read from a store; speed unchanged, EQ zero; 324 of the 640 negatives were FSD50K
+windows. `pytest`: all pass. Queued after the 9.2 folds:
+```
+.venv/Scripts/python.exe -u scripts/run_range.py --name it93_s0 --pool --arms none --recipes unmodified_fsd --models comb lgbm crnn --device cpu --windows 200000 --deploy-fa 0.05 --seed 0 --frontend mfe --no-specaugment
+```
+
+**Result.** Not yet run.
+
+## 139 - Iteration 9.2's folds: the rule is not met
+
+- Date: 2026-11-06
+- Iteration: 9.2
+- Type: Evaluation
+- Commit: uncommitted, on top of 00ee4e8
+
+**What changed.** Nothing new; the five leave-one-unit-out folds of entry 135 finished (`it92_s0a`,
+`it92_s0b`, seed 0, both "done in" about 25,150 s with a pause of about 3.5 h in the middle).
+
+**How.** Read from `artifacts/runs/it92_s0a.json` and `it92_s0b.json`: `headline.recall_all_at_10pct`
+(recall on all drone windows of the held-out unit at 10% false alarms on its own no-drone audio),
+`headline.deploy_fa` (false alarms on that audio at the deployment threshold), `confuser.fa_deploy`
+(mower session). Lund at deployment from entry 136. Reference: iteration 11's CRNN `simdist`,
+seeds 0-2 means (entry 128's table).
+
+**Result.** Recall at 10% own false alarms, seed 0 (held-out unit = test; class balance and windows
+as in entries 125 and 128; 1 s window, 0.5 s evaluation hop):
+
+| Held-out unit | `comb` | `lgbm` (unmodified) | CRNN it9.2 | Reference CRNN `simdist` | CRNN it9.2 false alarms at deployment |
+|---|---|---|---|---|---|
+| Nightjar | 0.201 | 0.076 | 0.158 | 0.279 | 78.8% |
+| d3set | 0.153 | 0.569 | 0.554 | 0.471 | 64.6% |
+| FPV ariel_25.02 | 0.198 | 0.531 | 0.607 | 0.640 | 27.7% |
+| FPV palmahim_10.02 | 0.078 | 0.653 | 0.803 | 0.770 | 47.1% |
+| FPV palmahim_27.05 | 0.083 | 0.435 | 0.558 | 0.476 | 62.8% |
+| **Mean over the five units** | 0.143 | 0.453 | **0.536** | 0.527 | 56.2% |
+
+Against the box's rule:
+
+| Criterion | Rule | it9.2 | Met? |
+|---|---|---|---|
+| (1) Five-unit mean | at least 0.557 | 0.536 | no |
+| (2) Lund recall at deployment | at least 0.292 | 0.973 | on paper yes, but meaningless (entry 137: 0.929 beyond 300 m) |
+| (3) Mower false alarms at deployment (pooled model) | at most 42.9% | **60.8%** | **no** |
+
+Mower false alarms of the fold models at their own deployment thresholds range from 0.8%
+(Nightjar held out) to 99.2% (d3set held out).
+
+**Assessment.**
+- **Iteration 9.2 fails.** The five-unit mean, 0.536, is within 3 points of the reference, which
+  by the box would send it to seeds 1-2. They are not run: guard (3) fails by 18 points on the
+  pooled model, and entry 137 shows why, so two more seeds cannot change the verdict.
+- Mads's hypothesis is not supported. Separation on unseen rigs is about the same (0.536 against
+  0.527): better on d3set and two FPV campaigns, clearly worse on Nightjar (0.158 against 0.279).
+  But the deployment threshold, set on the training rigs' validation audio, does not carry over:
+  on the held-out units' own no-drone audio it gives 28-79% false alarms. The same "unfamiliar
+  means drone" shortcut as entry 137.
+- Claude's expectation (validation up, unseen units down) holds for validation (0.914 against
+  0.798) but not for the unseen units' separation, which held level.
+- Not concluded: whether unmodified drone windows are worse in themselves. The negatives were
+  also narrowed (no FSD50K), so 9.2 changed two things at once. Iteration 9.3 restores FSD50K
+  negatives to separate the two.
+
+**Next.** Iteration 9.3's pooled screen (`it93_s0`, started 17:42), judged by its box.
+
+## 140 - Iteration 9.3's screen: fails; the unmodified line stops here
+
+- Date: 2026-11-06
+- Iteration: 9.3
+- Type: Evaluation, Model
+- Commit: uncommitted, on top of 00ee4e8
+
+**What changed.** The pooled arm of recipe `unmodified_fsd` (entry 138) was trained: `it93_s0`,
+seed 0, CRNN plus `comb` and `lgbm`, 2,695 s on this PC's CPU (78 windows/s, nothing else
+running). Checkpoints `artifacts/models/it93_s0_none_unmodified_fsd_{crnn.pt,lgbm.pkl}`.
+Deployment threshold of the CRNN (5% false alarms on validation): 0.092.
+
+**How.** Command as in entry 138. Lund and mower from `artifacts/runs/it93_s0.json`. Clips and
+tripwires with entry 137's scratch scripts, with "it9.3 CRNN" in place of "it9.2 CRNN" (not in
+the repo; torch on 6 threads; `wavio.stream`, 1 s window, 0.125 s hop). The model was not added
+to the GUIs' `MODELS`.
+
+**Result.** Validation (in distribution, 21 segments, 2,648 drone and 1,565 no-drone windows),
+recall on all drone windows at 10% false alarms:
+
+| `comb` | `lgbm` | CRNN it9.3 | CRNN it9.2 |
+|---|---|---|---|
+| 0.307 | 0.890 | 0.932 | 0.937 |
+
+The screen of the box (pooled arm, deployment threshold):
+
+| Readout | Rule | `comb` | `lgbm` | CRNN it9.3 | CRNN it9.2 | it9 CRNN | Met? |
+|---|---|---|---|---|---|---|---|
+| Lund recall, 0-50 m | at least 0.80 | 0.038 | 0.902 | 0.988 | 1.000 | 0.926 | yes |
+| Lund recall, 50-100 m | (reported) | 0.024 | 0.796 | 0.974 | 0.998 | 0.675 | |
+| Lund recall, 100-200 m | (reported) | 0.023 | 0.676 | 0.924 | 0.996 | 0.454 | |
+| Lund recall, 200-300 m | (reported) | 0.010 | 0.395 | 0.885 | 0.993 | 0.158 | |
+| Lund recall, beyond 300 m (control) | at most 0.30 | 0.019 | 0.294 | **0.690** | 0.929 | 0.063 | **no** |
+| `Fugle.wav` alarmed | at most 20% | - | - | 0.0% | 91.8% | 0.0% | yes |
+| Mower false alarms | at most 42.9% | 24.8% | 62.4% | **60.8%** | 60.8% | 26.4% | **no** |
+
+Further readouts (no rule): ITU ARIS `Drone_01`-`Drone_10` (sealed_peek, entry 101), mean share
+of windows alarmed 60.8% (it9 CRNN 78.2%; per clip 16-100%). PeterDrones: Glasgow hovers 100% each,
+d3set X500 100%, Nightjar Mini 2 100%, DDL P4 Pro 12 m 99.9% and 23 m 85.0% (DDL never trained on
+by it9.3). Synthetic tripwires (not detection performance): white noise 0%, pink 26%, brown 22%,
+50 Hz hum 0% (it9 CRNN 0 / 55 / 48 / 0%; it9.2 100 / 90 / 74 / 100%).
+
+**Assessment.**
+- **Iteration 9.3 fails its screen** on two of four gates: Lund beyond 300 m (0.690 against at
+  most 0.30) and the mower (60.8% against at most 42.9%). As boxed, the folds are not run.
+- **FSD50K negatives removed most of the shortcut of entry 137**: birds, white noise and hum are
+  now quiet, and Lund recall falls with range (0.99 at 0-50 m to 0.69 beyond 300 m) instead of
+  staying flat. So entry 137's diagnosis was right.
+- **What is left is a threshold that is far too low for other rigs.** The deployment threshold
+  is 0.092, set on the four training rigs' own background, which the network separates almost
+  perfectly. On the mower field and on Lund the no-drone sound is different, and 61% of the
+  mower windows and 69% of the far Lund windows score above it. The it9 CRNN, trained with mixed
+  and buried drones, set its threshold where unfamiliar backgrounds still score low.
+- **Separating the two changes of 9.2:** with varied negatives restored, the unmodified drone
+  windows still give a model that does not transfer its operating point to a new field. The
+  modifications of iterations 2, 3 and 5 (burying, simulated distance, speed change) are the
+  likely reason the it9 CRNN does; this run does not test which of them.
+- `lgbm` on the same data behaves like the CRNN (mower 62.4%, Lund beyond 300 m 0.294), so this
+  is a property of the training data, not of the network.
+
+**Next.** By the box, the unmodified line stops here and goes to Mads for a decision. Options
+for him, not run: (a) keep the it9 CRNN as the candidate; (b) add back one modification at a
+time on top of `unmodified_fsd` (for example burying drones in FSD50K, the cheapest), to find
+which one carries the transfer; (c) stop this line. The it9.2 CRNN stays in the GUIs only as a
+reference of what not to deploy.
