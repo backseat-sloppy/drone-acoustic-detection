@@ -34,8 +34,9 @@ keep their difference. The engine (scripts/complete_test_engine.py) explains the
 Results go to artifacts/complete_test/<time>_<kind>/: rounds.csv (one row per round and detector),
 summary.csv (means per detector and per varied setting), scores.npz (every hop's score), config.json.
 The results window shows the summary, a sortable and filterable table of all rounds, and for the
-selected round its log-mel, every detector's confidence and the dB SPL of each layer over time, and
-plays the mix, the drone alone or the background alone. "Open results..." reopens an earlier run.
+selected round its log-mel (arrows above it switch between the view for us and what each network is
+fed), every detector's confidence and the dB SPL of each layer over time, and plays the mix, the
+drone alone or the background alone. "Open results..." reopens an earlier run.
 
 Synthetic scaffolding (CLAUDE.md section 5): numbers from these mixes are not detection performance.
 """
@@ -49,6 +50,7 @@ import tempfile
 import threading
 import time
 import tkinter as tk
+from contextlib import nullcontext
 from dataclasses import asdict
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -65,6 +67,7 @@ from matplotlib.figure import Figure  # noqa: E402
 
 from dad.config import DEFAULT  # noqa: E402
 from dad.features import LogMel, hz_to_mel, mel_to_hz  # noqa: E402
+from dad.realrun import featurise  # noqa: E402
 
 TITLE = "Complete Test"
 PAGES = [("real", "Real drone test"), ("synthetic", "Synthetic drone test"), ("modified", "Modified drone test")]
@@ -81,6 +84,13 @@ PART_COLORS = {"drone": "#d93025", "war soundscape": "#6b4e16", "war-shaped nois
 BG, PANEL, ACCENT, MUTED = "#f4f5f7", "#ffffff", "#2a78d6", "#6b7280"
 LOGMEL = LogMel(DEFAULT)
 BAND_HZ = E.np.asarray(mel_to_hz(np.linspace(hz_to_mel(DEFAULT.fmin), hz_to_mel(DEFAULT.fmax), DEFAULT.n_mels + 2))[1:-1])
+# The log-mel of a full-scale 1 kHz sine, dB: subtracted so the colour bar reads dBFS with that sine at 0.
+FS_DB = float(10 / np.log(10) * LOGMEL.frames(np.sin(2 * np.pi * 1000 * np.arange(4 * DEFAULT.n_fft) / E.SR)).max())
+
+
+MODEL_LIM = (-3, 3)                                          # colour scale of the network's input, z-scores
+SPEC_NOTES = {"ui": "the whole round on one scale: 80 dB down from its loudest point",
+              "model": "each 125 ms from its own 1 s window: that window's level removed, scaled by the training statistics"}
 
 
 def layer_steps(name: str, lo: str, hi: str, n: str) -> list[float]:
@@ -105,8 +115,45 @@ def layer_steps(name: str, lo: str, hi: str, n: str) -> list[float]:
         raise ValueError(str(e).replace("the count", "#").replace("count 1", "# 1")) from None
 
 
+def speed_steps(lo: str, hi: str, n: str) -> list[float]:
+    """The modified page's speeds (km/h) from its min, max and # boxes, by the same rule as layer_steps."""
+    try:
+        lo_, hi_ = float(lo), float(hi)
+    except ValueError:
+        raise ValueError("speed: min and max must be numbers of km/h") from None
+    try:
+        n_ = int(n)
+    except ValueError:
+        raise ValueError("speed: # must be a whole number") from None
+    if not 1 <= n_ <= 50:
+        raise ValueError("speed: # must be 1 to 50")
+    for v in (lo_, hi_):
+        if not 0 < v <= 1000:
+            raise ValueError(f"speed: {v:g} km/h is outside 0 to 1000")
+    try:
+        return E.dwg.steps(lo_, hi_, n_, "speed")
+    except ValueError as e:
+        raise ValueError(str(e).replace("the count", "#").replace("count 1", "# 1")) from None
+
+
 def detector_names() -> list[str]:
     return [*E.dwg.MODELS, "comb"]
+
+
+def model_view(x: np.ndarray, sc, batch: int = 256) -> np.ndarray:
+    """What network scorer `sc` is fed for the mix x, as one image over time (bands, frames): z-scores,
+    exactly NetScorer.score's input. The network sees 1 s windows; a hop is 12.5 frames, so the first
+    window is shown whole and each later one adds its newest 12 or 13 frames, normalised by that window."""
+    n, hop = DEFAULT.samples_per_window, DEFAULT.samples_per_hop
+    starts = np.arange(0, len(x) - n + 1, hop)
+    per_hop = hop / sc.cfg.hop_length
+    parts = []
+    for i in range(0, len(starts), batch):
+        a = np.stack([x[s:s + n] for s in starts[i:i + batch]]).astype(np.float32)
+        for k, z in enumerate((featurise(a, sc.variant, sc.fe) - sc.mu) / sc.sigma, i):
+            keep = z.shape[1] if k == 0 else int(round((k + 1) * per_hop) - round(k * per_hop))
+            parts.append(z[:, -keep:])
+    return np.concatenate(parts, axis=1)
 
 
 def approach_preview(speeds: list[float], closest_m: float, length_s: float = E.DRONE_S) -> str:
@@ -173,11 +220,17 @@ class Page(ttk.Frame):
             ttk.Button(btns, text="Clear", command=self.clear_files).pack(fill="x")
             r = 1
             if self.kind == "modified":
-                self.v_speeds = tk.StringVar(value="50 100 150")
+                self.v_speeds = (tk.StringVar(value="50"), tk.StringVar(value="150"), tk.StringVar(value="3"))
                 self.v_closest = tk.StringVar(value=f"{E.APPROACH['closest_m']:g}")
                 self.v_doppler = tk.BooleanVar(value=E.APPROACH["doppler"])
                 ttk.Label(f, text="Speeds (km/h):").grid(row=1, column=0, sticky="w", pady=(8, 0))
-                ttk.Entry(f, textvariable=self.v_speeds).grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(8, 0))
+                sp = ttk.Frame(f)
+                sp.grid(row=1, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
+                for lbl, v, w in zip(("min", "max", "#"), self.v_speeds, (7, 7, 4)):
+                    ttk.Label(sp, text=lbl, style="Muted.TLabel").pack(side="left", padx=(0 if lbl == "min" else 8, 3))
+                    ttk.Entry(sp, textvariable=v, width=w).pack(side="left")
+                self.l_speed_preview = ttk.Label(sp, text="", style="Muted.TLabel", width=26)
+                self.l_speed_preview.pack(side="left", padx=(10, 0))
                 sub = ttk.Frame(f)
                 sub.grid(row=2, column=1, sticky="w", padx=(8, 0), pady=(4, 0))
                 ttk.Label(sub, text="distance at impact (m)", style="Muted.TLabel").pack(side="left", padx=(0, 4))
@@ -186,7 +239,7 @@ class Page(ttk.Frame):
                                 command=self.update_count).pack(side="left", padx=(12, 0))
                 self.l_approach = ttk.Label(f, text="", style="Muted.TLabel")
                 self.l_approach.grid(row=3, column=1, sticky="w", padx=(8, 0), pady=(2, 0))
-                for v in (self.v_speeds, self.v_closest):
+                for v in (*self.v_speeds, self.v_closest):
                     v.trace_add("write", lambda *_: self.update_count())
                 r = 4
         else:
@@ -361,11 +414,11 @@ class Page(ttk.Frame):
         if self.kind in ("real", "modified"):
             drones = list(self.files)
             if self.kind == "modified":
+                speeds = speed_steps(*(v.get() for v in self.v_speeds))
                 try:
-                    speeds = [float(v) for v in self.v_speeds.get().replace(",", " ").split()]
                     approach = dict(closest_m=float(self.v_closest.get()), doppler=bool(self.v_doppler.get()))
                 except ValueError:
-                    raise ValueError("speeds and distance at impact must be numbers") from None
+                    raise ValueError("distance at impact must be a number") from None
         else:
             try:
                 drones = [float(v) for v in self.v_speeds.get().replace(",", " ").split()]
@@ -406,6 +459,12 @@ class Page(ttk.Frame):
                                                style="Muted.TLabel")
             except ValueError as e:
                 self.l_drone_preview.configure(text=str(e).split(": ", 1)[-1][:26], style="Warn.TLabel")
+        if self.kind == "modified":                          # the speeds, or what is wrong
+            try:
+                txt = ", ".join(f"{v:g}" for v in speed_steps(*(v.get() for v in self.v_speeds)))
+                self.l_speed_preview.configure(text=(txt if len(txt) <= 22 else txt[:20] + "…") + " km/h", style="Muted.TLabel")
+            except ValueError as e:
+                self.l_speed_preview.configure(text=str(e).split(": ", 1)[-1][:26], style="Warn.TLabel")
         for name, lbl in self.layer_preview.items():         # each layer's values, or what is wrong
             if not (self.v_layer_on[name].get() and self.layers[name].available):
                 lbl.configure(text="", style="Muted.TLabel")
@@ -618,6 +677,18 @@ class Results(tk.Toplevel):
         for txt, what in (("Play background", "background"), ("Play drone", "drone"), ("Play mix", "mix")):
             ttk.Button(ctl, text=txt, command=lambda w=what: self._play(w)).pack(side="right", padx=2)
         ttk.Button(ctl, text="Stop sound", command=self._stop_play).pack(side="right", padx=(2, 8))
+        nav = ttk.Frame(right)                               # the log-mel's slide show: for us, or per network
+        nav.pack(fill="x", pady=(4, 0))
+        self.spec_slides = ["ui", *(d for d in self.test.plan.detectors if d != "comb"
+                                    and self.test.scorers[d].cfg.kind == "mfe")]
+        self.spec_i = 0
+        state = "normal" if len(self.spec_slides) > 1 else "disabled"
+        ttk.Button(nav, text="◀", width=3, state=state, command=lambda: self._spec_go(-1)).pack(side="left")
+        self.l_spec = ttk.Label(nav, text="Log-mel for us", style="Bold.TLabel", width=22, anchor="center")
+        self.l_spec.pack(side="left", padx=4)
+        ttk.Button(nav, text="▶", width=3, state=state, command=lambda: self._spec_go(1)).pack(side="left")
+        self.l_spec_note = ttk.Label(nav, text="", style="Muted.TLabel")
+        self.l_spec_note.pack(side="left", padx=10)
         self.fig = Figure(figsize=(9, 8), dpi=100, facecolor="white")
         self.canvas = FigureCanvasTkAgg(self.fig, master=right)
         NavigationToolbar2Tk(self.canvas, right, pack_toolbar=True)
@@ -671,12 +742,16 @@ class Results(tk.Toplevel):
         t_end = (starts + DEFAULT.samples_per_window) / E.SR
         self._stop_play()
         self.fig.clear()
-        ax1, ax2, ax3 = self.fig.subplots(3, 1, sharex=True, gridspec_kw=dict(height_ratios=[1.1, 1, 1]))
+        grid = self.fig.subplots(3, 2, sharex="col", gridspec_kw=dict(height_ratios=[1.1, 1, 1], width_ratios=[60, 1]))
+        ax1, ax2, ax3 = grid[:, 0]                           # the bar has its own column: the time axes stay aligned
+        grid[1, 1].remove()
+        grid[2, 1].remove()
         self.axes = [ax1, ax2, ax3]
-        lm = 10 / np.log(10) * LOGMEL.frames(m["mix"].astype(np.float32))
-        top = float(lm.max())
-        ax1.imshow(lm, origin="lower", aspect="auto", cmap="magma", vmin=top - 80, vmax=top, interpolation="nearest",
-                   extent=(0, n / E.SR, 0, lm.shape[0]))
+        self._views = {}                                     # this round's images, made when first shown
+        self._im = ax1.imshow(np.zeros((2, 2)), origin="lower", aspect="auto", cmap="magma", interpolation="nearest")
+        self._bar = self.fig.colorbar(self._im, cax=grid[0, 1])
+        self._bar.ax.tick_params(labelsize=7)
+        self._paint_spec()
         ticks = [0, 16, 32, 48, 63]
         ax1.set_yticks([t + 0.5 for t in ticks], [f"{BAND_HZ[t]:.0f}" for t in ticks])
         ax1.set_ylabel("log-mel band (Hz)")
@@ -697,10 +772,10 @@ class Results(tk.Toplevel):
             thr = self.test.thr[det]
             y = E.dwg.squash(s, thr) if det == "comb" else s
             ax2.plot(t_end, y, color=COLORS.get(det, "#333"), lw=1.3, label=det if det != "comb" else "DSP (comb)")
-            ax2.axhline(0.5 if det == "comb" else thr, color=COLORS.get(det, "#333"), lw=0.8, ls="--")
+        ax2.axhline(0.5, color="#888", ls="--", lw=0.9)          # a fixed 50 % mark, not a threshold (Mads)
         ax2.set(ylim=(0, 1.02), ylabel="confidence")
         ax2.legend(loc="upper left", fontsize=8, frameon=False, ncol=5)
-        ax2.set_title("each detector's confidence (dashed = threshold; red band = drone sound; "
+        ax2.set_title("each detector's confidence (dashed = 50 %; red band = drone sound; "
                       "decision at the end of its 1 s window)", fontsize=8, loc="left", color=MUTED)
         parts = dict(m["parts"], mix=m["mix"])
         lv = E.hop_levels(parts, t_end)
@@ -718,6 +793,43 @@ class Results(tk.Toplevel):
             f"{d}: recall {fmt_pct(x['recall'])}, FPR {fmt_pct(x['false_positive_rate'])}" for d, x in res.items()))
         self.fig.tight_layout()
         self.canvas.draw_idle()
+
+    def _spec_view(self, key: str) -> dict:
+        """The image of slide `key` for the shown round, with its colour scale."""
+        if key not in self._views:
+            mix = self.cur[1]["mix"]
+            if key == "ui":                                  # the round's own 80 dB: the numbers move with the level
+                z = 10 / np.log(10) * LOGMEL.frames(mix.astype(np.float32)) - FS_DB
+                top = float(z.max())
+                v = dict(z=z, lim=(top - 80, top), ticks=np.arange(np.floor(top / 10) * 10, top - 80, -10), label="dBFS",
+                         end=len(mix) / E.SR)
+            else:                                            # a fixed scale: comparable between rounds
+                n, hop = DEFAULT.samples_per_window, DEFAULT.samples_per_hop
+                v = dict(z=model_view(mix, self.test.scorers[key]), lim=MODEL_LIM, ticks=np.arange(MODEL_LIM[0], MODEL_LIM[1] + 1),
+                         label="model input (z-score)", end=(n + (len(mix) - n) // hop * hop) / E.SR)
+            self._views[key] = v
+        return self._views[key]
+
+    def _paint_spec(self):
+        key = self.spec_slides[self.spec_i]
+        v = self._spec_view(key)
+        self._im.set_data(v["z"])
+        self._im.set_extent((0, v["end"], 0, v["z"].shape[0]))
+        self._im.set_clim(*v["lim"])
+        self._bar.set_ticks(v["ticks"])
+        self._bar.set_label(v["label"], fontsize=8)
+        self.l_spec.configure(text="Log-mel for us" if key == "ui" else f"What {key} is fed")
+        self.l_spec_note.configure(text=SPEC_NOTES["ui" if key == "ui" else "model"])
+
+    def _spec_go(self, step: int):
+        self.spec_i = (self.spec_i + step) % len(self.spec_slides)
+        if self.cur:
+            self._paint_spec()
+            self.fig.tight_layout()
+            self.canvas.draw_idle()
+        else:
+            self.l_spec.configure(text="Log-mel for us" if self.spec_i == 0 else f"What {self.spec_slides[self.spec_i]} is fed")
+            self.l_spec_note.configure(text=SPEC_NOTES["ui" if self.spec_i == 0 else "model"])
 
     def _play(self, what):
         if not self.cur:
@@ -857,6 +969,41 @@ def level_ratio_points(test: E.Test, det: str, layer: str) -> list[tuple[float, 
     return [(x, final_conf(s)) for x, s in sorted(groups.items())]
 
 
+def confidence_over_time(test: E.Test, det: str, scores: dict) -> dict[float, dict]:
+    """Modified drone tests: per speed, `det`'s confidence at each moment of the drone file, over every
+    drone round at that speed (all files, levels, starts and backgrounds). Time is time in the drone
+    file with the impact at 10 s (E.DRONE_S); a 5-10 s file is aligned on its impact, so x = 7 is 3 s
+    before impact for every file. A point is the decision at the end of its 1 s window (the window
+    covers the second before it); hops are binned to 0.125 s. comb is squashed as drawn elsewhere.
+    -> speed -> dict(x, mean, p25, p75, n) with numpy arrays."""
+    if test.plan.kind != "modified" or test.drones is None:
+        return {}
+    hop, win = DEFAULT.samples_per_hop / E.SR, DEFAULT.samples_per_window / E.SR
+    thr = test.thr[det]
+    bins: dict[float, dict[int, list]] = {}
+    for rnd in test.results:
+        r = test.by_round[rnd]
+        s = scores.get(f"{rnd}|{det}")
+        if r["drone"] is None or s is None:
+            continue
+        speed = E.split_key(r["drone"])[1]
+        impact = r["start_s"] + test.drones.span[r["drone"]][2]
+        t_end = np.arange(len(s)) * hop + win
+        x = E.DRONE_S - (impact - t_end)
+        y = E.dwg.squash(s, thr) if det == "comb" else s
+        b = bins.setdefault(speed, {})
+        for k, v in zip(np.round(x / hop).astype(int), y):
+            b.setdefault(int(k), []).append(float(v))
+    out = {}
+    for speed, b in sorted(bins.items()):
+        ks = sorted(k for k in b if -2 / hop <= k <= (E.DRONE_S + 1) / hop)
+        vals = [np.asarray(b[k]) for k in ks]
+        out[speed] = dict(x=np.array(ks) * hop, mean=np.array([v.mean() for v in vals]),
+                          p25=np.array([np.percentile(v, 25) for v in vals]),
+                          p75=np.array([np.percentile(v, 75) for v in vals]), n=np.array([len(v) for v in vals]))
+    return out
+
+
 def ratio_layer(test: E.Test, key: str) -> str | None:
     """The layer a setting's graph is drawn against on the dB-ratio axis: the layer itself, or for the
     drone level the first ticked layer; None for other settings or without layers."""
@@ -870,7 +1017,10 @@ def ratio_layer(test: E.Test, key: str) -> str | None:
 class Conclusions(tk.Toplevel):
     """One graph per varied setting: a detector's mean confidence on drone windows (true) and on
     no-drone windows (false) for each value. Bars up to CURVE_ABOVE values, a curve above that for
-    numbers. The dashed line is the detector's threshold (comb: 0.5, as drawn)."""
+    numbers. No threshold lines; a fixed dashed 50 % mark on every graph instead (Mads, 2026-11-06).
+    Modified drone tests also get, among these graphs, one "mean confidence over time" graph per speed:
+    all rounds at that speed together, the mean confidence at each moment of the drone file (impact at
+    10 s), see confidence_over_time()."""
 
     def __init__(self, master, test: E.Test):
         super().__init__(master)
@@ -885,6 +1035,11 @@ class Conclusions(tk.Toplevel):
         ttk.Label(bar, text="detector").pack(side="left", padx=(20, 4))
         self.v_det = tk.StringVar(value=test.plan.detectors[0])
         ttk.Combobox(bar, textvariable=self.v_det, values=test.plan.detectors, state="readonly", width=12).pack(side="left")
+        self.scores = {}
+        if test.plan.kind == "modified":                     # per-hop scores for confidence over time
+            p = test.out / "scores.npz"
+            with np.load(p) if p.exists() else nullcontext({}) as d:
+                self.scores = {k: d[k] for k in getattr(d, "files", [])}
         ttk.Button(bar, text="Save PNG", command=self.save).pack(side="right")
         self.l_text = ttk.Label(self, text="", style="Muted.TLabel", padding=(12, 0), justify="left")
         self.l_text.pack(fill="x")
@@ -896,18 +1051,21 @@ class Conclusions(tk.Toplevel):
         self.draw()
 
     def draw(self):
+        """The per-setting graphs, then (modified runs) one confidence-over-time graph per speed."""
         det = self.v_det.get()
         thr = 0.5 if det == "comb" else self.test.thr[det]
+        curves = confidence_over_time(self.test, det, self.scores)
         self.fig.clear()
-        if not self.params:
+        if not self.params and not curves:
             self.fig.text(0.5, 0.5, "No setting takes more than one value in this test: nothing to compare.",
                           ha="center", va="center", color=MUTED)
             self.canvas.draw_idle()
             self.l_text.configure(text="")
             return
         n = len(self.params)
-        cols = 1 if n == 1 else 2
-        rows = (n + cols - 1) // cols
+        total = n + len(curves)
+        cols = 1 if total == 1 else 2
+        rows = (total + cols - 1) // cols
         axes = self.fig.subplots(rows, cols, squeeze=False).ravel()
         lines = []
         for ax, (key, (label, vals)) in zip(axes, self.params.items()):
@@ -943,22 +1101,58 @@ class Conclusions(tk.Toplevel):
             if layer and vals and 1.0 >= min(vals) and len(vals) > CURVE_ABOVE:
                 ax.axvline(1.0, color="#999", lw=0.8, ls=":")    # drone and layer at the same level
             ax.set_xlabel(xlabel, fontsize=8 if layer else 10)
-            ax.axhline(100 * thr, color="#555", ls="--", lw=1, label=f"threshold {100 * thr:.0f}%")
+            ax.axhline(50, color="#888", ls="--", lw=1, label="50%")
             ax.set(ylim=(0, 105), ylabel="mean confidence (%)")
             ax.set_title(title, fontsize=10, loc="left", weight="bold")
             ax.grid(axis="y", color="#e8e8e8", lw=0.5)
             lines.append(f"{title}: " + ";  ".join(
                 f"at {(f'{v:.2f}' if layer else fmt(v)) if not isinstance(v, str) else v} true {pct(x['true'])}, "
                 f"false {pct(x['false'])}" for v, x in zip(vals, c)))
-        for ax in axes[n:]:
+        for ax in axes[total:]:
             ax.set_visible(False)
-        self.fig.suptitle(f"{det if det != 'comb' else 'DSP (comb)'}: mean confidence on drone windows (true) "
-                          f"and no-drone windows (false), per setting", fontsize=11, x=0.01, ha="left")
-        handles, labels = axes[0].get_legend_handles_labels()   # one legend for all graphs, out of the bars' way
-        self.fig.legend(handles, labels, loc="upper right", ncol=3, fontsize=8, frameon=False)
+        if n:
+            handles, labels = axes[0].get_legend_handles_labels()   # one legend for the setting graphs
+            self.fig.legend(handles, labels, loc="upper right", ncol=3, fontsize=8, frameon=False)
+        if curves:
+            lines += self._over_time(axes[n:total], curves, det, thr)
+        self.fig.suptitle(f"{det if det != 'comb' else 'DSP (comb)'}: " + (
+            "mean confidence per setting, and over time per speed" if curves else
+            "mean confidence on drone windows (true) and no-drone windows (false), per setting"),
+            fontsize=11, x=0.01, ha="left")
         self.fig.tight_layout(rect=(0, 0, 1, 0.94))
         self.canvas.draw_idle()
         self.l_text.configure(text="\n".join(lines))
+
+    def _over_time(self, axes, curves: dict, det: str, thr: float) -> list[str]:
+        """One graph per speed: "all the rounds at this speed together: the mean confidence during the
+        drone clip". Mean (line), middle half of the rounds (band), time in the drone file with the
+        impact at 10 s; the same axes on every speed, so speeds compare. Returns the text lines."""
+        color = COLORS.get(det, "#333")
+        lines = []
+        for k, (ax, (speed, c)) in enumerate(zip(axes, curves.items())):
+            ax.axvspan(0, E.DRONE_S, color="#d93025", alpha=0.05, lw=0)
+            ax.axvline(E.DRONE_S, color="#d93025", lw=1.2)
+            ax.text(E.DRONE_S, 102, " impact", color="#d93025", fontsize=8, va="bottom")
+            ax.fill_between(c["x"], 100 * c["p25"], 100 * c["p75"], color=color, alpha=0.18, lw=0,
+                            label="middle half of the rounds")
+            ax.plot(c["x"], 100 * c["mean"], color=color, lw=2, label="mean confidence")
+            start_m = float(np.hypot(self.test.plan.approach.get("closest_m", 1.0), speed / 3.6 * E.DRONE_S))
+            ax.set_title(f"mean confidence over time · {speed:g} km/h, all {int(c['n'].max())} rounds "
+                         f"(starts {start_m:.0f} m away)", fontsize=10, loc="left", weight="bold")
+            ax.axhline(50, color="#888", ls="--", lw=1, label="50%")
+            ax.set(ylim=(0, 108), xlim=(-2, E.DRONE_S + 1), ylabel="mean confidence (%)")
+            ax.set_xticks(range(-2, int(E.DRONE_S) + 2))
+            ax.set_xlabel("time in the drone file (s); impact at 10 s (a shorter file aligned on its impact)", fontsize=8)
+            ax.grid(color="#e8e8e8", lw=0.5)
+            if k == 0:
+                ax.legend(loc="upper left", fontsize=7, frameon=False)
+            at = []
+            for before in (1, 2, 3, 5, 8):
+                i = np.flatnonzero(np.isclose(c["x"], E.DRONE_S - before))
+                if i.size:
+                    at.append(f"{before} s before impact: {100 * c['mean'][i[0]]:.0f}%")
+            lines.append(f"{speed:g} km/h, mean confidence over time ({int(c['n'].max())} rounds): " + ",  ".join(at))
+        return lines
 
     def save(self):
         p = self.test.out / f"conclusions_{self.v_det.get().replace(' ', '_')}.png"

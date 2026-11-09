@@ -8787,3 +8787,135 @@ distance it was really recorded at (ITU ARIS: up to ~2 km) are moved and scaled 
 reflection. Not tried by hand in the GUI (no clicks). Synthetic scaffolding (section 5): no number
 here is detection performance. The server needs this code committed and pulled before it can run
 modified plans.
+
+## 142 - Conclusions: "confidence over time" per speed for modified drone tests
+
+- Date: 2026-11-06
+- Type: Engineering (results view; no model, metric or split changed)
+- Commit: uncommitted: `scripts/Complete_Test_Gui.py`
+
+**Why.** Mads wants, in the Conclusions window, one graph per speed of confidence against time in the
+drone file, to read e.g. "the confidence 3 s before impact at 100 km/h against 150 km/h".
+
+**Change.** For modified runs the Conclusions window gets a "view" box: "confidence over time"
+(default for modified runs) or "per setting" (the old graphs; real and synthetic runs keep only
+these). `confidence_over_time()` takes every drone round at a speed (all files, levels, starts and
+backgrounds), maps each hop's decision to time in the drone file with the impact at 10 s (a 5-10 s
+file aligned on its impact, so x = 7 is 3 s before impact for every file), bins to the 0.125 s hop and
+averages; comb squashed as in the other graphs. Each graph: mean (line), 25-75 % of the rounds
+(band), the threshold, the drone's 10 s shaded, the impact line, a top axis in seconds before impact,
+from -2 to 11 s, the same axes on every speed. Text under the bar: the mean at 1, 2, 3, 5 and 8 s
+before impact per speed. "Save PNG" writes `conclusions_over_time_<detector>.png`. A point is the
+decision at the end of its 1 s window, which covers the second before it.
+
+**Checks.** On the 13-round modified run of entry 141 (6 drone rounds per speed): it9 CRNN 3 s before
+impact 39 % at 50 km/h and 33 % at 150 km/h; comb 47 % and 46 %; the figure renders (two graphs, as
+expected). The per-setting view still draws; a real run (`artifacts/complete_test/Jupyter`) opens
+with "per setting" and no view box. `uv run pytest`: all pass. Six rounds per speed are far too few to
+read anything into these numbers; they only show the view works. Synthetic scaffolding (section 5).
+
+## 143 - Confidence over time: in the Conclusions graphs themselves, not a separate view
+
+- Date: 2026-11-06
+- Type: Engineering (results view)
+- Commit: uncommitted: `scripts/Complete_Test_Gui.py`
+
+**Why.** Mads, on entry 142: not right; the graphs must be in the Conclusions, one per speed, saying
+"all test rounds at this speed together: the mean confidence during the drone clip", x = time in the
+file (answers to three questions asked in the session).
+
+**Change.** The "view" box of entry 142 is gone. For a modified run, `Conclusions.draw()` draws the
+per-setting graphs and then, in the same figure, one "mean confidence over time" graph per speed
+(same computation as entry 142: all rounds at the speed, time in the drone file, impact at 10 s;
+title gives the speed, the number of rounds and the start distance). The text under the bar lists
+the per-setting numbers and, per speed, the mean 1, 2, 3, 5 and 8 s before impact. Real and synthetic
+runs are unchanged. "Save PNG" saves the whole figure.
+
+**Checks.** On the modified run of entry 141: 4 setting graphs (drone, file, speed, start) and 2
+over-time graphs (50, 150 km/h) in one figure; the over-time numbers equal entry 142's. The big real
+run still shows its 3 graphs. `uv run pytest`: all pass. Synthetic scaffolding (section 5). A GUI
+started before this change must be restarted to show it.
+
+## 144 - Complete test graphs: no threshold lines, a fixed 50 % mark instead
+
+- Date: 2026-11-06
+- Type: Engineering (results view)
+- Commit: uncommitted: `scripts/Complete_Test_Gui.py`
+
+**Why.** Mads: remove the thresholds from the graphs' y-axes ("I don't care about the thresholds for
+any of the iterations") and put a 50 % mark on every graph instead.
+
+**Change.** The dashed per-detector threshold lines are gone from the round view (Results) and from
+every Conclusions graph (per setting and over time). Each of these graphs now has one grey dashed line
+at 50 % confidence, labelled "50%". Only the drawing changed: thresholds still decide alarms, recall,
+FPR and the other numbers in rounds.csv and summary.csv, exactly as before.
+
+**Checks.** On the modified run of entry 141 the only dashed horizontal lines left are at 50 (Conclusions,
+all 6 graphs) and 0.5 (round view); figure rendered and inspected. `uv run pytest`: all pass.
+
+## 145 - Modified drone test: speeds as min, max and #
+
+- Date: 2026-11-09
+- Type: Engineering (GUI input only; no model, metric or split changed)
+- Commit: uncommitted: `scripts/Complete_Test_Gui.py`
+
+**Why.** Mads: the Speeds box on the Modified page should be min, max and # instead of free text.
+
+**Change.** Three boxes with the rule of the level boxes (`speed_steps`, using `drone_war_grid.steps`):
+# values from min to max, both included, evenly spaced; # 1 needs min = max; speeds above 0 and at
+most 1000 km/h, # from 1 to 50. Default 50, 150, 3. A preview next to the boxes shows the speeds or what
+is wrong. The Synthetic page keeps its text box; the plan format (`Plan.speeds`) is unchanged.
+
+**Checks (Tk, values set from code, no clicks).** 50/150/3 -> 50, 100, 150 km/h and 34 rounds with one
+file; 150/150/1 -> 150 km/h and 12 rounds; 100/200/5 -> 5 speeds and 56 rounds; 150/150/3, 50/150/1, 0/150/3
+and abc/150/3 each give their error and no count. `uv run pytest`: all pass.
+
+## 146 - Complete test results: a dBFS colour bar on the log-mel
+
+- Date: 2026-11-09
+- Type: Engineering (GUI display only; no model, metric, mix or split changed)
+- Commit: uncommitted, on top of e4c7880: `scripts/Complete_Test_Gui.py`
+
+**Why.** The user asked for a colour bar on the spectrogram, from a picture of a bar in dBFS. It also
+makes visible what the image hides: the colours follow each round's own maximum, so rounds with the same
+drone-to-background difference look alike at very different absolute levels.
+
+**Change.** The results window's log-mel has a colour bar in its own narrow column, so its time axis
+stays aligned with the two graphs below and the playhead. The image keeps its 80 dB range from the
+round's maximum, so the picture is unchanged and the bar's numbers move with the level. The log-mel is raw
+FFT power, so `FS_DB` (the log-mel of a full-scale 1 kHz sine, 21.34 dB) is subtracted to read as dBFS.
+That sine is the reference: mel bands differ in width, so other frequencies and broadband sound are only
+approximately on this scale (reasoned, not measured). Levels above full scale read above 0, since the test
+does not clip.
+
+**Checks.** The real `Results` window on a copy of run `20261109_095956_real` (`Steady_07.wav`, war
+soundscape), figures saved and looked at. A full-scale 1 kHz sine reads 0.0 dBFS. Round 1 (30 + 30 dB SPL):
+bar -131.41 to -51.41 dBFS. Round 4 (120 + 120): -41.41 to 38.59 dBFS, 90.0 dB higher, as set. The left and
+right edges of the three plots are equal in each round. Not run: clicking in the window and the playhead
+during sound (its code is unchanged). `uv run pytest` not run: no test imports this file.
+
+## 147 - Complete test results: the log-mel as a slide show, for us or as each network is fed
+
+- Date: 2026-11-09
+- Type: Engineering (GUI display only; no model, metric, mix or split changed)
+- Commit: uncommitted, on top of e4c7880: `scripts/Complete_Test_Gui.py`
+
+**Why.** The user asked to switch the spectrogram between the view made for us and what the model sees.
+The two differ: the view for us scales the whole round to its loudest point, while a network gets 1 s
+windows, each with its own level removed (`realrun.level_normalise`) and then scaled per band by that
+network's training statistics.
+
+**Change.** Arrows above the log-mel go through one slide for us and one per network of the run, as long as
+its frontend is log-mel; the comb has no slide, since it reads its own whitened spectrum. `model_view` runs
+the mix through the same `featurise` and `(L - mu) / sigma` as `NetScorer.score`. To stay on the time axis of
+the graphs below, the 1 s windows are shown as one image: the first window whole, then the newest 12 or 13
+frames of each later window (a hop is 12.5 frames), each normalised by its own window. So the image holds
+what the network is fed, but not the whole 1 s it sees at a given moment. The colour scale is fixed at -3
+to 3 z-scores, comparable between rounds. The slide is kept when another round is selected.
+
+**Checks.** The real `Results` window on a copy of run `20261109_095956_real` (`Steady_07.wav`, war
+soundscape, it9 CRNN), driven from code. A forward hook captured the 73 windows (64 x 98) the CRNN received
+in round 1: all 998 frames of the image match them, largest absolute difference 0.0. Image values run from
+-3.45 to 3.44 (1st to 99th percentile -1.92 to 1.68). Moving between slides with a playhead running works,
+and the three plots keep equal left and right edges. Not run: clicks with the mouse, and a run with several
+networks (the slide list was built from one). `uv run pytest` not run: no test imports this file.
