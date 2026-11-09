@@ -80,16 +80,16 @@ DEFAULT_LEVELS = {"war soundscape": ("60", "60", "1"), "war-shaped noise": ("50"
                   "wind (Pd)": ("50", "50", "1"), "cars": ("50", "50", "1"), "helicopter": ("", "", ""), "insects": ("", "", "")}
 COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it10 CNN": "#d93025",
           "comb": "#1baf7a"}
-PD_CONTROLS = {"wind (Pd)": ("wind", (("speed", "speed (0-127)", "no real-world scale  ·  low: 10  ·  default: 40  ·  high: 100"),
-                                      ("reso", "resonance (0-127)", "no real-world scale  ·  broad: 10  ·  default: 40  ·  narrow: 100"))),
-               "cars": ("cars", (("speed_kmh", "speed (km/h)", "town: 50  ·  country road: 80  ·  motorway: 130"),
-                                 ("dist_m", "closest distance (m)", "pass-by noise test: 7.5  ·  each doubling: lower the level by 6 dB")))}
-WIND_LEVELS = "landscape, 0-20 m/s: 24-44  ·  bare mic, 12 m/s: up to 116"
-LEVEL_HINTS = {"war soundscape": "Test 1: 90  ·  the track as built: 95",
-               "war-shaped noise": "same scale as the war soundscape  ·  Test 1: 90",
+PD_CONTROLS = {"wind (Pd)": ("wind", (("speed_ms", "speed (m/s, assumed)", "quiet: 1  ·  storm: 25"),
+                                      ("reso", "resonance (0-127)", "open field: 10  ·  city: 90"))),
+               "cars": ("cars", (("speed_kmh", "speed (km/h)", "town: 50  ·  motorway: 130"),
+                                 ("dist_m", "closest distance (m)", "near: 10  ·  far: 40")))}
+WIND_LEVELS = "quiet: 25  ·  storm: 50"
+LEVEL_HINTS = {"war soundscape": "Test 1: 90",
+               "war-shaped noise": "Test 1: 90",
                "wind": WIND_LEVELS, "wind (Pd)": WIND_LEVELS,
-               "cars": "one car at 10 m: up to 55-58  ·  at 20 m: 49-52  ·  at 40 m: 43-46"}
-PD_LABELS = {"wind_speed": "wind (Pd) speed (0-127)", "wind_reso": "wind (Pd) resonance (0-127)",
+               "cars": "near (10 m): 57  ·  far (40 m): 45"}
+PD_LABELS = {"wind_speed_ms": "wind (Pd) speed (m/s, assumed)", "wind_reso": "wind (Pd) resonance (0-127)",
              "car_speed_kmh": "car speed (km/h)", "car_dist_m": "car closest distance (m)"}
 PART_COLORS = {"drone": "#d93025", "war soundscape": "#6b4e16", "war-shaped noise": "#7a7a7a", "wind": "#2a9d8f",
                "wind (Pd)": "#2a9d8f", "cars": "#c2570c", "mix": "#111111"}
@@ -101,9 +101,9 @@ FS_DB = float(10 / np.log(10) * LOGMEL.frames(np.sin(2 * np.pi * 1000 * np.arang
 
 
 LAYER_GUIDELINES = (
-    "About column: no measured level of a war soundscape was found, so 95 is this track's own calibration. Car levels "
-    "come from the EU pass-by limits (68-72 dB(A) at 7.5 m), read as dB SPL, and are an upper limit. Wind levels are "
-    "from single studies; the wind speed and resonance sliders have no physical unit.",
+    "About column: wind speed in m/s is an assumed scale, not measured (10 m/s is the sound's default), so do not report "
+    "results per m/s. Resonance for city and open field is a guess. The wind levels rest on one study, the storm "
+    "level extrapolated. Car levels come from the EU pass-by limits (68-72 dB(A) at 7.5 m) and are an upper limit.",
     "Confidence follows the dB difference between drone and background, not the absolute level. Keep levels between "
     "about 60 and 100 dB SPL: below that the frontend's floor changes the scores, above that a real microphone would "
     "clip and this test does not.",
@@ -1298,6 +1298,8 @@ class Conclusions(tk.Toplevel):
         ax.set_title(title, fontsize=10, loc="left", weight="bold")
         ax.grid(axis="y", color="#e8e8e8", lw=0.5)
         ax.set_axisbelow(True)
+        if len(vals) == 1:                                   # every such graph averages the same rounds
+            ax.set_title("whole test, compares nothing", loc="right", fontsize=8, color=MUTED)
         return f"{title}: " + ";  ".join(
             f"at {(f'{v:.2f}' if layer else fmt(v)) if not isinstance(v, str) else v} true {pct(x['true'])}, "
             f"false {pct(x['false'])}" for v, x in zip(vals, c))

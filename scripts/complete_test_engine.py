@@ -75,11 +75,12 @@ WIND_DIR = dwg.ROOT / "Distrators/Wind"
 WIND_PD = dict(speed=40, reso=40, vol=50, seconds=60.0)      # the patch's own defaults; the round sets the level
 CAR_DIR = dwg.ROOT / "Pure-data+Script/CarDistractor"
 CAR_PD = dict(speed_kmh=50, dist_m=10, dur_s=20)             # the patch's defaults; one pass-by per engine
-PD_SETTINGS = dict(wind=dict(speed=WIND_PD["speed"], reso=WIND_PD["reso"]),   # what a test can change, and its limits:
+WIND_SLIDER_PER_MS = 4.0                                     # ASSUMED, not measured: wind.pd's 0-127 slider for 1 m/s
+PD_SETTINGS = dict(wind=dict(speed_ms=WIND_PD["speed"] / WIND_SLIDER_PER_MS, reso=WIND_PD["reso"]),   # what a test can change, and its limits:
                    cars=dict(speed_kmh=CAR_PD["speed_kmh"], dist_m=CAR_PD["dist_m"]))
-PD_LIMITS = dict(wind=dict(speed=(0, 127), reso=(0, 127)),   # the patches' own slider and number box ranges
+PD_LIMITS = dict(wind=dict(speed_ms=(0, 127 / WIND_SLIDER_PER_MS), reso=(0, 127)),   # the patches' own ranges
                  cars=dict(speed_kmh=(1, 300), dist_m=(1, 1000)))
-PD_ROUND_KEYS = {"wind_speed": ("wind (Pd)", "wind", "speed"), "wind_reso": ("wind (Pd)", "wind", "reso"),   # a round's
+PD_ROUND_KEYS = {"wind_speed_ms": ("wind (Pd)", "wind", "speed_ms"), "wind_reso": ("wind (Pd)", "wind", "reso"),   # a round's
                  "car_speed_kmh": ("cars", "cars", "speed_kmh"), "car_dist_m": ("cars", "cars", "dist_m")}   # r["pd"] keys
 
 
@@ -222,7 +223,10 @@ PD_RENDER = {"wind (Pd)": (WIND_PD, _wind_pd), "cars": (CAR_PD, _cars)}
 
 def pd_config(name: str, pd: dict) -> dict:
     """What a Pure Data layer renders with a round's settings (r["pd"]); the patch's own values otherwise."""
-    return {**PD_RENDER[name][0], **{f: pd[k] for k, (n, _, f) in PD_ROUND_KEYS.items() if n == name and k in pd}}
+    cfg = {**PD_RENDER[name][0], **{f: pd[k] for k, (n, _, f) in PD_ROUND_KEYS.items() if n == name and k in pd}}
+    if "speed_ms" in cfg:                                    # what the patch takes is its slider
+        cfg["speed"] = cfg.pop("speed_ms") * WIND_SLIDER_PER_MS
+    return cfg
 
 
 def make_layers() -> dict[str, Layer]:
@@ -266,7 +270,12 @@ class Plan:
     also_without: list = field(default_factory=list)         # layers also tested absent, besides at their levels
 
     def __post_init__(self):
-        """Every Pure Data setting as a list of values (a plan may hold single values)."""
+        """Every Pure Data setting as a list of values (a plan may hold single values); an older plan's
+        wind "speed" (the slider) becomes "speed_ms"."""
+        wind = dict(self.pd_settings.get("wind", {}))
+        if "speed" in wind:
+            wind["speed_ms"] = (np.atleast_1d(wind.pop("speed")) / WIND_SLIDER_PER_MS).tolist()
+        self.pd_settings = {**self.pd_settings, "wind": wind}
         self.pd_settings = {s: {k: [float(x) for x in np.atleast_1d(v)] for k, v in d.items()} for s, d in self.pd_settings.items()}
 
     def pd_combos(self, background: dict | None = None) -> list[dict]:

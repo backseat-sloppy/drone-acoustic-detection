@@ -10715,3 +10715,38 @@ found for a Shahed-type drone. Test 2's drone level is still undecided in `REQUI
 
 **Checks.** The window was opened and looked at; the layers frame needs 1018 pixels of the 1101 it has. `uv run pytest` not run:
 no test imports this file.
+
+## 166 - Complete test: a simpler about column, wind speed in m/s on an assumed scale, a note on one-value graphs
+
+- Date: 2026-11-09
+- Type: Engineering (GUI and test configuration; no model, metric or split changed; default mixes unchanged)
+- Commit: uncommitted, on top of b0e25cd: `scripts/Complete_Test_Gui.py`, `scripts/complete_test_engine.py`
+
+**Why.** Nicolai wanted the about column simple, two anchors a row, and wind speed in m/s. He also pointed out three
+identical graphs: with one level per layer, every graph averages the same rounds, and they compare nothing.
+
+**Change.** The wind speed box is in m/s (0 to 31.75; default 10), labelled "assumed". `WIND_SLIDER_PER_MS = 4` turns it
+into the `wind.pd` slider, so 10 m/s is the slider's old default 40 and the kept default render is still used. Plans with
+the old slider `speed` are converted; the round column is now `wind_speed_ms`. Any graph with one value says on it that it
+is the whole test and compares nothing. Entry 165's table remains the sources of the values it lists, but the about column
+now shows:
+
+| Row | About | Basis |
+|---|---|---|
+| War soundscape, war-shaped noise | Test 1: 90 | `REQUIREMENTS.md` |
+| Wind level | quiet: 25, storm: 50 | Rural LA90 about 24 at 0 m/s and 1 dBA per m/s, from entry 165, search quote only; 50 is that slope extrapolated past its 20 m/s to 25 m/s |
+| Wind speed | quiet: 1, storm: 25 | Beaufort: light air 0.3-1.5 m/s, storm force 10 24.5-28.4 m/s, from secondary tables in search results ([Hong Kong Observatory](https://www.hko.gov.hk/en/education/edu01met/wxobs/windscale.htm), [RMetS](https://rmets.org/resource/beaufort-scale)), pages not opened |
+| Resonance | open field: 10, city: 90 | Claude's guess: higher resonance is a narrower, more whistling filter. No source |
+| Car level | near (10 m): 57, far (40 m): 45 | Middle of 55-58 and 43-46 in entry 165, an upper limit |
+| Car speed | town: 50, motorway: 130 | Danish limits, entry 165 |
+| Closest distance | near: 10, far: 40 | Matches the two car levels above; not a source |
+
+**What the m/s is not.** The factor of 4 is assumed: it was chosen so that the slider's whole range ends near hurricane force
+(32.7 m/s), and nothing ties a slider value to a wind speed. No recording in the project states its wind speed
+(`docs/datasets.md`). Results must not be reported per m/s. A real calibration needs recordings of wind with measured speed.
+
+**Checks (plumbing, not performance: one file, Steady_07, 10 s soundscape, it9 CRNN).** A scratch script used the real boxes:
+10 m/s gives slider 40 and the existing file `wind_40_40_60s_884e1418.wav`; 40 m/s is refused; 10 and 22.5 m/s give sliders
+40 and 90, 4 rounds, a Wind summary graph labelled m/s and a Results column. `load_test` returned the settings, and a plan in
+slider units (40, 90) became 10 and 22.5 m/s and the same sliders. The saved page and the window were looked at; the layers
+frame needs 1014 pixels of 1101. `uv run pytest` not run: no test imports these files.
