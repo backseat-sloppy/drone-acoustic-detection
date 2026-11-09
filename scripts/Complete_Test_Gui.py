@@ -1045,7 +1045,7 @@ def summary_sections(test: E.Test) -> list[dict]:
         used.add("drone")
     for title, names in SUMMARY_LAYERS:
         keys = [(n, f"{n} level (dB SPL)") for n in names if n in layers]
-        keys += [(k, PD_LABELS[k]) for k in test.plan.pd_swept() if E.PD_ROUND_KEYS[k][0] in names]
+        keys += [(k, PD_LABELS[k]) for k in test.plan.pd_combos()[0] if E.PD_ROUND_KEYS[k][0] in names]   # also at one value
         out.append(section(title, keys, f"Not in this test: tick {' or '.join(names)} under Background layers."))
     other = [(k, lab, v, None) for k, (lab, v) in varied.items() if k not in used]
     if other:
@@ -1299,7 +1299,7 @@ class Conclusions(tk.Toplevel):
         ax.grid(axis="y", color="#e8e8e8", lw=0.5)
         ax.set_axisbelow(True)
         if len(vals) == 1:                                   # every such graph averages the same rounds
-            ax.set_title("whole test, compares nothing", loc="right", fontsize=8, color=MUTED)
+            ax.set_title("one value, compares nothing", loc="right", fontsize=8, color=MUTED)
         return f"{title}: " + ";  ".join(
             f"at {(f'{v:.2f}' if layer else fmt(v)) if not isinstance(v, str) else v} true {pct(x['true'])}, "
             f"false {pct(x['false'])}" for v, x in zip(vals, c))

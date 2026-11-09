@@ -10750,3 +10750,22 @@ now shows:
 40 and 90, 4 rounds, a Wind summary graph labelled m/s and a Results column. `load_test` returned the settings, and a plan in
 slider units (40, 90) became 10 and 22.5 m/s and the same sliders. The saved page and the window were looked at; the layers
 frame needs 1014 pixels of 1101. `uv run pytest` not run: no test imports these files.
+
+## 167 - Conclusions: every sub-parameter of a ticked layer has a graph
+
+- Date: 2026-11-09
+- Type: Engineering (GUI display only; no model, metric, mix or split changed)
+- Commit: uncommitted, on top of b0e25cd: `scripts/Complete_Test_Gui.py`
+
+**Why.** Nicolai asked for the sub-parameters (wind speed and resonance, car speed and closest distance) in Conclusions.
+Until now a sub-parameter had a graph only when it took more than one value.
+
+**Change.** The Wind and Car summaries have a graph for each sub-parameter of a ticked layer, also at one value. The note on
+a one-value graph now reads "one value, compares nothing" (entry 166 wrote "whole test"): with "also without" ticked, a
+sub-parameter's single value covers only the rounds with the layer on, so it is not the whole test.
+
+**Checks (plumbing, not performance: one file, Steady_07, 10 s soundscape, it9 CRNN).** Set up as in Nicolai's screenshot through
+the real boxes (cars 40 dB also without, speed 50, distance 10 to 100 in 10 steps; wind (Pd) boxes filled but not ticked): 22
+rounds; the Car summary had the level with off, speed and distance; the Wind summary said it was not in the test, as the layer
+was unticked. With wind (Pd) ticked it had level, speed and resonance. The saved page was looked at. `uv run pytest` not run:
+no test imports this file.
