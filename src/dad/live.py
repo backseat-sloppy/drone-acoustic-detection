@@ -246,6 +246,257 @@ def wav_blocks(path, blocksize: int = 1024, realtime: bool = True,
     return int(f.samplerate), int(f.channels), blocks()
 
 
+# ------------------------------------------------------------------- sections
+
+class SectionRecorder:
+    """Saves a live session to a folder, cut into sections of `section_s` seconds.
+
+    Time is audio time since capture started, the clock the decisions are stamped
+    with. Section k (numbered from 1) holds the audio from (k-1)*L to k*L and the
+    decisions whose window ends in ((k-1)*L, k*L]; a decision's window can begin in
+    the section before. With `section_s=None` the whole session is one section.
+
+    Files, all named `<prefix>...` in `folder`:
+        <prefix>_section_001.wav, _002, ...   raw input, every channel, at the capture
+                                              rate (one <prefix>.wav without sections)
+        <prefix>.csv                          one row per hop offset within a section
+                                              (`t_in_section_s`, the window's end), and
+                                              per section its columns side by side:
+                                              section_NNN_clock, section_NNN_level_dbfs,
+                                              section_NNN_<detector>_score / _drone
+    The CSV is rewritten whenever a section fills, and at `close()`, so a crash loses
+    at most the section in progress. A CSV that cannot be written (open in Excel, say)
+    is retried at the next section; `errors` keeps the message.
+
+    `excel=True` writes the CSV for an Excel set to a decimal comma (Danish and most of
+    Europe): a first line `sep=;` that tells Excel the separator whatever the Windows
+    list separator is, `;` between fields and `,` as the decimal mark. Opened with a
+    dot-decimal reader instead, skip the first line and read `;` and decimal commas,
+    e.g. pandas.read_csv(path, sep=";", decimal=",", skiprows=1).
+    """
+
+    def __init__(self, folder, prefix: str, sr_in: int, channels: int, detectors: list[Detector],
+                 section_s: float | None = 20.0, audio: bool = True, table: bool = True,
+                 excel: bool = False) -> None:
+        if section_s is not None and not section_s > 0:
+            raise ValueError(f"section length must be above 0 s, got {section_s}")
+        self.folder, self.prefix = Path(folder), prefix
+        self.folder.mkdir(parents=True, exist_ok=True)
+        self.sr, self.channels, self.section_s = int(sr_in), int(channels), section_s
+        self.names = [d.name for d in detectors]
+        self.save_audio, self.save_table, self.excel = audio, table, excel
+        self.samples = 0                    # input samples written so far
+        self.wav = None
+        self.wav_index = 0                  # section of the open WAV
+        self.rows: dict[int, dict[float, dict]] = {}        # section -> t_in_section -> cells
+        self.filled = 0                     # last section known to be complete (CSV written up to it)
+        self.files: list[Path] = []
+        self.errors: list[str] = []
+
+    # sections are numbered from 1
+    def section_of_time(self, t_end: float) -> int:
+        if self.section_s is None:
+            return 1
+        return max(1, int(math.ceil(round(t_end / self.section_s, 9))))
+
+    def _boundary(self, k: int) -> int | None:
+        """Input samples at the end of section k; None without sections."""
+        return None if self.section_s is None else int(round(k * self.section_s * self.sr))
+
+    def wav_path(self, k: int) -> Path:
+        return self.folder / (f"{self.prefix}.wav" if self.section_s is None else f"{self.prefix}_section_{k:03d}.wav")
+
+    @property
+    def csv_path(self) -> Path:
+        return self.folder / f"{self.prefix}.csv"
+
+    def audio(self, x: np.ndarray) -> None:
+        """Raw input (frames, channels), split at the section boundaries."""
+        if not self.save_audio:
+            self.samples += len(x)
+            return
+        import soundfile as sf
+        i = 0
+        while i < len(x):
+            k = self.section_of_samples(self.samples)
+            end = self._boundary(k)
+            take = len(x) - i if end is None else min(len(x) - i, end - self.samples)
+            if self.wav is None or self.wav_index != k:
+                if self.wav is not None:
+                    self.wav.close()
+                p = self.wav_path(k)
+                self.wav = sf.SoundFile(str(p), "w", samplerate=self.sr, channels=self.channels, subtype="FLOAT")
+                self.wav_index = k
+                self.files.append(p)
+            self.wav.write(x[i:i + take])
+            self.samples += take
+            i += take
+
+    def section_of_samples(self, n: int) -> int:
+        """The section the sample at index n falls in: boundary(k-1) <= n < boundary(k)."""
+        if self.section_s is None:
+            return 1
+        k = int(n // (self.section_s * self.sr)) + 1
+        while self._boundary(k) <= n:
+            k += 1
+        while k > 1 and self._boundary(k - 1) > n:
+            k -= 1
+        return k
+
+    def decision(self, d: Decision, clock: str | None = None) -> None:
+        k = self.section_of_time(d.t_end)
+        if not self.save_table:
+            return
+        start = 0.0 if self.section_s is None else (k - 1) * self.section_s
+        cells = {"clock": clock or time.strftime("%H:%M:%S"), "level_dbfs": f"{d.level_dbfs:.1f}"}
+        for name in self.names:
+            cells[f"{name}_score"] = f"{d.scores[name]:.6g}"
+            cells[f"{name}_drone"] = "" if d.drone[name] is None else int(d.drone[name])
+        self.rows.setdefault(k, {})[round(d.t_end - start, 4)] = cells
+        if k - 1 > self.filled:             # the previous section is complete
+            self.filled = k - 1
+            self.write_table()
+
+    first_column = "t_in_section_s"         # what each row is: the window's end within the section
+
+    def columns(self) -> list[str]:
+        return ["clock", "level_dbfs"] + [f"{n}_{c}" for n in self.names for c in ("score", "drone")]
+
+    def write_table(self) -> bool:
+        if not self.save_table or not self.rows:
+            return False
+        import csv
+        import os
+        sections = sorted(self.rows)
+        offsets = sorted({t for k in sections for t in self.rows[k]})
+        cols = self.columns()
+        tmp = self.csv_path.with_suffix(".csv.tmp")
+        # No byte-order mark: Excel ignores a `sep=` line that follows one.
+        with open(tmp, "w", newline="", encoding="utf-8") as f:
+            if self.excel:
+                f.write("sep=;\r\n")
+            w = csv.writer(f, delimiter=";" if self.excel else ",")
+            w.writerow([self.first_column] + [f"section_{k:03d}_{c}" for k in sections for c in cols])
+            for t in offsets:
+                row = [f"{t:g}"]                # an offset in seconds, or a row number
+                for k in sections:
+                    cells = self.rows[k].get(t)
+                    row += [""] * len(cols) if cells is None else [cells[c] for c in cols]
+                if self.excel:                  # numbers only: the clock (12:00:00) has no dot
+                    row = [str(v).replace(".", ",") for v in row]
+                w.writerow(row)
+        try:
+            os.replace(tmp, self.csv_path)
+        except OSError as e:                # Windows: the CSV is open in another program
+            self.errors.append(f"could not write {self.csv_path.name}: {e}")
+            return False
+        if self.csv_path not in self.files:
+            self.files.append(self.csv_path)
+        return True
+
+    def close(self) -> list[Path]:
+        if self.wav is not None:
+            self.wav.close()
+            self.wav = None
+        self.write_table()
+        self.csv_path.with_suffix(".csv.tmp").unlink(missing_ok=True)
+        return self.files
+
+
+class CalledSectionRecorder(SectionRecorder):
+    """Saves only what falls between `begin()` and `end()` calls, each pair one section.
+
+    For a script that knows when something happens (a drone pass, a played sound) and
+    marks it: detection runs all the time, but audio and decisions are saved only while
+    a section is open. Section k holds the audio from the sample position at `begin()`
+    to the one at `end()`, and the decisions whose window ends inside that stretch (the
+    first ones' windows reach back before the start, as with fixed sections).
+
+    The calls take effect where the audio stands when they are made: the caller (the
+    capture thread) makes them between blocks, so a mark is as exact as a block, some
+    10-20 ms. Files as SectionRecorder's, except that the CSV rows are numbered
+    (`n_in_section`: 1, 2, ...) and each section has its own `t_in_section_s` column,
+    because the hop grid does not line up with a start called at any moment.
+    `t_in_section_s` is the window's end, from the start of that section's WAV.
+    """
+
+    first_column = "n_in_section"
+
+    def __init__(self, folder, prefix: str, sr_in: int, channels: int, detectors: list[Detector],
+                 audio: bool = True, table: bool = True, excel: bool = False) -> None:
+        super().__init__(folder, prefix, sr_in, channels, detectors, None, audio=audio, table=table, excel=excel)
+        self.section_s = "calls"                       # for anything that shows the mode
+        self.open: int | None = None                   # the section being saved
+        self.count = 0                                 # sections begun
+        self.start_samples = 0
+        self.marks: list[dict] = []                    # per section: start_s, end_s, start_clock, end_clock
+
+    def wav_path(self, k: int) -> Path:
+        return self.folder / f"{self.prefix}_section_{k:03d}.wav"
+
+    def columns(self) -> list[str]:
+        return ["t_in_section_s", *super().columns()]
+
+    @property
+    def now_s(self) -> float:
+        return self.samples / self.sr
+
+    def begin(self) -> int:
+        """Open the next section here; returns its number."""
+        if self.open is not None:
+            raise RuntimeError(f"section {self.open} is still open: end it first")
+        self.count += 1
+        self.open, self.start_samples = self.count, self.samples
+        self.marks.append(dict(section=self.count, start_s=round(self.now_s, 4), end_s=None,
+                               start_clock=time.strftime("%H:%M:%S"), end_clock=None))
+        self.rows.setdefault(self.count, {})
+        if self.save_audio:
+            import soundfile as sf
+            p = self.wav_path(self.count)
+            self.wav = sf.SoundFile(str(p), "w", samplerate=self.sr, channels=self.channels, subtype="FLOAT")
+            self.files.append(p)
+        return self.count
+
+    def end(self) -> int:
+        """Close the open section here; returns its number. The CSV is rewritten."""
+        if self.open is None:
+            raise RuntimeError("no section is open: begin one first")
+        k, self.open = self.open, None
+        self.marks[-1].update(end_s=round(self.now_s, 4), end_clock=time.strftime("%H:%M:%S"))
+        if self.wav is not None:
+            self.wav.close()
+            self.wav = None
+        self.write_table()
+        return k
+
+    def audio(self, x: np.ndarray) -> None:
+        if self.open is not None and self.wav is not None:
+            self.wav.write(x)
+        self.samples += len(x)
+
+    def decision(self, d: Decision, clock: str | None = None) -> None:
+        start_s = self.start_samples / self.sr
+        if self.open is None or not self.save_table or d.t_end <= start_s:
+            return
+        cells = {"clock": clock or time.strftime("%H:%M:%S"), "level_dbfs": f"{d.level_dbfs:.1f}",
+                 "t_in_section_s": f"{d.t_end - start_s:.4f}"}
+        for name in self.names:
+            cells[f"{name}_score"] = f"{d.scores[name]:.6g}"
+            cells[f"{name}_drone"] = "" if d.drone[name] is None else int(d.drone[name])
+        rows = self.rows[self.open]
+        rows[len(rows) + 1] = cells
+
+    def write_table(self) -> bool:
+        if not any(self.rows.values()):
+            return False
+        return super().write_table()
+
+    def close(self) -> list[Path]:
+        if self.open is not None:                      # Stop with a section open: it ends there
+            self.end()
+        return super().close()
+
+
 # ----------------------------------------------------------------------- loop
 
 @dataclass

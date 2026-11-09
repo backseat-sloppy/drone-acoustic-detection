@@ -7,6 +7,7 @@
     uv run dad info             print the frozen frontend contract
     uv run dad wav FILES...     run a detector over WAV files, hop by hop
     uv run dad live             run detectors on a live microphone, hop by hop
+    uv run dad section start    start (or end, status) a recorded section in the live GUI
 """
 
 from __future__ import annotations
@@ -319,6 +320,30 @@ def _cmd_live(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_section(args: argparse.Namespace) -> int:
+    from .live_control import LiveControlError, end_section, run_sections, start_section, status
+
+    try:
+        if args.action == "start":
+            start_section(args.port)
+        elif args.action == "end":
+            end_section(args.port)
+        elif args.action == "cycle":
+            try:
+                print(f"{run_sections(args.length, args.gap, args.count, args.port)} sections finished")
+            except KeyboardInterrupt:                        # Ctrl+C must not leave a section open
+                if status(args.port)["open"] is not None:
+                    end_section(args.port)
+        else:
+            s = status(args.port)
+            print(f"detecting: {s['detecting']}  sections: {s['sections']}  open section: {s['open']}  "
+                  f"t: {s['t_s']} s")
+    except LiveControlError as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="dad", description="Acoustic drone detection, latency first")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -393,6 +418,16 @@ def main(argv: list[str] | None = None) -> int:
     lv.add_argument("--torch-device", default="cpu", help="device for the networks: cpu, cuda, dml")
     lv.add_argument("--quiet", action="store_true", help="no status line or alarm lines, only the summary")
     lv.set_defaults(fn=_cmd_live)
+
+    from .live_control import DEFAULT_PORT
+
+    sc = sub.add_parser("section", help="start or end a recorded section in the running live GUI")
+    sc.add_argument("action", choices=["start", "end", "status", "cycle"])
+    sc.add_argument("--port", type=int, default=DEFAULT_PORT)
+    sc.add_argument("--length", type=float, default=20.0, help="cycle: seconds saved per section")
+    sc.add_argument("--gap", type=float, default=0.0, help="cycle: seconds between sections")
+    sc.add_argument("--count", type=int, default=None, help="cycle: sections to make (default: until Ctrl+C)")
+    sc.set_defaults(fn=_cmd_section)
 
     args = p.parse_args(argv)
     return int(args.fn(args))
