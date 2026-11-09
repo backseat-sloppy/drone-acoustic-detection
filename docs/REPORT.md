@@ -8919,3 +8919,95 @@ in round 1: all 998 frames of the image match them, largest absolute difference 
 -3.45 to 3.44 (1st to 99th percentile -1.92 to 1.68). Moving between slides with a playhead running works,
 and the three plots keep equal left and right edges. Not run: clicks with the mouse, and a run with several
 networks (the slide list was built from one). `uv run pytest` not run: no test imports this file.
+
+## 148 - Requirements: all requirements deleted, decided by Mads and Nicolai
+
+- Date: 2026-11-09
+- Type: Requirements
+- Commit: uncommitted, on top of e4c7880: `REQUIREMENTS.md`
+
+**What changed.** Everything that sets a requirement was deleted from `REQUIREMENTS.md`: R1 to R5 and how
+they are measured, the priorities, the performance targets, the signal settings, latency and deployment, the
+data rows and the stop condition. The title, the status legend, the goal and the notes stay, and the file
+says that no requirements are in force. It was not deleted, because `CLAUDE.md` refers to it.
+
+**Why.** Nicolai asked for it in chat and stated that Mads, and Nicolai as Mads's manager, decided it
+together. Claude first declined to act without that decision (`CLAUDE.md` section 2). No reason was given,
+and which parts to delete was not specified: "all requirements" was read literally.
+
+**How.** Restore with `git checkout e4c78806ec10574b8071f065f166659aa03b24d0 -- REQUIREMENTS.md`.
+
+**Result.** No run. No model, metric or split changed. Earlier entries stay as written and were judged
+against the requirements in force at the time.
+
+**Assessment.** With no targets, nothing defines when iterating stops (`CLAUDE.md` section 3) or what a
+result is judged against. The data rows held Mads's decisions on allowed sources and internal-only licences
+(d3set, Lund, synthetic training). Those decisions are still recorded in entries 027, 058 and 087,
+and `CLAUDE.md` section 6 still applies; whether they still hold was not stated.
+
+**Next.** No iteration is started. Mads and Nicolai decide what the next work is aimed at.
+
+## 149 - Requirements: three tests, judged in confidence with and without a drone
+
+- Date: 2026-11-09
+- Type: Requirements
+- Commit: uncommitted, on top of e4c7880: `REQUIREMENTS.md`
+
+**What changed.** The requirements section of `REQUIREMENTS.md`, empty since entry 148, now holds what Nicolai
+stated in chat for Mads and himself. Anyone asking about requirements is first asked which test they mean:
+1. Real drone test: Parameters. The 35 real ITU ARIS drones. Confidence with a drone, and how little without
+   one; then the same with distractors. The most important requirements of the project.
+2. Modified drone: Time before impact. The same model; confidence as high as possible 3 to 7 s before impact.
+3. Natural environment simulation. The same model as a demo in the surround sound speaker array.
+
+Across them: confidence with a drone as high as possible and without one as low as possible; first drone
+against the war soundscape, then distractors. No numeric target; "high confidence" is deliberately not defined.
+Recall, false-positive rate, precision and the frozen threshold of the old R2 to R4 are no longer requirements.
+
+**Why.** Nicolai's decision; it gives the work the aim entry 148 left open.
+
+**Result.** No run. No model, metric or split changed.
+
+**Assessment.** Open points, put to Nicolai: what FPS in "FPS og krav" means; how two models are ranked when
+one raises both confidences; which distractors and level conditions count; whether ITU ARIS stays out of
+training and tuning (entry 129 counted at least nine readings since entry 123, and test 1 now judges on it);
+which model is "the same model"; the speeds and levels of test 2; what is needed for test 3. Of the 35 ARIS
+files, interval 07 (1 s) cannot be used in the complete test, whose minimum is 5 s (entry 140).
+
+**Next.** Answers to the open points, then a plan for test 1. Changing the primary metric calls for a
+council (`CLAUDE.md` section 4) before an iteration is judged on it.
+
+## 150 - Requirements: Nicolai's answers on the three tests; the it9 CRNN is the GUI's default
+
+- Date: 2026-11-09
+- Type: Requirements
+- Commit: uncommitted, on top of e4c7880: `REQUIREMENTS.md`, `scripts/Complete_Test_Gui.py`
+
+**What changed.** Answers to the open points of entry 149, written into `REQUIREMENTS.md`:
+- FPS in "FPS og krav" is the Final Problem Statement.
+- Ranking models: first confidence with a drone, second confidence without a drone, with distractors.
+- Backgrounds: main parameter war soundscape, secondary wind, tertiary cars, helicopter and insects.
+- ITU ARIS only scores finished models, never training or tuning. Results on it say that it was read during
+  development (entry 129).
+- Test 1 levels: war soundscape fixed at 90 dB SPL, drone at 100, 90, 80, 70 and 60 dB SPL (+10 to -30 dB).
+  Claude proposed this; Nicolai replied "continue with the questions", which Claude took as yes and said so.
+- Test 2: speeds chosen by the tester between 50 and 200 km/h; the figure is mean confidence over 3 to 7 s
+  before impact, every second equal, with the curve beside it.
+- Test 3 is not specified yet; the specifications are awaited from Mathias.
+- The it9 CRNN is the default model. More models are being trained; when one arrives, Claude proposes
+  integrating it in `Complete_Test_Gui`.
+
+In `Complete_Test_Gui` the detectors ticked by default are now the it9 CRNN and comb (was the it6 CNN and comb),
+comb because `CLAUDE.md` section 5 asks for the baselines.
+
+**Why.** Nicolai's decisions. On levels: the Claude-side explanation was that the test has no clipping at all
+and that the log-mel floor is negligible from about 60 dB SPL (entries 130 and this session's check on
+`Steady_07.wav`: score changes below 0.001 at 60 dB SPL), so these levels need no code change. A microphone's
+own noise and clipping are not modelled; test 3 is the first test that includes them.
+
+**Result.** No run. The one-line change of the default was not started in the window. No model, metric or
+split changed. Not decided: how close two models must be for the second priority to break the tie. Interval
+07 of ITU ARIS (1 s) stays unusable in the complete test (entry 140), so test 1 has 34 usable files.
+
+**Next.** Test 1 set up in the complete test; the council on the evaluation protocol comes first
+(`CLAUDE.md` section 4).
