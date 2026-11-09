@@ -1,0 +1,910 @@
+{
+  "args": {
+    "name": "it16_600k_s0",
+    "arms": [
+      "none"
+    ],
+    "pool": true,
+    "pair": false,
+    "speed": [
+      0.8,
+      1.25
+    ],
+    "recipes": [
+      "simdist"
+    ],
+    "models": [
+      "dscnn",
+      "crnn"
+    ],
+    "device": "cuda",
+    "windows": 600000,
+    "lgbm_windows": 40000,
+    "window_seconds": 1.0,
+    "frontend": "mfe",
+    "n_fft": null,
+    "n_mfcc": 20,
+    "n_mels": 64,
+    "eval_hop": 0.5,
+    "deploy_fa": 0.05,
+    "seed": 0,
+    "load_from": null,
+    "integrate": [
+      1
+    ]
+  },
+  "results": [
+    {
+      "arm": "hold out none",
+      "recipe": "simdist",
+      "scorer": "dscnn",
+      "seed": 0,
+      "window_s": 1.0,
+      "integrate": 1,
+      "decision_span_s": 1.0,
+      "deploy_threshold": 0.4293470978736878,
+      "val_background_windows": 1565,
+      "train_seconds": 549.2,
+      "history": [
+        {
+          "windows": 50048,
+          "steps": 782,
+          "loss": 0.5811080236340422,
+          "seconds": 47.0
+        },
+        {
+          "windows": 100032,
+          "steps": 781,
+          "loss": 0.49509219617300243,
+          "seconds": 94.0
+        },
+        {
+          "windows": 150016,
+          "steps": 781,
+          "loss": 0.47008034193866843,
+          "seconds": 138.9
+        },
+        {
+          "windows": 200000,
+          "steps": 781,
+          "loss": 0.4509606452208017,
+          "seconds": 183.5
+        },
+        {
+          "windows": 250048,
+          "steps": 782,
+          "loss": 0.44629911533402056,
+          "seconds": 228.2
+        },
+        {
+          "windows": 300032,
+          "steps": 781,
+          "loss": 0.4379377071477387,
+          "seconds": 272.6
+        },
+        {
+          "windows": 350016,
+          "steps": 781,
+          "loss": 0.43112736486289627,
+          "seconds": 317.3
+        },
+        {
+          "windows": 400000,
+          "steps": 781,
+          "loss": 0.4244451707899189,
+          "seconds": 362.0
+        },
+        {
+          "windows": 450048,
+          "steps": 782,
+          "loss": 0.4149990638198755,
+          "seconds": 407.7
+        },
+        {
+          "windows": 500032,
+          "steps": 781,
+          "loss": 0.4075022698517188,
+          "seconds": 452.7
+        },
+        {
+          "windows": 550016,
+          "steps": 781,
+          "loss": 0.4011880547456949,
+          "seconds": 497.2
+        },
+        {
+          "windows": 600000,
+          "steps": 781,
+          "loss": 0.40119268612580783,
+          "seconds": 542.2
+        }
+      ],
+      "windows": 600000,
+      "val": {
+        "windows": {
+          "drone": 2648,
+          "background": 1565,
+          "sessions": 4
+        },
+        "own": {
+          "0.05": {
+            "threshold": 0.4293470978736878,
+            "by_range": {
+              "all": {
+                "windows": 2648,
+                "sessions": 4,
+                "recall": 0.7953172205438066
+              },
+              "0-50 m": {
+                "windows": 2436,
+                "sessions": 4,
+                "recall": 0.8243021346469622
+              },
+              "50-100 m": {
+                "windows": 115,
+                "sessions": 3,
+                "recall": 0.808695652173913
+              },
+              "100-150 m": {
+                "windows": 97,
+                "sessions": 1,
+                "recall": 0.05154639175257732
+              },
+              "100-200 m": {
+                "windows": 97,
+                "sessions": 1,
+                "recall": 0.05154639175257732
+              }
+            },
+            "recall_100_200_ci95": null,
+            "latency_100_200": {
+              "starts": 48,
+              "median_s": 11.0,
+              "within_1s": 0.020833333333333332,
+              "within_2s": 0.10416666666666667,
+              "within_3s": 0.16666666666666666,
+              "within_5s": 0.25,
+              "within_10s": 0.4583333333333333,
+              "never": 0.0
+            },
+            "latency_background": {
+              "starts": 781,
+              "median_s": 33.5,
+              "within_1s": 0.05121638924455826,
+              "within_2s": 0.11011523687580026,
+              "within_3s": 0.1523687580025608,
+              "within_5s": 0.21638924455825864,
+              "within_10s": 0.31626120358514725,
+              "never": 0.1792573623559539
+            },
+            "latency_150_300": {}
+          },
+          "0.10": {
+            "threshold": 0.3450326621532441,
+            "by_range": {
+              "all": {
+                "windows": 2648,
+                "sessions": 4,
+                "recall": 0.8119335347432024
+              },
+              "0-50 m": {
+                "windows": 2436,
+                "sessions": 4,
+                "recall": 0.840311986863711
+              },
+              "50-100 m": {
+                "windows": 115,
+                "sessions": 3,
+                "recall": 0.8347826086956521
+              },
+              "100-150 m": {
+                "windows": 97,
+                "sessions": 1,
+                "recall": 0.07216494845360824
+              },
+              "100-200 m": {
+                "windows": 97,
+                "sessions": 1,
+                "recall": 0.07216494845360824
+              }
+            },
+            "recall_100_200_ci95": null,
+            "latency_100_200": {
+              "starts": 48,
+              "median_s": 10.75,
+              "within_1s": 0.0625,
+              "within_2s": 0.14583333333333334,
+              "within_3s": 0.1875,
+              "within_5s": 0.2708333333333333,
+              "within_10s": 0.4791666666666667,
+              "never": 0.0
+            },
+            "latency_background": {
+              "starts": 781,
+              "median_s": 17.0,
+              "within_1s": 0.10755441741357234,
+              "within_2s": 0.1882202304737516,
+              "within_3s": 0.2535211267605634,
+              "within_5s": 0.3354673495518566,
+              "within_10s": 0.4327784891165173,
+              "never": 0.1523687580025608
+            },
+            "latency_150_300": {}
+          },
+          "0.20": {
+            "threshold": 0.2710188329219818,
+            "by_range": {
+              "all": {
+                "windows": 2648,
+                "sessions": 4,
+                "recall": 0.8262839879154078
+              },
+              "0-50 m": {
+                "windows": 2436,
+                "sessions": 4,
+                "recall": 0.8530377668308703
+              },
+              "50-100 m": {
+                "windows": 115,
+                "sessions": 3,
+                "recall": 0.8782608695652174
+              },
+              "100-150 m": {
+                "windows": 97,
+                "sessions": 1,
+                "recall": 0.09278350515463918
+              },
+              "100-200 m": {
+                "windows": 97,
+                "sessions": 1,
+                "recall": 0.09278350515463918
+              }
+            },
+            "recall_100_200_ci95": null,
+            "latency_100_200": {
+              "starts": 48,
+              "median_s": 9.75,
+              "within_1s": 0.08333333333333333,
+              "within_2s": 0.1875,
+              "within_3s": 0.22916666666666666,
+              "within_5s": 0.3125,
+              "within_10s": 0.5208333333333334,
+              "never": 0.0
+            },
+            "latency_background": {
+              "starts": 781,
+              "median_s": 4.5,
+              "within_1s": 0.2023047375160051,
+              "within_2s": 0.32778489116517284,
+              "within_3s": 0.4186939820742638,
+              "within_5s": 0.5300896286811779,
+              "within_10s": 0.674775928297055,
+              "never": 0.10499359795134443
+            },
+            "latency_150_300": {}
+          }
+        },
+        "auc_session": {
+          "0-50 m": {
+            "auc": 0.9120666047624293,
+            "pos": 2436,
+            "neg": 1565,
+            "sessions": 4
+          },
+          "50-100 m": {
+            "auc": 0.9231570855043991,
+            "pos": 115,
+            "neg": 1527,
+            "sessions": 3
+          },
+          "100-150 m": {
+            "auc": 0.2372316596407752,
+            "pos": 97,
+            "neg": 1482,
+            "sessions": 1
+          },
+          "100-200 m": {
+            "auc": 0.2372316596407752,
+            "pos": 97,
+            "neg": 1482,
+            "sessions": 1
+          }
+        },
+        "deploy_fa": 0.05047923322683706,
+        "deploy": {
+          "threshold": 0.4293470978736878,
+          "by_range": {
+            "all": {
+              "windows": 2648,
+              "sessions": 4,
+              "recall": 0.7953172205438066
+            },
+            "0-50 m": {
+              "windows": 2436,
+              "sessions": 4,
+              "recall": 0.8243021346469622
+            },
+            "50-100 m": {
+              "windows": 115,
+              "sessions": 3,
+              "recall": 0.808695652173913
+            },
+            "100-150 m": {
+              "windows": 97,
+              "sessions": 1,
+              "recall": 0.05154639175257732
+            },
+            "100-200 m": {
+              "windows": 97,
+              "sessions": 1,
+              "recall": 0.05154639175257732
+            }
+          },
+          "recall_100_200_ci95": null,
+          "latency_100_200": {
+            "starts": 48,
+            "median_s": 11.0,
+            "within_1s": 0.020833333333333332,
+            "within_2s": 0.10416666666666667,
+            "within_3s": 0.16666666666666666,
+            "within_5s": 0.25,
+            "within_10s": 0.4583333333333333,
+            "never": 0.0
+          }
+        }
+      },
+      "confuser": {
+        "background_windows": 125,
+        "fa_deploy": 0.232,
+        "fa_own10": 0.368,
+        "recall_own10": {
+          "all": {
+            "windows": 1045,
+            "sessions": 1,
+            "recall": 0.707177033492823
+          },
+          "0-50 m": {
+            "windows": 171,
+            "sessions": 1,
+            "recall": 0.7660818713450293
+          },
+          "50-100 m": {
+            "windows": 190,
+            "sessions": 1,
+            "recall": 0.7421052631578947
+          },
+          "100-150 m": {
+            "windows": 164,
+            "sessions": 1,
+            "recall": 0.6158536585365854
+          },
+          "150-200 m": {
+            "windows": 62,
+            "sessions": 1,
+            "recall": 0.4838709677419355
+          },
+          "200-300 m": {
+            "windows": 272,
+            "sessions": 1,
+            "recall": 0.6507352941176471
+          },
+          "300-inf m": {
+            "windows": 186,
+            "sessions": 1,
+            "recall": 0.8548387096774194
+          },
+          "100-200 m": {
+            "windows": 226,
+            "sessions": 1,
+            "recall": 0.5796460176991151
+          }
+        }
+      },
+      "unseen": {
+        "lund": {
+          "windows": {
+            "drone": 7871,
+            "background": 0,
+            "sessions": 12
+          },
+          "deploy": {
+            "threshold": 0.4293470978736878,
+            "by_range": {
+              "all": {
+                "windows": 7871,
+                "sessions": 12,
+                "recall": 0.46004319654427644
+              },
+              "0-50 m": {
+                "windows": 1086,
+                "sessions": 9,
+                "recall": 0.9769797421731123
+              },
+              "50-100 m": {
+                "windows": 1787,
+                "sessions": 12,
+                "recall": 0.8102965864577504
+              },
+              "100-150 m": {
+                "windows": 739,
+                "sessions": 11,
+                "recall": 0.5981055480378891
+              },
+              "150-200 m": {
+                "windows": 376,
+                "sessions": 8,
+                "recall": 0.47074468085106386
+              },
+              "200-300 m": {
+                "windows": 1060,
+                "sessions": 8,
+                "recall": 0.22735849056603774
+              },
+              "300-inf m": {
+                "windows": 2823,
+                "sessions": 8,
+                "recall": 0.08926673751328375
+              },
+              "100-200 m": {
+                "windows": 1115,
+                "sessions": 11,
+                "recall": 0.5551569506726457
+              }
+            },
+            "recall_100_200_ci95": [
+              0.4319209542981293,
+              0.6757378407238643
+            ],
+            "latency_100_200": {
+              "starts": 559,
+              "median_s": 1.0,
+              "within_1s": 0.5599284436493739,
+              "within_2s": 0.7191413237924866,
+              "within_3s": 0.8085867620751341,
+              "within_5s": 0.8855098389982111,
+              "within_10s": 0.9373881932021467,
+              "never": 0.055456171735241505
+            }
+          }
+        }
+      },
+      "eval_seconds": 5.4
+    },
+    {
+      "arm": "hold out none",
+      "recipe": "simdist",
+      "scorer": "crnn",
+      "seed": 0,
+      "window_s": 1.0,
+      "integrate": 1,
+      "decision_span_s": 1.0,
+      "deploy_threshold": 0.5771281123161317,
+      "val_background_windows": 1565,
+      "train_seconds": 574.9,
+      "history": [
+        {
+          "windows": 50048,
+          "steps": 782,
+          "loss": 0.529484468347886,
+          "seconds": 48.1
+        },
+        {
+          "windows": 100032,
+          "steps": 781,
+          "loss": 0.48450835955432986,
+          "seconds": 95.4
+        },
+        {
+          "windows": 150016,
+          "steps": 781,
+          "loss": 0.4685916411815624,
+          "seconds": 142.4
+        },
+        {
+          "windows": 200000,
+          "steps": 781,
+          "loss": 0.4517898711825455,
+          "seconds": 190.4
+        },
+        {
+          "windows": 250048,
+          "steps": 782,
+          "loss": 0.44207386762056206,
+          "seconds": 238.2
+        },
+        {
+          "windows": 300032,
+          "steps": 781,
+          "loss": 0.43139213148060895,
+          "seconds": 286.0
+        },
+        {
+          "windows": 350016,
+          "steps": 781,
+          "loss": 0.42045898058197717,
+          "seconds": 334.0
+        },
+        {
+          "windows": 400000,
+          "steps": 781,
+          "loss": 0.40586926184222577,
+          "seconds": 381.4
+        },
+        {
+          "windows": 450048,
+          "steps": 782,
+          "loss": 0.39266850235288403,
+          "seconds": 428.9
+        },
+        {
+          "windows": 500032,
+          "steps": 781,
+          "loss": 0.3764698159488612,
+          "seconds": 476.5
+        },
+        {
+          "windows": 550016,
+          "steps": 781,
+          "loss": 0.36377907106497837,
+          "seconds": 524.1
+        },
+        {
+          "windows": 600000,
+          "steps": 781,
+          "loss": 0.3636725805556728,
+          "seconds": 570.7
+        }
+      ],
+      "windows": 600000,
+      "val": {
+        "windows": {
+          "drone": 2648,
+          "background": 1565,
+          "sessions": 4
+        },
+        "own": {
+          "0.05": {
+            "threshold": 0.5771281123161317,
+            "by_range": {
+              "all": {
+                "windows": 2648,
+                "sessions": 4,
+                "recall": 0.790785498489426
+              },
+              "0-50 m": {
+                "windows": 2436,
+                "sessions": 4,
+                "recall": 0.8206075533661741
+              },
+              "50-100 m": {
+                "windows": 115,
+                "sessions": 3,
+                "recall": 0.808695652173913
+              },
+              "100-150 m": {
+                "windows": 97,
+                "sessions": 1,
+                "recall": 0.020618556701030927
+              },
+              "100-200 m": {
+                "windows": 97,
+                "sessions": 1,
+                "recall": 0.020618556701030927
+              }
+            },
+            "recall_100_200_ci95": null,
+            "latency_100_200": {
+              "starts": 48,
+              "median_s": 24.0,
+              "within_1s": 0.020833333333333332,
+              "within_2s": 0.041666666666666664,
+              "within_3s": 0.0625,
+              "within_5s": 0.10416666666666667,
+              "within_10s": 0.20833333333333334,
+              "never": 0.0
+            },
+            "latency_background": {
+              "starts": 781,
+              "median_s": 98.5,
+              "within_1s": 0.052496798975672214,
+              "within_2s": 0.08322663252240717,
+              "within_3s": 0.10115236875800256,
+              "within_5s": 0.12419974391805377,
+              "within_10s": 0.1677336747759283,
+              "never": 0.2023047375160051
+            },
+            "latency_150_300": {}
+          },
+          "0.10": {
+            "threshold": 0.46035718917846685,
+            "by_range": {
+              "all": {
+                "windows": 2648,
+                "sessions": 4,
+                "recall": 0.7983383685800605
+              },
+              "0-50 m": {
+                "windows": 2436,
+                "sessions": 4,
+                "recall": 0.827175697865353
+              },
+              "50-100 m": {
+                "windows": 115,
+                "sessions": 3,
+                "recall": 0.8434782608695652
+              },
+              "100-150 m": {
+                "windows": 97,
+                "sessions": 1,
+                "recall": 0.020618556701030927
+              },
+              "100-200 m": {
+                "windows": 97,
+                "sessions": 1,
+                "recall": 0.020618556701030927
+              }
+            },
+            "recall_100_200_ci95": null,
+            "latency_100_200": {
+              "starts": 48,
+              "median_s": 24.0,
+              "within_1s": 0.020833333333333332,
+              "within_2s": 0.041666666666666664,
+              "within_3s": 0.0625,
+              "within_5s": 0.10416666666666667,
+              "within_10s": 0.20833333333333334,
+              "never": 0.0
+            },
+            "latency_background": {
+              "starts": 781,
+              "median_s": 22.0,
+              "within_1s": 0.10243277848911651,
+              "within_2s": 0.1587708066581306,
+              "within_3s": 0.20102432778489115,
+              "within_5s": 0.2586427656850192,
+              "within_10s": 0.36107554417413573,
+              "never": 0.19206145966709348
+            },
+            "latency_150_300": {}
+          },
+          "0.20": {
+            "threshold": 0.35573726892471313,
+            "by_range": {
+              "all": {
+                "windows": 2648,
+                "sessions": 4,
+                "recall": 0.8123111782477341
+              },
+              "0-50 m": {
+                "windows": 2436,
+                "sessions": 4,
+                "recall": 0.8390804597701149
+              },
+              "50-100 m": {
+                "windows": 115,
+                "sessions": 3,
+                "recall": 0.8869565217391304
+              },
+              "100-150 m": {
+                "windows": 97,
+                "sessions": 1,
+                "recall": 0.05154639175257732
+              },
+              "100-200 m": {
+                "windows": 97,
+                "sessions": 1,
+                "recall": 0.05154639175257732
+              }
+            },
+            "recall_100_200_ci95": null,
+            "latency_100_200": {
+              "starts": 48,
+              "median_s": 11.75,
+              "within_1s": 0.0625,
+              "within_2s": 0.10416666666666667,
+              "within_3s": 0.14583333333333334,
+              "within_5s": 0.22916666666666666,
+              "within_10s": 0.4375,
+              "never": 0.0
+            },
+            "latency_background": {
+              "starts": 781,
+              "median_s": 4.5,
+              "within_1s": 0.19334186939820744,
+              "within_2s": 0.3201024327784891,
+              "within_3s": 0.40973111395646605,
+              "within_5s": 0.5224071702944942,
+              "within_10s": 0.6645326504481434,
+              "never": 0.08706786171574904
+            },
+            "latency_150_300": {}
+          }
+        },
+        "auc_session": {
+          "0-50 m": {
+            "auc": 0.8835686218962632,
+            "pos": 2436,
+            "neg": 1565,
+            "sessions": 4
+          },
+          "50-100 m": {
+            "auc": 0.9271831667663222,
+            "pos": 115,
+            "neg": 1527,
+            "sessions": 3
+          },
+          "100-150 m": {
+            "auc": 0.1713621881825897,
+            "pos": 97,
+            "neg": 1482,
+            "sessions": 1
+          },
+          "100-200 m": {
+            "auc": 0.1713621881825897,
+            "pos": 97,
+            "neg": 1482,
+            "sessions": 1
+          }
+        },
+        "deploy_fa": 0.05047923322683706,
+        "deploy": {
+          "threshold": 0.5771281123161317,
+          "by_range": {
+            "all": {
+              "windows": 2648,
+              "sessions": 4,
+              "recall": 0.790785498489426
+            },
+            "0-50 m": {
+              "windows": 2436,
+              "sessions": 4,
+              "recall": 0.8206075533661741
+            },
+            "50-100 m": {
+              "windows": 115,
+              "sessions": 3,
+              "recall": 0.808695652173913
+            },
+            "100-150 m": {
+              "windows": 97,
+              "sessions": 1,
+              "recall": 0.020618556701030927
+            },
+            "100-200 m": {
+              "windows": 97,
+              "sessions": 1,
+              "recall": 0.020618556701030927
+            }
+          },
+          "recall_100_200_ci95": null,
+          "latency_100_200": {
+            "starts": 48,
+            "median_s": 24.0,
+            "within_1s": 0.020833333333333332,
+            "within_2s": 0.041666666666666664,
+            "within_3s": 0.0625,
+            "within_5s": 0.10416666666666667,
+            "within_10s": 0.20833333333333334,
+            "never": 0.0
+          }
+        }
+      },
+      "confuser": {
+        "background_windows": 125,
+        "fa_deploy": 0.176,
+        "fa_own10": 0.328,
+        "recall_own10": {
+          "all": {
+            "windows": 1045,
+            "sessions": 1,
+            "recall": 0.43157894736842106
+          },
+          "0-50 m": {
+            "windows": 171,
+            "sessions": 1,
+            "recall": 0.6783625730994152
+          },
+          "50-100 m": {
+            "windows": 190,
+            "sessions": 1,
+            "recall": 0.5157894736842106
+          },
+          "100-150 m": {
+            "windows": 164,
+            "sessions": 1,
+            "recall": 0.25
+          },
+          "150-200 m": {
+            "windows": 62,
+            "sessions": 1,
+            "recall": 0.12903225806451613
+          },
+          "200-300 m": {
+            "windows": 272,
+            "sessions": 1,
+            "recall": 0.2757352941176471
+          },
+          "300-inf m": {
+            "windows": 186,
+            "sessions": 1,
+            "recall": 0.6075268817204301
+          },
+          "100-200 m": {
+            "windows": 226,
+            "sessions": 1,
+            "recall": 0.2168141592920354
+          }
+        }
+      },
+      "unseen": {
+        "lund": {
+          "windows": {
+            "drone": 7871,
+            "background": 0,
+            "sessions": 12
+          },
+          "deploy": {
+            "threshold": 0.5771281123161317,
+            "by_range": {
+              "all": {
+                "windows": 7871,
+                "sessions": 12,
+                "recall": 0.38317875746410873
+              },
+              "0-50 m": {
+                "windows": 1086,
+                "sessions": 9,
+                "recall": 0.930939226519337
+              },
+              "50-100 m": {
+                "windows": 1787,
+                "sessions": 12,
+                "recall": 0.6759932848349188
+              },
+              "100-150 m": {
+                "windows": 739,
+                "sessions": 11,
+                "recall": 0.4479025710419486
+              },
+              "150-200 m": {
+                "windows": 376,
+                "sessions": 8,
+                "recall": 0.3351063829787234
+              },
+              "200-300 m": {
+                "windows": 1060,
+                "sessions": 8,
+                "recall": 0.1311320754716981
+              },
+              "300-inf m": {
+                "windows": 2823,
+                "sessions": 8,
+                "recall": 0.07120085015940489
+              },
+              "100-200 m": {
+                "windows": 1115,
+                "sessions": 11,
+                "recall": 0.4098654708520179
+              }
+            },
+            "recall_100_200_ci95": [
+              0.2654428775598532,
+              0.5541014168530947
+            ],
+            "latency_100_200": {
+              "starts": 559,
+              "median_s": 2.0,
+              "within_1s": 0.41681574239713776,
+              "within_2s": 0.5384615384615384,
+              "within_3s": 0.6064400715563506,
+              "within_5s": 0.6833631484794276,
+              "within_10s": 0.813953488372093,
+              "never": 0.1037567084078712
+            }
+          }
+        }
+      },
+      "eval_seconds": 6.4
+    }
+  ]
+}

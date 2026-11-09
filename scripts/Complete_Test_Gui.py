@@ -79,7 +79,9 @@ SUBTITLES = {"real": "Real drone recordings mixed into chosen background layers 
 DEFAULT_LEVELS = {"war soundscape": ("60", "60", "1"), "war-shaped noise": ("50", "50", "1"), "wind": ("50", "50", "1"),
                   "wind (Pd)": ("50", "50", "1"), "cars": ("50", "50", "1"), "helicopter": ("", "", ""), "insects": ("", "", "")}
 COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it10 CNN": "#d93025",
-          "comb": "#1baf7a"}
+          "It9B": "#0b8a8a", "it16 CNN 600k s0": "#b8860b", "it16 CNN 600k s1": "#d4a72c",
+          "it16 CNN 600k s2": "#8a6d0b", "it16 CRNN 600k s0": "#c2185b", "it16 CRNN 600k s1": "#e5609a",
+          "it16 CRNN 600k s2": "#880e4f", "comb": "#1baf7a"}
 PD_CONTROLS = {"wind (Pd)": ("wind", (("speed_ms", "speed (m/s, assumed)", "quiet: 1  ·  storm: 25"),
                                       ("reso", "resonance (0-127)", "open field: 10  ·  city: 90"))),
                "cars": ("cars", (("speed_kmh", "speed (km/h)", "town: 50  ·  motorway: 130"),

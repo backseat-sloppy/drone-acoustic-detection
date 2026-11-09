@@ -62,7 +62,11 @@ MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file
           "it9 CNN": (ROOT / "artifacts/runs/final_dscnn.json", MODEL_DIR / "final_dscnn_none_simdist_dscnn.pt"),
           "it9 CRNN": (ROOT / "artifacts/runs/final_crnn.json", MODEL_DIR / "final_crnn_none_simdist_crnn.pt"),
           "it10 CNN": (ROOT / "artifacts/it10_clean/clean_s0.json", ROOT / "artifacts/it10_clean/clean_s0_dscnn.pt"),
-          "It9B": (ROOT / "artifacts/runs/It9B.json", MODEL_DIR / "It9B_none_simdist_crnn.pt")}   # report entry 160
+          "It9B": (ROOT / "artifacts/runs/It9B.json", MODEL_DIR / "It9B_none_simdist_crnn.pt"),   # report entry 160
+          # it9 recipe trained on 600,000 windows instead of 200,000, three seeds (report entries 156 and 168)
+          **{f"it16 {name} 600k s{s}": (ROOT / f"artifacts/runs/it16_600k_s{s}.json",
+                                        MODEL_DIR / f"it16_600k_s{s}_none_simdist_{arch}.pt")
+             for name, arch in (("CNN", "dscnn"), ("CRNN", "crnn")) for s in (0, 1, 2)}}
 OFF = float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
 NO_DRONE = 0.0                                               # drone "speed" of the no-drone row (war only)
 

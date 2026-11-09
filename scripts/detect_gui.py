@@ -16,6 +16,7 @@ threshold. Each uses the threshold its own run froze at 5% false alarms on valid
   it9 CRNN  artifacts/models/final_crnn_none_simdist_crnn.pt (report entry 096)
   it10 CNN  artifacts/it10_clean/clean_s0_dscnn.pt (seed 0, trained on synthetic drones only)
   It9B      artifacts/models/It9B_none_simdist_crnn.pt (it9 CRNN with drone windows weighted 2, entry 160)
+  it16 CNN/CRNN 600k s0-s2  artifacts/models/it16_600k_s*_none_simdist_{dscnn,crnn}.pt (600,000 training windows, entry 168)
 comb, when ticked, keeps model 6's frozen threshold whichever models are picked.
 
 War noise (optional): tick "add war noise" before opening files, pick its source and type one or
@@ -104,7 +105,9 @@ TEXT, GREY, RED = "#333333", "#777777", "#c0392b"
 NAMES = {"CNN": "CNN", "comb": "DSP (comb)"}                 # detector -> name in the stats window
 LIST_ROWS = 16                                               # files shown in the list at once
 MODELS = dwg.MODELS
-MODEL_COLORS = dict(zip(MODELS, ["#2a78d6", "#e8710a", "#9334e6", "#d93025", "#6b4e16", "#0b8a8a"]))
+MODEL_COLORS = dict(zip(MODELS, ["#2a78d6", "#e8710a", "#9334e6", "#d93025", "#0b8a8a", "#b8860b", "#d4a72c",
+                                 "#8a6d0b", "#c2185b", "#e5609a", "#880e4f", "#6b4e16"]))
+assert len(MODEL_COLORS) == len(MODELS), "add a colour for every model in drone_war_grid.MODELS"
 COMB_COLOR = dwg.COLORS["comb"]
 
 fig = plt.figure(figsize=(15, 9))

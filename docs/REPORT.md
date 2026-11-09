@@ -10769,3 +10769,37 @@ the real boxes (cars 40 dB also without, speed 50, distance 10 to 100 in 10 step
 rounds; the Car summary had the level with off, speed and distance; the Wind summary said it was not in the test, as the layer
 was unticked. With wind (Pd) ticked it had level, speed and resonance. The saved page was looked at. `uv run pytest` not run:
 no test imports this file.
+## 168 - The six 600k models of iteration 16 in the model lists and Complete_Test_Gui
+
+- Date: 2026-11-09
+- Iteration: 16 (follow-up)
+- Type: Infrastructure
+- Commit: this entry's commit, on top of 6bf9144
+
+**What changed.** At Mads's request, the `600k` arm of iteration 16 (the it9 recipe trained on
+600,000 windows instead of 200,000, 1 s window, threshold frozen at 5% false alarms on validation;
+entry 156) is available in every GUI as six models: `it16 CNN 600k s0/s1/s2` (DS-CNN, 22,530
+parameters) and `it16 CRNN 600k s0/s1/s2` (CRNN, 739,747 parameters). "600k" is the number of
+training windows, not of parameters.
+- Files: `artifacts/models/it16_600k_s{0,1,2}_none_simdist_{dscnn,crnn}.pt` and
+  `artifacts/runs/it16_600k_s{0,1,2}.json`, fetched from the server as one archive through Mads's
+  Chrome; all nine MD5 sums equal the server's. Run files are git-ignored, so they are added with
+  `git add -f`, as is `artifacts/runs/It9B.json`, which entry 162's push left out (without it the
+  "It9B" entry cannot find its threshold on another machine).
+- `scripts/drone_war_grid.py` MODELS (read by `Complete_Test_Gui` and `detect_gui`) and
+  `src/dad/live.py` PRESETS: the six names. `Complete_Test_Gui.COLORS`: a colour for each, and
+  It9B's again (lost in a later edit). `detect_gui.MODEL_COLORS`: six more colours, and an assert
+  that every model has one (its zip would otherwise drop models past the sixth and fail on lookup).
+
+**Not included: the 2 s + 600k models of iteration 17.** `Complete_Test_Gui` and its engine place
+every detector on one time axis of 1 s windows (`score_round`, `show_round`, `model_view`, the
+over-time conclusions). A 2 s network would be fed 1 s windows and score nonsense, or misalign.
+They need that time axis to follow each model's window first.
+
+**Checks.** All six load through `drone_war_grid._detectors`, every listed file exists, and
+`live.PRESETS` has the same names as `MODELS`. A headless `complete_test_engine.Test` with a
+synthetic drone at 100 km/h, the war soundscape at 90 dB SPL and a no-drone round ran all six
+next to it9 CRNN and It9B (8 s on the CPU); thresholds 0.429 / 0.534 / 0.481 (CNN s0-s2) and
+0.577 / 0.528 / 0.630 (CRNN s0-s2). That run only shows the models work in the engine; synthetic
+numbers are not detection performance. `.venv/Scripts/python -m pytest -q -p no:cacheprovider`:
+all pass. Not run: the GUIs themselves.

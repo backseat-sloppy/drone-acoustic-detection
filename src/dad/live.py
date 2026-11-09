@@ -49,6 +49,9 @@ PRESETS = {
     "it9 CRNN": ("artifacts/runs/final_crnn.json", "artifacts/models/final_crnn_none_simdist_crnn.pt"),
     "it10 CNN": ("artifacts/it10_clean/clean_s0.json", "artifacts/it10_clean/clean_s0_dscnn.pt"),
     "It9B": ("artifacts/runs/It9B.json", "artifacts/models/It9B_none_simdist_crnn.pt"),
+    **{f"it16 {name} 600k s{s}": (f"artifacts/runs/it16_600k_s{s}.json",
+                                  f"artifacts/models/it16_600k_s{s}_none_simdist_{arch}.pt")
+       for name, arch in (("CNN", "dscnn"), ("CRNN", "crnn")) for s in (0, 1, 2)},
 }
 COMB_RUN = "artifacts/runs/it6_final.json"     # comb keeps model 6's frozen threshold, as in detect_gui
 RESAMPLE_MARGIN_S = 0.05                       # extra input kept so the resampler's start-up falls outside the window
