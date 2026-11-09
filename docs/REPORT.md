@@ -10280,3 +10280,80 @@ sample 0.011 against a median step of 0.013. `war_gain.txt` unchanged.
 use as a fixed test background. The Pd patch stays as the live generator.
 
 **Next.** None.
+
+## 164 - Test 3: live detection from a microphone, with recorded sections and remote control
+
+- Date: 2026-11-09
+- Type: Infrastructure
+- Commit: 04a9bc3 (first version), b30de01 (the state described here), both by Mathias
+
+**What changed.** Mathias asked for capture from a microphone fed through the classification pipeline in real
+time, and places this work under test 3 (natural environment simulation, entry 149). `REQUIREMENTS.md` still
+lists test 3's specifications as awaited, so this entry describes tooling and is not judged against any target.
+
+- `src/dad/live.py`: microphone capture (`sounddevice`) into the same frontend as every other test: 16 kHz
+  mono, 1 s window, 0.125 s hop, 64 log-mel bands from 50 to 8000 Hz. Any device rate is resampled. A detector
+  is a preset ("it6 CNN", "it9 CNN", "it9 CRNN", "it10 CNN"; "It9B" was added later, entry 162), "comb", or a
+  `.pt` / `.pkl` checkpoint, with its threshold frozen on validation unless one is given. The default is the
+  it6 CNN and comb. Note that entry 150 made the it9 CRNN the default in `Complete_Test_Gui` only; the live
+  tools were not changed to match.
+- `scripts/live_gui.py`: a window with live scores and spectrogram. It opens idle; all settings are locked
+  while detecting. The folder for the WAV and CSV files is chosen in the window. A "CSV for Excel" option
+  writes numbers in a form Excel reads correctly (`--plain-csv` turns it off).
+- Sections, chosen before Start: every N seconds (default 20), on start/end calls, or none. Each section is
+  one WAV and one group of columns, side by side, in the session's single CSV.
+- `src/dad/live_control.py`: another program on the same computer starts and ends sections over TCP on
+  127.0.0.1 port 47800 (`start_section()`, `end_section()`, `status()`; `uv run dad section start|end|status`).
+  In this mode only what lies between a start and an end is saved; detection runs throughout. Each section has
+  its own time column (`t_in_section_s`), because a call does not fall on the hop grid.
+- Calls that succeed print a log line. `run_sections(length_s, gap_s, count)` and
+  `uv run dad section cycle --length L --gap G` repeat sections with a gap, timed on the detector's audio clock.
+  Stopping ends an open section; a refused call stops the repeating.
+- `scripts/live_control_gui.py`: Start section and End section buttons, a status banner, a call log and a
+  repeat row. While repeating, every control except "Stop repeating sections" is greyed out and ignores clicks
+  (added after Mathias found that the manual buttons and the repeating interfered). The lock is in this window
+  only: another script can still send calls, and if one ends the open section the repeating stops.
+
+**Why.** Test 3 is the first test with a real microphone and its noise and clipping (entry 150), and a script
+that runs the demo needs to mark what is saved.
+
+**How.**
+```powershell
+uv run python scripts/live_gui.py --device 2 --sections calls   # press Start in the window
+uv run python scripts/live_control_gui.py
+uv run dad section cycle --length 20 --gap 5
+uv run pytest
+```
+
+**Result.** These are checks of the software. **No detection performance was measured, and none is claimed.**
+- Live against replay: the scores of a live recording, against the same audio replayed, differed by at most
+  4.6e-07 (device 2, 16 kHz, 2 channels) and 4.7e-07 (device 15, 48 kHz, 2 channels), over 25 decisions each,
+  on the it6 CNN. Hop-by-hop windows are also tested against the offline `dad.wavio` stream (`tests/test_live.py`).
+- Sections on a real session (Test1, Mathias's microphone, 20 s sections): each section's WAV, rescored
+  offline, matched that section's it6 CNN column to within 6e-7. The session's columns were correct when
+  Mathias doubted them. A likely cause of how it looked is Excel: this Windows uses a decimal comma and the
+  CSV then used dots, which led to the Excel option above.
+- Repeating sections: 2 s length, 1 s gap, real `live_gui` replaying generated noise at 16 kHz, real
+  `live_control_gui` pressed with simulated mouse events, port 47911. Saved WAVs of 2.048 s and 2.048 s; the
+  third, stopped by hand mid-section, was 1.664 s in one run and 1.856 s in another. The gaps were 1.03 s in
+  the first run and 1.02 s in the second. Sections run about 48 ms long in this replay; on a microphone the
+  excess depends on the block size. Clicking Start section and End section while repeating sent no call. The
+  CSV held all three sections.
+- `uv run pytest`: 124 passed, before the greying-out change. That change is in the GUI only, which has no
+  automated tests; it was checked by the run above alone.
+- Long sessions, simulated rather than run (20 s sections, 6 h): 145 MB held in memory, CSV 8.5 MB with 8,641
+  columns, up to 0.42 s to rewrite it at the end of a section. Audio is calculated at 0.46 GB per hour at 16 kHz
+  stereo float (8.3 GB in 6 h at 48 kHz).
+
+Not verified: repeating sections with a real microphone, Ctrl+C in `dad section cycle`, closing the control
+window while repeating, and the "It9B" preset in the live tools (entry 162 did not run the GUIs). One test run
+early on produced two sessions from one Start; it did not come back in four reruns and its cause is unknown.
+Two risks in long runs have no guards, by Mathias's choice for now: Excel's limit of 16,384 columns, and
+Windows going to sleep.
+
+**Assessment.** The live chain runs and its scores equal the offline pipeline's on the recorded audio. Nothing
+here says how well a drone is detected in the speaker array. Scores on an uncalibrated microphone are hints,
+since no level calibration is applied.
+
+**Next.** The specifications of test 3 from Mathias, including which model it runs (the live tools still default
+to the it6 CNN, while It9B is now available as a preset) and how the demo is judged.
