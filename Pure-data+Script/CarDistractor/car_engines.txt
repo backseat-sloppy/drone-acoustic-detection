@@ -1,0 +1,6 @@
+../../data/processed/stems/distracter/idling/fsd50k_dev_369049.wav car_idle -12.55 -0.16 50715 110250 200
+../../data/processed/stems/distracter/idling/fsd50k_dev_369053.wav car_idle_loop -13.81 -0.16 282240 110250 200
+../../data/processed/stems/distracter/idling/fsd50k_dev_387676.wav car_engine_running_4 -5.53 -0.16 4410 110250 200
+../../data/processed/stems/distracter/idling/fsd50k_dev_387677.wav car_engine_running_3 -14.73 -0.16 319725 110250 200
+../../data/processed/stems/distracter/idling/fsd50k_dev_387679.wav car_engine_idle_running -2.30 -0.16 0 110250 200
+../../data/processed/stems/distracter/idling/fsd50k_dev_401552.wav car_engine_outside_idle -15.91 -0.16 11025 110250 200

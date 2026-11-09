@@ -8787,6 +8787,471 @@ distance it was really recorded at (ITU ARIS: up to ~2 km) are moved and scaled 
 reflection. Not tried by hand in the GUI (no clicks). Synthetic scaffolding (section 5): no number
 here is detection performance. The server needs this code committed and pulled before it can run
 modified plans.
+## 142 - Car distractor in Pure Data: real pass-bys, changed by a seed
+- Date: 2026-11-09
+- Iteration: 15 (tooling, outside the iteration's hypothesis)
+- Type: Data
+- Commit: uncommitted (on e4c7880)
+
+**What changed.** New patch `Pure-data+Script/CarDistractor/car_distractor.pd`. A seed picks one of
+the 30 FSD50K **dev** car pass-by stems in `data/processed/stems/distracter/car/` (list kept inside
+the patch in `[text define -k car-files]`) and three changes, each drawn from its own `[random]`
+seeded with seed*4+k:
+- playback rate 0.8-1.25 (log-uniform, `[line~]` into `[tabread4~]`): engine pitch and pass-by
+  duration change together, like a different car speed and gear;
+- gain -12..0 dB: distance;
+- one-pole low-pass `[lop~]` 2-12 kHz (log-uniform): air absorption at distance.
+The patch prints the clip and the three values for every seed. The three FSD50K eval car stems are
+not in the list, so the held-out rule (`docs/datasets.md`) holds.
+
+**Why.** Mads asked for a car distractor made from real audio and modified in Pure Data.
+
+**How.** In the GUI: open the patch and click a seed. Headless, one file per seed:
+`pd -nogui -nosound -r 44100 -open car_distractor.pd -send "car-batch 1" -send "car-rec symbol <abs path>.wav" -send "car-seed <n>"`
+(Pd 0.57). Real-time `-nosound`, not `-batch`: the patch records the clip plus 1 s, stops
+`writesf~`, waits 500 ms and quits, so the disk-thread race noted in `EnviromentTest/render.py`
+does not cut the file. Output mono 32-bit float, 44.1 kHz.
+
+**Result.** Seeds 1, 2 and 7 rendered and checked against their source stems (scratch script, not
+in the repo):
+
+| Seed | Clip (dev id) | Rate | Gain dB | Low-pass Hz | Length s (want) | RMS dBFS (source) | Low peak Hz (source x rate) |
+|---|---|---|---|---|---|---|---|
+| 1 | 425528 | 1.172 | -0.4 | 2284 | 9.53 (9.53) | -27.0 (-26.4) | 269 (265) |
+| 2 | 233470 | 0.913 | -7.1 | 5032 | 11.96 (11.96) | -35.4 (-28.1) | 178 (177) |
+| 7 | 245359 | 0.999 | -4.7 | 7240 | 11.01 (11.01) | -31.4 (-26.7) | 86 (86) |
+
+Lengths are exact, the strongest low-frequency peak moves by the rate, and the level falls by the
+drawn gain (plus a little from the low-pass). Same seed printed the same values on two runs.
+
+**Limits.** The source already holds its own Doppler and distance; the rate scales them rather than
+re-simulating the pass-by. No reverb, ground reflection or added background. Assumes Pd runs at
+44.1 kHz (the stems' rate). Not listened to in the GUI. No detector was scored on these files.
+
+**Next.** Use as distractor negatives when Mads asks; seeds for training and testing should be kept
+apart like the war-noise seeds.
+
+## 143 - Car distractor patch: new layout, same sound
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted (on e4c7880)
+
+**What changed.** `car_distractor.pd` (entry 142) laid out like `war_noise.pd`: three coloured
+panels (pick a car: seed buttons 1, 2, 7, 1001 and a seed number box; what the seed drew: clip
+name, speed, gain and low-pass read-outs; listen: audio on/off, a speaker-volume slider and a
+status read-out of ready/playing/done). All wiring moved into a `[pd engine]` subpatch, unchanged
+apart from the read-outs (`car-clip-name` via `[file splitname]`, `car-state`).
+
+**Why.** Mads asked for the patch to look good.
+
+**How.** Headless command unchanged (entry 142).
+
+**Result.** Seed 7 rendered with the new patch is sample-identical to entry 142's render (485632
+samples, max difference 0.0). The clip-name chain was tested in a scratch patch (prints the file
+name). The GUI layout itself was not inspected on screen by Claude.
+
+**Next.** None.
+
+## 144 - Car distractor rebuilt: a real car engine driven past the microphone (replaces 142's design)
+- Date: 2026-11-09
+- Iteration: 15 (tooling, outside the iteration's hypothesis)
+- Type: Data
+- Commit: uncommitted (on e4c7880)
+
+**What changed.** `Pure-data+Script/CarDistractor/car_distractor.pd` no longer replays FSD50K
+pass-by clips with random changes (entries 142, 143). It now synthesises a pass-by from a real,
+close-miked car engine with settings the user chooses:
+- Source: 8 FSD50K **dev** stems from `data/processed/stems/distracter/idling/` whose titles say car
+  engine and whose level is steady (SD of 0.5 s frame levels 0.2-1.5 dB): 369049, 369053, 387019,
+  387020 (Citroen 2CV), 387676, 387677, 387679, 401552. Dropped: 387670 (silent stretch, SD 17 dB),
+  401550 (inside the cabin) and stems that do not say car (generators, compressors, a lawnmower,
+  unnamed engines). Eval stems held out. Each is looped, with a 50 ms crossfade at the seam (two read
+  heads half a loop apart), and can be pitched 0.5-2x (engine revs).
+- Geometry: straight road, `r(t) = sqrt(d^2 + (v t)^2)`, closest approach at half the duration.
+  Settings: speed (km/h), closest distance d (m, at least 1), level at 1 m (dB SPL), duration (s).
+- Propagation, conventions of `dad.propagation` (10 C, 70 % RH): travel time r/c with c = 337.3 m/s
+  through a variable delay line (gives Doppler), 1/r spreading from the level at 1 m (stems are
+  -26 dBFS RMS), and air absorption as a one-pole low-pass fitted to ISO 9613-1 at 4 kHz
+  (0.0331 dB/m), updated every 20 ms.
+- Output: 1.0 in the WAV = 110 dB SPL, the project's convention. Mono 32-bit float, 44.1 kHz.
+- GUI: three panels (engine choice and pitch; pass-by settings and a DRIVE PAST button; audio,
+  speaker boost, status, live distance and dB SPL at the microphone). Wiring in `[pd engine]`.
+- After a clip is loaded, DRIVE PAST waits until the 6 s delay line is full (`[timer]`), so a
+  headless render does not start with r0/c seconds of silence (found in the first test render).
+
+**Why.** Mads (2026-11-09): only car sounds; speed, distance and level must be settable; synthetic
+distractors made from real audio. Mads chose close-miked engine recordings over cleaned pass-by
+clips (which carry their own Doppler and fade) and over a mix of both.
+
+**How.** GUI: open the patch, pick an engine, set the numbers, press DRIVE PAST. Headless (Pd 0.57,
+real-time `-nosound`; the patch quits 1.5 s after the pass ends):
+`pd -nogui -nosound -r 44100 -open car_distractor.pd -send "car-batch 1" -send "car-clip 2" -send "car-speed 60" -send "car-dist 20" -send "car-level 85" -send "car-dur 12" -send "car-rec symbol <abs path>.wav" -send "car-go bang"`
+(`car-clip` 0-7, `car-pitch` optional).
+
+**Result.** Three renders of engine 2 (2CV) at 85 dB SPL at 1 m, checked with scratch scripts:
+
+| Speed km/h | d m | T s | Length s (want) | SPL at closest (1/r only) | SPL first 0.5 s (1/r only) | Doppler, first/last 2 s (theory) |
+|---|---|---|---|---|---|---|
+| 60 | 20 | 12 | 13.00 (13) | 58.6 (59.0) | 44.3 (44.8) | 1.101 spectrum scale (1.104) |
+| 120 | 5 | 12 | 13.00 (13) | 68.5 (71.0) | 38.0 (39.0) | 1.218 on the 97 Hz line, 1.171 spectrum scale (1.219) |
+| 30 | 100 | 20 | 21.00 (21) | 44.4 (45.0) | 41.9 (42.7) | 1.013 spectrum scale (about 1.03 at the end angles) |
+
+Levels sit 0.4-2.5 dB under pure spreading, which is what air absorption and the 0.5 s averaging
+around a fast pass should take. Doppler matches where the measurement is clean; at 30 km/h the
+shift is small next to the engine's own variation.
+
+**Limits.** Engine sound only: no tyre or wind noise, which dominates a real car above about
+40-50 km/h, and the engine does not change revs during the pass. No ground reflection. Air
+absorption is a one-pole fit, close at 2-4 kHz, too weak above (7 dB instead of 12 at 8 kHz and
+100 m). Gain uses the distance at arrival, not at emission. Not listened to in the GUI by Claude.
+Synthetic scaffolding (section 5): no detection number comes from these files.
+
+**Next.** None until Mads asks. Tyre noise from the pass-by clips would be the next realism step.
+
+## 145 - Car distractor: the two Citroen 2CV engines removed
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on e4c7880)
+
+**What changed.** FSD50K dev 387019 and 387020 (Citroen 2CV idling) taken out of the engine list in
+`car_distractor.pd` (entry 144). Six engines remain, `car-clip` 0-5: 369049, 369053, 387676, 387677,
+387679, 401552. The selector has six cells.
+
+**Why.** Mads did not like how the 2CV sounds.
+
+**Result.** The patch loads and renders (engine 5 = 401552, 80 km/h, 30 m, 90 dB SPL at 1 m, 10 s:
+11.0 s file, no errors). Entry 144's verification table used engine 2, which was the 2CV; the
+geometry, level and Doppler code is unchanged, so those checks still describe the patch, but they
+were not repeated on the remaining engines.
+
+## 146 - Car distractor: tyre/road noise, ground reflection, gears, exact air absorption
+- Date: 2026-11-09
+- Iteration: 15 (tooling, outside the iteration's hypothesis)
+- Type: Data
+- Commit: uncommitted (on e4c7880)
+
+**What changed.** Four additions to `Pure-data+Script/CarDistractor/car_distractor.pd` (entries 144,
+145), plus a new abstraction `car_path.pd` and `make_tables.py`:
+1. **Tyre/road noise.** White noise through an FFT shaper (1024, 4x overlap, as `war_noise.pd`) with
+   gain table `car_tyre_gain.txt`: the mean power spectrum of the loudest 1 s (closest approach) of
+   four real dry-road single-car FSD50K dev pass-bys (425492 BMW 114i fast, 425865 VW Golf II diesel
+   fast, 425868 VW Golf V fast, 425381 Audi A4 70 km/h), 1/3-octave smoothed. Below 400 Hz the
+   average is dominated by the recorded cars' engines and wind (raw peak 86 Hz), which our engine
+   source already covers, so it is rolled off at 12 dB/octave; the shape then peaks at 1034 Hz.
+   Level at 1 m = engine level + 30 log10(v / 45 km/h) + a road/tyre offset (default 0): tyres equal
+   the engine at 45 km/h and rise 30 dB per decade of speed. The crossover speed and slope are
+   assumptions from the tyre/road-noise literature, not fitted here; the offset is the knob.
+2. **Ground reflection.** Each source has a direct path and a road-reflected path (image source),
+   each with its own delay line read (Doppler) and 1/r: engine at 0.3 m, tyres at 0.01 m (Harmonoise
+   source heights), microphone height settable (default 1.5 m), reflection coefficient settable
+   (default 0.9, asphalt). In `car_path.pd`, used twice.
+3. **Revs follow speed.** Highest of five gears that gives at least 1300 rpm, rpm per km/h 110, 65,
+   42, 31, 24, clamped to 800-6000 rpm. The recordings are taken as 800 rpm, so pitch = rpm / 800 times
+   a user multiplier (default 1). The gear ratios are typical values, not a measured car.
+4. **Air absorption.** The one-pole fit is replaced by a per-bin FFT filter: gain
+   10^(-alpha(f) r / 20) with alpha from `dad.propagation` (ISO 9613-1, 10 C, 70 % RH) in
+   `car_alpha.txt`, r = the horizontal distance, updated every 20 ms.
+The GUI gained the tyre offset, tyre level, microphone height, ground reflection, gear and rpm.
+The patch file was generated from a scratch builder script (not in the repo); the `.pd` files are
+the source from now on.
+
+**Why.** Mads (2026-11-09): the car distractor needs to be more realistic; he chose all four of
+the gaps entry 144 listed (tyre noise, ground reflection, revs with speed, stronger absorption).
+
+**How.** Tables: `uv run python Pure-data+Script/CarDistractor/make_tables.py`. Headless render as
+entry 144, with the extra settings `car-tyre-db`, `car-mic-h`, `car-ground`, `car-revs`.
+
+**Result.** Seven 4 s renders (engine 3 = 387677), each checking one part, 0.6 s around the moment
+the closest approach is heard (scratch scripts):
+
+| Check | Setting | Measured | Expected |
+|---|---|---|---|
+| engine level | 85 dB at 1 m, 10 m, no tyres, no reflection | 67.0 dB SPL | 65.0 (1/r); 387677 varies -28.8 to -22.3 dBFS over time |
+| tyre level | 88.75 dB at 1 m (45 + 3.75 + 40), 10 m | 68.6 dB SPL | 68.7 |
+| ground reflection, 100-400 Hz | engine 0.3 m, mic 1.5 m, d 10 m, coefficient 1 vs 0 | +5.9 dB | +5.9 (path difference 8.9 cm) |
+| ground reflection, 1700-2100 Hz | same | -13.9 dB | -13.9 (first notch 1896 Hz) |
+| ground reflection, 5400-6000 Hz | same | -10.9 dB | -10.9 |
+| air absorption 1 / 4 / 8 kHz | 200 m vs 20 m, spreading removed | -0.7 / -5.9 / -20.6 dB | -0.7 / -5.9 / -21.3 (ISO 9613-1) |
+| gears | 10 and 50 km/h | pitch 1.375 (1st, 1100 rpm), 1.9375 (4th, 1550 rpm) printed by the patch | model |
+
+The gear pitch was read from the patch, not measured in the audio: a spectral-scale measurement
+between the two renders gave 1.171 against 1.409, confounded by Doppler inside the 2 s window and by
+387677's own variation; one clean line agrees (67.3 Hz x 1.375 = 92.5 Hz, measured 91.5 Hz). Loop
+playback at a set rate was verified in entry 144.
+
+**Limits.** Tyre noise is shaped noise with a real spectrum, not a recording, and its spectrum does
+not move with speed. Engine loudness does not rise with rpm or load. No gear changes during a pass.
+Absorption uses the horizontal distance, the same for both paths. Reflection coefficient is
+frequency independent. Not listened to in the GUI by Claude. Synthetic scaffolding (section 5).
+
+**Next.** None until Mads has listened.
+
+## 147 - Car distractor: default level 85 -> 77 dB SPL at 1 m (was about 8 dB too loud)
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Correction
+- Commit: uncommitted (on e4c7880)
+
+**What changed.** The default engine level at 1 m in `car_distractor.pd` (entry 146) is 77 dB SPL
+instead of 85. Tyre level follows it (entry 146), so the whole car is 8 dB quieter. Nothing else.
+
+**Why.** Mads: a car 100 m away sounds a bit loud. Measured with the defaults (engine 3 = 387677,
+mic 1.2 m at 7.5 m and 1.5 m at 100 m, reflection 0.9, max over 0.25 s windows, scratch script), the
+85 dB default gave 74.4 dB(A) at 50 km/h and 7.5 m and 80.3 dB(A) at 80 km/h, against roughly
+66-68 and 72-74 dB(A) for a passenger car at steady speed at 7.5 m (the EU type-approval limit,
+an accelerating test, is 68-72 dB(A) depending on phase). These reference figures are typical
+values, not measured in this project. The fall from 7.5 m to 100 m was -22.3 dB, the 1/r law, so
+the excess was in the source level, not the distance model.
+
+**Result.** Same renders with 77 dB:
+
+| Pass-by | LAmax before | LAmax after |
+|---|---|---|
+| 50 km/h, 7.5 m | 74.4 | 66.4 |
+| 50 km/h, 7.5 m, no tyres | 74.5 | 66.5 |
+| 80 km/h, 7.5 m | 80.3 | 72.3 |
+| 50 km/h, 100 m | 52.1 | 44.1 |
+
+The "no tyres" row (tyre offset -100) is equal to the default at 50 km/h within 0.1 dB, so the
+engine dominates the A-weighted maximum there; tyre noise takes over above the 45 km/h crossover.
+
+**Limits.** No ISO 9613-2 ground attenuation over soft ground, which would take a few more dB off
+mid frequencies at 100 m; the reflection coefficient is frequency independent. Not listened to by
+Claude.
+
+## 148 - Car distractor: ISO 9613-2 ground attenuation over soft ground
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on e4c7880)
+
+**What changed.** `car_distractor.pd` (entry 147) adds the ISO 9613-2 ground attenuation Agr as the
+*excess of soft over hard ground*, so it does not double-count the explicit road reflection
+(entry 146), which already is the hard-ground case. Per octave band b (125 Hz ... 8 kHz):
+`dA_b = G * (k_b(hr, dp) + 3q)`, with k_b = ISO's a'(h), b'(h), c'(h), d'(h) for 125-1000 Hz and 1.5
+for 2-8 kHz, q = max(0, 1 - 30 (hs + hr) / dp), hs = 0.3 m, hr = the microphone height, dp = the
+horizontal distance; 63 Hz has no excess term. The source region is taken as hard (the road), as
+ISO 9613-2 does for road traffic; G (new GUI field "ground softness", default 1 = grass) applies to
+the middle and receiver regions. The band values are computed every 20 ms and spread over the FFT
+bins with weights linear in log2(f) between band centres (`car_gw*.txt`, from `make_tables.py`),
+then added to the air absorption in the same FFT filter.
+
+**Why.** Mads (2026-11-09): add it, after entry 147 named soft-ground attenuation as the missing
+loss for distant cars.
+
+**Result.** Engine 3 (387677), defaults otherwise, 1 s around the closest approach:
+
+| Band | 125 | 250 | 500 | 1k | 2k | 4k Hz |
+|---|---|---|---|---|---|---|
+| soft minus hard, 10 km/h at 100 m, mic 1.5 m (measured, 1/6 octave at centre) | 3.30 | 8.50 | 7.06 | 3.53 | 2.89 | 2.88 dB |
+| ISO 9613-2 formula | 3.60 | 8.95 | 7.18 | 3.45 | 2.88 | 2.88 dB |
+
+| Pass-by, 50 km/h | hard (G 0) LAmax | grass (G 1) LAmax |
+|---|---|---|
+| 7.5 m, mic 1.2 m | 66.4 | 64.7 |
+| 100 m, mic 1.5 m | 44.1 | 40.4 |
+
+Hard-ground values equal entry 147's, so G = 0 leaves the model as it was.
+
+**Limits.** ISO 9613-2 is an octave-band, downwind (moderate inversion) method; it is not a
+spherical-wave impedance model, so the ground dip does not move with the grazing angle in fine
+detail. One source height (0.3 m) for engine and tyres in this term. Not listened to by Claude.
+
+## 149 - Correction to entry 147: the "no tyres" row was a different engine
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Correction
+- Commit: uncommitted (on e4c7880)
+
+Entry 147's row "50 km/h, 7.5 m, no tyres" (74.5 and 66.5 dB(A)) and its conclusion that the engine
+dominates the A-weighted maximum at 50 km/h are wrong. The render script's fifth argument was the
+engine number, not the tyre offset, so that row was engine 0 with tyres on. Measured properly
+(entry 150's first renders, engine 3, 50 km/h, 7.5 m, grass, 77 dB at 1 m, offset 0): engine alone
+48.8 dB(A), tyres about 64.5 dB(A). The tyres dominated by about 16 dB(A). Entry 147's level change
+(85 to 77 dB) was therefore driven by the tyre noise; its totals are measured correctly.
+
+## 150 - Car distractor: engine and tyres balanced in dB(A)
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on e4c7880)
+
+**What changed.** In `car_distractor.pd` (entry 148) the level knob is now the engine's level at
+1 m in **dB(A)**, and the tyres equal the engine in dB(A) at 45 km/h (entry 146 had them equal in
+unweighted dB). `make_tables.py` writes `car_engines.txt` (path, title, engine A-correction, tyre
+A-correction), which the patch reads at load instead of a list stored in the patch. The engine
+A-correction is the clip's dB(A) minus dB when played at its 45 km/h pitch (4th gear, 1395 rpm,
+x1.744): 369049 -11.10, 369053 -11.31, 387676 -5.23, 387677 -10.42, 387679 -2.16, 401552 -14.89 dB.
+The tyre noise's is -0.16 dB. Engine gain = 10^((knob - engine corr - 84)/20) (stems -26 dBFS);
+tyre gain = 10^((tyre dB(A) - tyre corr - 105)/20) (shaped noise -5 dBFS). Default knob 77, offset 0.
+
+**Why.** Mads: "the wind is a little bit too much". The patch has no wind; the steady broadband
+tyre noise is what sounds like wind. Measured with the old balance (engine 3, 50 km/h, 7.5 m,
+grass, offset 0) it was about 16 dB(A) above the engine (entry 149): equal in unweighted dB still
+means the low-frequency engine is 10-15 dB quieter to the ear than the 1 kHz tyre noise. A first
+attempt that only lowered the default tyre offset to -6 dB was replaced by this before it was
+reported.
+
+**Result.** LAmax at 7.5 m, mic 1.2 m, grass, knob 77 dB(A), offset 0; tyres = total minus engine
+alone (tyre offset -100):
+
+| Engine, speed | Total | Engine alone | Tyres | Tyres minus engine (model at the source) |
+|---|---|---|---|---|
+| 3, 50 km/h | 65.7 | 59.2 | 64.7 | +5.5 (+1.4) |
+| 3, 80 km/h | 71.4 | 63.3 | 70.6 | +7.3 (+7.5) |
+| 5, 50 km/h | 66.6 | 62.1 | 64.6 | +2.5 (+1.4) |
+
+The engine-to-tyre gap fell from about 16 to 2.5-5.5 dB(A) at 50 km/h. Totals stay in the typical
+range for a passenger car at steady speed at 7.5 m (entry 147), so the default level is kept. The
+remaining gap at 50 km/h beyond the model comes from the different source heights in the ground
+reflection (tyres at 0.01 m reflect coherently, the engine at 0.3 m has a notch near 2 kHz) and the
+engine recording's own level changes.
+
+**Limits.** One A-correction per engine, taken at the 45 km/h pitch; at other speeds the engine's
+A-weighted level drifts with pitch (louder with revs, which is roughly right). The 45 km/h
+crossover remains an assumption. Not listened to by Claude.
+
+## 151 - Car distractor: ISO 9613-2 meteorological correction (Cmet)
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on e4c7880)
+
+**What changed.** `car_distractor.pd` (entry 150) subtracts the ISO 9613-2 meteorological
+correction from every frequency: `Cmet = C0 * max(0, 1 - 10 (hs + hr) / dp)`, hs = 0.3 m,
+hr = microphone height, dp = horizontal distance, updated every 20 ms in the same FFT filter as air
+and ground. New GUI field "weather C0 dB" (0-5, default 3).
+
+**Why.** Mads: the engine is still too loud away from the microphone. Measured first (engine 3,
+50 km/h, mic 1.5 m, grass, 1 s at the closest approach): engine 57.7 / 48.0 / 35.9 dB(A) at 7.5 /
+30 / 100 m, -21.8 dB from 7.5 to 100 m against -22.5 for 1/r; tyres 64.0 / 52.6 / 40.1 dB(A). The
+distance model was behaving as designed; the engine's share rises from 19 to 27 % with distance
+because ground and air take the tyres' mid and high frequencies, and nothing masks the low rumble.
+Options put to Mads: Cmet, an extra non-physical engine loss, a lower engine, or no change. Mads
+chose Cmet.
+
+**Result.** Engine 3, 10 km/h, mic 1.5 m, C0 3 against C0 0, 1 s at the closest approach:
+7.5 m: 0.00 dB in every band (inside 10 (hs + hr) = 18 m, as ISO); 100 m: 2.46 dB broadband, in
+63-250 Hz and in 1-4 kHz, ISO value 2.46 dB.
+
+**Limits.** Cmet is a long-term average for annual weather statistics, applied here as a fixed loss;
+C0 = 3 dB is a typical choice, not a measured value for any site. It lowers the far car as a whole,
+so the engine's share of a far car does not change. Not listened to by Claude.
+
+## 152 - Car distractor: simpler front panel, detailed settings in a separate window
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted (on e4c7880)
+
+**What changed.** The front of `car_distractor.pd` (entry 151) now shows only the engine choice,
+speed, closest distance, loudness (dB(A) at 1 m), duration, DRIVE PAST and the listen panel (sound
+on/off, speaker volume, status, distance, dB SPL at the microphone). Tyre offset and tyre level,
+microphone height, road reflection, ground softness, weather C0, revs, gear and rpm moved into a
+`[pd more-settings]` window with one-line explanations and a click-to-reset-defaults message. The
+send/receive names are unchanged, so headless renders take the same `-send` messages.
+
+**Why.** Mads: too many knobs; simpler, with the same functions.
+
+**Result.** The engine subpatch is unchanged except its position. The example render (engine 3,
+70 km/h, 15 m, 12 s, other settings default) is sample-identical to the one from entry 151
+(595328 samples, max difference 0.0). The GUI layout was not inspected on screen by Claude.
+
+## 153 - Car distractor against real pass-bys: spectrograms, spectra and level curves
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Evaluation
+- Commit: uncommitted (on f64eedf)
+
+**What changed.** New `Pure-data+Script/CarDistractor/compare_real.py` and its figure
+`car_vs_real.png`. Four real FSD50K dev pass-bys whose titles give the speed (425650 Kangoo 30 km/h,
+425649 Kangoo 40 km/h, 425381 Audi A4 70 km/h, 425505 BMW 120 km/h on a wet road) against
+`car_distractor.pd` (entry 152) at the same speed, engine 3 (387677), defaults otherwise. The closest
+distance of each real clip is estimated from its A-weighted level: a point source is within 3 dB of
+its peak for 2 d / v seconds, giving 5.8, 4.1, 10.7 and 9.6 m. 425381 is one of the four clips the
+tyre spectrum was averaged from (entry 146), so its spectrum comparison is not independent.
+
+**Why.** Mads asked to compare spectrograms of real cars passing by with the Pd sound.
+
+**How.** `uv run python Pure-data+Script/CarDistractor/compare_real.py` (renders with Pd 0.57).
+
+**Result.** 10 s around the loudest moment; spectrum = 1 s at the loudest moment, as a share of
+power; level = A-weighted, 0.2 s smoothing:
+
+| Clip | d est. m | -3 dB width s, real / Pd | centroid Hz, real / Pd | power share below 200 Hz, real / Pd | level 2 s from peak dB, real / Pd |
+|---|---|---|---|---|---|
+| 425650, 30 km/h | 5.8 | 1.40 / 1.44 | 583 / 207 | 0.25 / 0.85 | -9.6 / -7.7 |
+| 425649, 40 km/h | 4.1 | 0.74 / 0.72 | 643 / 297 | 0.21 / 0.82 | -15.1 / -16.4 |
+| 425381, 70 km/h | 10.7 | 1.10 / 1.04 | 901 / 505 | 0.08 / 0.62 | -12.3 / -13.9 |
+| 425505, 120 km/h | 9.6 | 0.57 / 0.63 | 1042 / 1012 | 0.29 / 0.09 | -18.3 / -20.1 |
+
+What agrees: the level curve over time (within about 2 dB out to +-2 s; the -3 dB width matches by
+construction, the rest does not), the Doppler crossing at the closest moment, and the spectrum above
+about 1 kHz at 40, 70 and 120 km/h.
+
+What does not:
+1. **Too much low frequency below about 250 Hz up to 70 km/h.** 62-85 % of the Pd car's power is
+   below 200 Hz against 8-25 % in the real cars, and 300 Hz-1 kHz is 5-10 dB short at 30 and 40 km/h.
+   The engine recording is bass-heavy, and the dB(A) balance of entry 150 set its unweighted level
+   10 dB above its dB(A) level. Part of the real clips' low-frequency deficit may be their recording
+   chain (shotgun microphones); not separated here.
+2. **Engine lines too strong and stepping.** The Pd spectrogram has a few strong harmonic lines that
+   jump in pitch every 1-3 s. The jumps are the loop crossfade moving between parts of 387677 that
+   run at slightly different revs. The real cars show weaker, smoother lines over more broadband
+   sound.
+3. **Symmetric at 120 km/h.** The real wet-road car stays 5-8 dB louder after it passes (spray and
+   rear-directed tyre noise); the Pd car fades the same way on both sides.
+4. **Less above 5 kHz at 30 and 120 km/h** (5-8 dB), consistent with no spray or wind noise.
+
+**Assessment.** Distance, timing and Doppler behave like real pass-bys; the spectrum is the weak
+part, mostly the engine. Four clips, one engine; distances are estimates. Synthetic scaffolding.
+
+**Next.** For Mads to decide: the low end and the stepping engine lines are the largest gaps.
+
+## 154 - Car distractor: steady engine loop and engine high-pass, checked on the held-out pass-bys
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on f64eedf)
+
+**What changed.** Two fixes for the gaps entry 153 found, in `make_tables.py` and
+`car_distractor.pd`:
+1. **Steady loop.** Each engine now loops only its steadiest 2.5 s: the window with the least drift
+   of the 30-300 Hz spectral centroid (a pitch proxy) and of level. `soundfiler` reads just that
+   part (`read -skip <start> -resize -maxsize <length>`; Pd prints "truncated to 110250 elements",
+   which is expected). Pitch drift of the centroid, whole clip -> loop: 369049 6.4 -> 4.7 %, 369053
+   6.5 -> 5.2 %, 387676 9.5 -> 7.7 %, 387677 10.5 -> 1.8 %, 387679 8.7 -> 5.7 %, 401552 3.7 -> 2.6 %.
+2. **Engine high-pass.** Two one-pole high-passes (`hip~`) at 200 Hz on the engine, before
+   propagation. The engine A-correction in `car_engines.txt` now includes the filter and the loop
+   segment's level relative to -26 dBFS, so the knob still means the engine's dB(A) at 1 m.
+   `car_engines.txt` gains three columns: loop start, loop length (samples), cutoff (Hz).
+
+**How the cutoff was chosen (not on the test clips).** Target = power share below 200 Hz in the
+loudest 1 s of six other single-car dev pass-bys: 425503 0.28, 425527 0.29, 237336 0.08, 237339
+0.08, 3184 0.32, 429176 0.99 (rumble, likely wind; treated as an outlier); target 0.25. Pd at
+40 km/h, 6 m, engines 0 and 3, two hip~ at 100 / 200 / 300 / 400 Hz: share 0.61-0.67 /
+0.24-0.34 / 0.09-0.15 / 0.05-0.07. 200 Hz chosen.
+
+**Result.** `compare_real.py` on entry 153's four held-out clips (same estimated distances):
+
+| Clip | centroid Hz real / Pd before / Pd now | share below 200 Hz real / before / now | level 2 s from peak dB real / now |
+|---|---|---|---|
+| 425650, 30 km/h | 583 / 207 / 611 | 0.25 / 0.85 / 0.47 | -9.6 / -8.7 |
+| 425649, 40 km/h | 643 / 297 / 780 | 0.21 / 0.82 / 0.33 | -15.1 / -14.2 |
+| 425381, 70 km/h * | 901 / 505 / 998 | 0.08 / 0.62 / 0.15 | -12.3 / -13.2 |
+| 425505, 120 km/h | 1042 / 1012 / 1111 | 0.29 / 0.09 / 0.10 | -18.3 / -20.1 |
+
+(* also in the tyre-spectrum average.) In the figure the Pd spectra now lie on the real ones from
+about 300 Hz to 10 kHz at 30, 40 and 70 km/h, and the engine lines no longer jump in pitch.
+
+**Remaining gaps.** Bass is still 0.07-0.22 above the real share at 30-70 km/h; engine lines are
+steadier but still more prominent than in the real cars; at 120 km/h the real wet-road car has more
+below 150 Hz and stays louder after it passes (entry 153, items 3-4), unchanged.
+
+**Limits.** Four test clips, one engine (3), distances estimated. The steadiness score is a centroid
+proxy, not a pitch tracker. Not listened to by Claude.
 
 ## 142 - Conclusions: "confidence over time" per speed for modified drone tests
 
