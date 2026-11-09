@@ -25,7 +25,9 @@ window-length sweep without changes.
 
 from __future__ import annotations
 
+import functools
 import math
+from typing import Callable
 
 import torch
 import torch.nn as nn
@@ -155,11 +157,15 @@ class SpecTransformer(nn.Module):
         return self.head(self.norm(self.encoder(x)[:, 0]))
 
 
-ARCHITECTURES: dict[str, type[nn.Module]] = {
+ARCHITECTURES: dict[str, Callable[..., nn.Module]] = {
     "dscnn": DsCnn,
     "resnet": ResNetSmall,
     "crnn": Crnn,
     "transformer": SpecTransformer,
+    # Wider and deeper versions of the it9 CNN and CRNN (iteration 16). No "_" in the
+    # names: wavio.threshold_from_run reads the architecture after the last "_".
+    "dscnnwide": functools.partial(DsCnn, channels=128, n_blocks=6),
+    "crnnwide": functools.partial(Crnn, channels=(64, 128, 256), hidden=192),
 }
 
 

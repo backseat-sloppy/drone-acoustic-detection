@@ -104,3 +104,15 @@ def test_netscorer_trains_and_scores_through_the_torch_frontend():
     assert net.mu.shape == (cfg.n_mfcc, 1)
     s = net.score(_audio(5, 4)[:, :N_OUT])
     assert s.shape == (5,) and np.all((s >= 0) & (s <= 1))
+
+
+def test_pos_weight_raises_the_drone_score():
+    # It9B (entry 160): weighting drone windows in the loss lifts every score on the same audio.
+    cfg, x = CFGS["mfe"], _audio(16, 4)[:, :N_OUT]
+    scores = {}
+    for w in (1.0, 4.0):
+        net = rr.NetScorer("dscnn", rr.VARIANTS["buried"], cfg, "cpu")
+        net.torch_frontend = True
+        net.fit(_RawSampler(cfg), n_windows=256, batch_size=16, workers=1, log=lambda s: None, pos_weight=w)
+        scores[w] = net.score(x).mean()
+    assert scores[4.0] > scores[1.0]

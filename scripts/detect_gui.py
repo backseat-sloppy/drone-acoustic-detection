@@ -10,11 +10,12 @@ score reaches the model's frozen threshold. Nothing else is set: no sliders.
 Detectors: the tick boxes at the bottom left pick the networks and comb ("DSP (comb)", last) that
 run, any one or more, for the next batch opened. Each ticked model gets its own column in the list (with more than one, a
 compact "38%*" column, * = alarmed) and its own colour in the graphs, with its own dashed
-threshold. Each uses the threshold its own run froze at 5% false alarms on validation:
+threshold. Each uses the threshold its own run froze at 5% false alarms on validation (It9B: 10%):
   it6 CNN   artifacts/models/it6_final_none_simdist_dscnn.pt (model 6, as scripts/drone_war_gui.py)
   it9 CNN   artifacts/models/final_dscnn_none_simdist_dscnn.pt (report entry 096)
   it9 CRNN  artifacts/models/final_crnn_none_simdist_crnn.pt (report entry 096)
   it10 CNN  artifacts/it10_clean/clean_s0_dscnn.pt (seed 0, trained on synthetic drones only)
+  It9B      artifacts/models/It9B_none_simdist_crnn.pt (it9 CRNN with drone windows weighted 2, entry 160)
 comb, when ticked, keeps model 6's frozen threshold whichever models are picked.
 
 War noise (optional): tick "add war noise" before opening files, pick its source and type one or

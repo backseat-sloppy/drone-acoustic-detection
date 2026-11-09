@@ -32,6 +32,9 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 13 | 127 to 128 | Frozen PANNs Cnn14_16k embedding plus logistic regression (entry 053's modified B) | Training-data levers ran out: every CRNN recipe reaches about the same separation (entry 127) | **Failed** (entry 053's rule). Mower false alarms 46% (> 40%); Lund recall 0.545 (CRNN 0.342), but suite AUC 0.84 against the CRNN's 0.93, brown noise 100%; fusing with the CRNN does not help. Folds: mean 0.466 against 0.527 (entry 130). |
 | Iteration 14 | 129 to 130 | Cnn14_16k fine-tuned end to end (LP-FT), after a council (entry 129) | The frozen embedding underfits (training accuracy 0.81) | **Failed at its go/no-go** (seed 0): validation recall at 10% FA 0.594 (gate 0.768), Lund 0.000 (gate 0.30). One untuned setup. The it9 CRNN stays the best model. |
 | Iteration 15 | 132 to 133 | Decision stage on the it9 CRNN, no training: a causal 1 s median, and the mean of several networks; a new war-coupling readout (score of drone + war minus drone alone) through `Complete_Test_Gui`'s engine | Mads saw war spikes lift the drone's score; iterations 11-14 changed the training data or the model without better separation | **Hypothesis rejected.** The war mostly *lowers* the CRNN's drone score (more than 0.1 on 37-51% of drone hops, lifts on 5-6%). A median leaves the coupling unchanged; averaging cuts it by 17-21% (30% required). Both CNNs separate drone-in-war better than the CRNN on this readout (AUC 0.91-0.92 against 0.86 at 65 dB SPL). |
+| Iteration 16 | 155 to 156 | it9 CNN and CRNN retrained four ways: 600k training windows, a 2 s window, wider networks, 128 mel bands on a 50 ms frame; three seeds against a re-run reference | Mads's request after the hyperparameter list; the training settings of the it9 networks were never varied | **The 2 s window wins for both networks**: Lund recall at the frozen threshold DS-CNN 0.409 to 0.518, CRNN 0.357 to 0.448, validation unchanged; costs 1 s of window fill (R5). 600k windows cut mower false alarms (CRNN 0.41 to 0.17) without passing the Lund rule. Wider networks and 128 mel bands: no gain. |
+| Iteration 17 | 157 to 158 | The 2 s window together with 600k training windows | The two levers of iteration 16 that helped act on different readouts | **Passes for the CRNN, fails for the DS-CNN.** CRNN Lund 0.462 (ref 0.357), mower false alarms 0.281 (ref 0.408), the best CRNN so far. The DS-CNN loses part of win2s's Lund gain (0.457 against 0.518); its best stays win2s. R5 for the 2 s window not checked yet. |
+| Iteration 18 | 159 to 161 | It9B: the it9 CRNN with drone windows weighted 2 in the loss, threshold at 10% false alarms | Mads wants higher confidence with a drone in the virtual tests, accepting worse separation; the requirements are now judged in confidence (entry 159) | **Hypothesis holds.** Mean score up on every window: drone +0.05 to +0.13, no drone +0.10 to +0.17 (mower alone 0.44 to 0.60); recall at matched false alarms unchanged (0.789 against 0.790). Added to the GUIs as "It9B"; war soundscape not measured yet. |
 
 ## Templates
 
@@ -9476,3 +9479,373 @@ split changed. Not decided: how close two models must be for the second priority
 
 **Next.** Test 1 set up in the complete test; the council on the evaluation protocol comes first
 (`CLAUDE.md` section 4).
+# Iteration 16 - More training, longer windows, wider networks, finer spectrogram
+
+> **Changed from iteration 15:** the training of the it9 CNN (DS-CNN) and it9 CRNN (entry 096),
+> in four variants, one change each, both networks every time:
+> `600k`: 600,000 training windows instead of 200,000 (`--windows`);
+> `win2s`: a 2 s analysis window instead of 1 s (`--window-seconds`);
+> `wide`: wider and deeper networks, `dscnnwide` (128 channels, 6 blocks, 113,922 parameters
+> against 22,530) and `crnnwide` (conv 64/128/256, GRU 192, 2,954,051 against 739,747);
+> `mel128`: 128 log-mel bands on a 50 ms STFT frame (n_fft 800, still a 10 ms stride) instead of
+> 64 on 25 ms. 128 bands on the 25 ms frame would leave 3 bands with no FFT bin and 35 with one,
+> so the finer bands only carry finer detail on a longer frame. That makes it two settings changed
+> together; they are one change in frequency resolution.
+> **Why:** Mads asked for it (2026-11-09) after the hyperparameter list. Iterations 11-14 changed
+> the training data or the model family without better separation (entry 127); the training
+> settings of the it9 networks were never varied. 200,000 windows at batch 64 are about 3,100
+> optimiser steps, few for a 740,000-parameter CRNN.
+> **Kept the same:** entry 096's protocol: every rig pooled, nothing held out (`--pool --arms
+> none`), recipe `simdist`, speed perturbation 0.8-1.25, AdamW at 2e-3 with OneCycle, weight decay
+> 1e-2, batch 64, SpecAugment as before, MFE frontend, threshold frozen at 5% false alarms on
+> validation, evaluation hop 0.5 s. A reference arm `ref` re-trains entry 096's exact settings on
+> the same seeds and code, so every variant is compared on equal terms.
+> **Hypothesis:** at least one variant separates drones better than the reference for the same
+> network, on the rig never trained on.
+> **Judged by (fixed in advance):** three seeds (0, 1, 2) per arm and network. Per arm the mean
+> over seeds of (a) Lund recall at the deployment threshold (Lund is never trained on) and (b)
+> validation recall at the deployment threshold (in-distribution). A variant **wins** for a network
+> when (a) is at least 5 points above that network's `ref` mean, (b) is not more than 2 points
+> below, and the false alarms on the mower-only audio at the deployment threshold are not more
+> than 5 points above `ref`. Baselines `comb` and `lgbm` are scored in the `ref` run (seed 0).
+> Lund has been read on many earlier candidates, so it is an unseen rig, not a sealed test set.
+> Per-window inference time is also reported, because Mads asked whether any variant makes the
+> model faster; the 2 s window also delays the first possible alarm by 1 s of window fill (R5).
+
+## 155 - Iteration 16 set-up: wide networks and a mel-band option in the runner
+
+- Date: 2026-11-09
+- Iteration: 16
+- Type: Model, Infrastructure
+- Commit: uncommitted (on top of 5dd0fd2)
+
+**What changed.**
+- `src/dad/models/zoo.py`: two registry entries, `dscnnwide` (`DsCnn` with `channels=128,
+  n_blocks=6`) and `crnnwide` (`Crnn` with `channels=(64, 128, 256), hidden=192`). No `_` in the
+  names, because `wavio.threshold_from_run` reads the architecture after the last `_` of a
+  checkpoint name. The checkpoints store the architecture name and the frontend, so
+  `wavio.load_scorer` loads them unchanged. They do not store the window length (as before): a
+  `win2s` checkpoint must be run with `--window 2`.
+- `scripts/run_range.py`: both names added to `NETS`, and `--n-mels` (default 64).
+
+**Why.** The `wide` and `mel128` arms of the iteration 16 box need them; the other two arms use
+existing flags.
+
+**How.** `.venv/Scripts/python -m pytest -q -p no:cacheprovider tests/test_models.py`: 23 pass
+(the test parametrises over every registry entry). Forward passes on 64 x 98, 64 x 200 and 128 x 98
+inputs give two logits for all four networks. Parameter counts: `dscnn` 22,530, `dscnnwide`
+113,922, `crnn` 739,747 (1,329,571 at 128 bands), `crnnwide` 2,954,051 (5,313,347 at 128 bands).
+Empty or single-bin mel filters, counted with `features.mel_filterbank`: 64 bands on n_fft 400:
+0 and 3; 128 on 400: 3 and 35; 128 on 512: 1 and 24; 128 on 800: 0 and 6.
+
+**Result.** No training yet.
+
+**Next.** The runs on the JupyterLab server, one GPU per seed (entry 156).
+
+## 156 - Iteration 16 result: the 2 s window wins for both networks; more training cuts mower alarms
+
+- Date: 2026-11-09
+- Iteration: 16
+- Type: Model, Tuning, Evaluation
+- Commit: uncommitted. Server clone `~/drone-acoustic-detection` on `master` at 00ee4e8 with entry 155's
+  patch applied (the training code at 00ee4e8 equals 5dd0fd2's; only `cli.py` and `live.py` differ),
+  plus `scripts/it16_judge.py`. File checksums match this PC's (`run_range.py` up to line endings).
+
+**What changed.** The ten arms of entry 155 (five arms x two networks), three seeds each, plus
+`comb` and `lgbm` in the seed-0 reference: 30 network trainings in all.
+
+**How.** On the JupyterLab server (3 x TITAN X), one GPU per seed, driven from a JupyterLab terminal
+in Mads's Chrome session:
+```
+setsid nohup bash scripts/it16_runs.sh S S > artifacts/runs/it16_sS.log 2>&1 &   # S = 0, 1, 2
+.venv/bin/python scripts/it16_judge.py | tee artifacts/runs/it16_judge.txt
+```
+Started 11:11, finished 12:19. Wall time per run file (both networks plus scoring): `ref` 436-531 s,
+`600k` 1,141-1,204 s, `win2s` 605-624 s, `wide` 689-694 s, `mel128` 516-521 s. No errors in
+the logs. Outputs on the server: `artifacts/runs/it16_<arm>_s<seed>.{json}`, the three logs,
+`it16_judge.txt`, and checkpoints `artifacts/models/it16_<arm>_s<seed>_none_simdist_<net>.pt`
+(not copied to this PC yet).
+
+**Result.** Conditions: every rig pooled, nothing held out; validation = 21 segments from the
+training rigs (in distribution); threshold frozen at 5% false alarms on validation (the `val_fa`
+column confirms 0.050 everywhere); evaluation hop 0.5 s. `val`: recall on all validation drone
+windows at that threshold. `val10`: validation recall at 10% false alarms. `lund`: recall on all
+Lund drone windows at that threshold (Lund is never trained on; it has no no-drone audio, so its
+false alarms are not measured). `mower`: share of mower-only windows alarmed at that threshold.
+Means over seeds 0-2.
+
+| Arm | Net | val | val10 | Lund | mower | Lund per seed |
+|---|---|---|---|---|---|---|
+| ref | comb | 0.305 | 0.307 | 0.022 | 0.248 | (seed 0 only) |
+| ref | lgbm | 0.702 | 0.750 | 0.023 | 0.168 | (seed 0 only) |
+| ref | DS-CNN | 0.785 | 0.801 | 0.409 | 0.237 | 0.508 / 0.368 / 0.351 |
+| ref | CRNN | 0.790 | 0.799 | 0.357 | 0.408 | 0.412 / 0.340 / 0.319 |
+| 600k | DS-CNN | 0.785 | 0.800 | 0.437 | 0.149 | 0.460 / 0.393 / 0.458 |
+| 600k | CRNN | 0.788 | 0.798 | 0.397 | 0.171 | 0.383 / 0.424 / 0.384 |
+| win2s | DS-CNN | 0.799 | 0.813 | **0.518** | 0.275 | 0.522 / 0.516 / 0.516 |
+| win2s | CRNN | 0.799 | 0.811 | **0.448** | 0.383 | 0.438 / 0.444 / 0.463 |
+| wide | DS-CNN | 0.793 | 0.808 | 0.417 | 0.283 | 0.480 / 0.425 / 0.344 |
+| wide | CRNN | 0.793 | 0.804 | 0.396 | 0.477 | 0.463 / 0.369 / 0.357 |
+| mel128 | DS-CNN | 0.792 | 0.808 | 0.372 | 0.235 | 0.373 / 0.410 / 0.332 |
+| mel128 | CRNN | 0.800 | 0.813 | 0.288 | 0.568 | 0.310 / 0.323 / 0.232 |
+
+Against `ref` for the same network (box rule: Lund +0.05 or more, validation -0.02 or better,
+mower +0.05 or better):
+
+| | DS-CNN: Lund / val / mower | CRNN: Lund / val / mower |
+|---|---|---|
+| 600k | +0.028 / +0.000 / -0.088: no | +0.040 / -0.001 / -0.237: no |
+| win2s | **+0.109 / +0.014 / +0.038: wins** | **+0.091 / +0.009 / -0.025: wins** |
+| wide | +0.008 / +0.007 / +0.045: no | +0.039 / +0.003 / +0.069: no |
+| mel128 | -0.037 / +0.007 / -0.003: no | -0.069 / +0.011 / +0.160: no |
+
+Per-window CPU time (one thread on this PC, features plus one forward pass, random weights,
+`scratchpad/it16_speed.py`, not committed): DS-CNN ref 2.6 ms, 600k 2.3, win2s 4.3, wide 7.8,
+mel128 4.4; CRNN ref 12.1, 600k 11.9, win2s 22.8, wide 28.9, mel128 19.9. All far under the
+125 ms hop; no variant is faster than the reference.
+
+The seed-0 reference does not reproduce entry 096 exactly (Lund DS-CNN 0.508 against 0.561, CRNN
+0.412 against 0.454; validation 0.785/0.790 against 0.812/0.798, here a three-seed mean) with the
+same settings and seed. Not investigated; likely non-deterministic GPU kernels and a different
+torch build (cu126 here). It is why the box compares against a re-run reference, not entry 096.
+
+**Assessment.**
+- **The 2 s window is the one change that separates better on the unseen rig**, for both networks,
+  and with the smallest spread between seeds of any arm (DS-CNN 0.516-0.522). It costs 1 s more
+  window fill before the first possible alarm, which counts against R5 (3 s before impact), and
+  twice the compute per window, still a few ms. This disagrees with iteration 4 (entry 031: a 2 s
+  window added nothing), which measured X500 recall at 100-200 m on a held-out rig, not Lund on a
+  pooled model; the two are not the same question.
+- **600k windows** did not pass the Lund rule, but cut the mower-only false alarms clearly for
+  both networks (DS-CNN 0.237 to 0.149, CRNN 0.408 to 0.171) at unchanged validation recall. The
+  box did not ask for that, so it is a lead, not a result.
+- **Wider networks** change nothing beyond seed noise, and the wide CRNN alarms more on the mower.
+- **128 mel bands on a 50 ms frame** are worse on Lund for both networks and much worse on the mower
+  for the CRNN.
+- Against REQUIREMENTS.md: nothing here is a held-out test; R2 (95% recall at 5% false positives)
+  is not met by any arm even in distribution (validation recall about 0.80). The baselines stay far
+  behind the networks on Lund (0.02).
+
+**Next.** Iteration 17 (to be opened): a 2 s window together with 600,000 training windows, the
+two levers that helped, on the same protocol and seeds, with `ref` and `win2s` as references.
+Before any of these replace the it9 models in the GUIs, R5 has to be checked on the 2 s window
+(the time from first alarm to impact in the complete test), and the checkpoints copied from the
+server to this PC.
+
+# Iteration 17 - The 2 s window with 600,000 training windows
+
+> **Changed from iteration 16:** one new arm, `win2s600k`: the 2 s window and 600,000 training
+> windows together, for the DS-CNN and the CRNN.
+> **Why:** in iteration 16 the 2 s window was the only change that passed the Lund rule for both
+> networks, and 600,000 windows cut the mower-only false alarms for both (entry 156). The two act
+> on different things, so they may add up.
+> **Kept the same:** everything else in entry 155's protocol, the same seeds 0-2 and the same server
+> code. Iteration 16's `ref` and `win2s` runs are the references; they are not re-run.
+> **Hypothesis:** `win2s600k` keeps `win2s`'s Lund recall and brings the mower false alarms down
+> toward `600k`'s.
+> **Judged by (fixed in advance):** means over seeds. Against `win2s` for the same network: Lund
+> not more than 0.02 lower, validation not more than 0.02 lower, mower false alarms at least 0.05
+> lower. Against `ref`, entry 155's rule must still hold.
+
+## 157 - Iteration 17 runs launched
+
+- Date: 2026-11-09
+- Iteration: 17
+- Type: Tuning
+- Commit: uncommitted, same server code as entry 156
+
+**How.** On the server, one GPU per seed S = 0, 1, 2:
+```
+CUDA_VISIBLE_DEVICES=S setsid nohup .venv/bin/python -u scripts/run_range.py --name it16_win2s600k_sS \
+  --pool --arms none --recipes simdist --device cuda --speed 0.8 1.25 --deploy-fa 0.05 --seed S \
+  --frontend mfe --models dscnn crnn --window-seconds 2.0 --windows 600000 > artifacts/runs/it17_sS.log 2>&1 &
+```
+The run files carry the `it16_` prefix so `scripts/it16_judge.py` reads them next to the
+references; the judge's arm list gets `win2s600k`.
+
+**Result.** Pending (entry 158).
+
+## 158 - Iteration 17 result: the combination helps the CRNN, not the DS-CNN
+
+- Date: 2026-11-09
+- Iteration: 17
+- Type: Tuning, Evaluation
+- Commit: uncommitted, same server code as entry 156
+
+**Result.** Runs of entry 157 finished at 12:50 (1,746-1,772 s per run file), no errors in the logs.
+`.venv/bin/python scripts/it16_judge.py > artifacts/runs/it17_judge.txt` on the server. Same
+conditions and columns as entry 156; means over seeds 0-2, references from entry 156.
+
+| Arm | Net | val | val10 | Lund | mower | Lund per seed |
+|---|---|---|---|---|---|---|
+| ref | DS-CNN | 0.785 | 0.801 | 0.409 | 0.237 | 0.508 / 0.368 / 0.351 |
+| win2s | DS-CNN | 0.799 | 0.813 | 0.518 | 0.275 | 0.522 / 0.516 / 0.516 |
+| win2s600k | DS-CNN | 0.794 | 0.804 | 0.457 | 0.209 | 0.446 / 0.453 / 0.473 |
+| ref | CRNN | 0.790 | 0.799 | 0.357 | 0.408 | 0.412 / 0.340 / 0.319 |
+| win2s | CRNN | 0.799 | 0.811 | 0.448 | 0.383 | 0.438 / 0.444 / 0.463 |
+| win2s600k | CRNN | 0.794 | 0.804 | **0.462** | **0.281** | 0.389 / 0.512 / 0.485 |
+
+Box of entry 157, against `win2s` (Lund -0.02 or better, validation -0.02 or better, mower at
+least 0.05 lower):
+- DS-CNN: Lund -0.061, validation -0.005, mower -0.066: **fails** (Lund drops).
+- CRNN: Lund +0.014, validation -0.005, mower -0.102: **passes**. Against `ref`: Lund +0.105,
+  validation +0.005, mower -0.127 (entry 155's rule holds).
+
+**Assessment.** For the CRNN the two levers add up: the best CRNN so far on both readouts, Lund
+0.357 to 0.462 and mower-only false alarms 0.408 to 0.281 against the it9 recipe, at equal
+validation recall. For the DS-CNN, longer training on the 2 s window gives back part of the Lund
+gain; its best stays `win2s` (Lund 0.518, mower 0.275). Both best candidates now sit at about the
+same Lund recall (0.46-0.52). In-distribution validation recall is still about 0.80 at 5% false
+alarms, so R2 and R3 are not met. All candidates use the 2 s window, so R5 is not yet checked for
+them: a 2 s window needs 1 s more audio before its first possible alarm.
+
+**Next.** A decision for Mads (the 2 s window trades 1 s of warning time against recall on an
+unseen rig): whether to adopt it. If so: copy `it16_win2s600k_s*_none_simdist_crnn.pt` and
+`it16_win2s_s*_none_simdist_dscnn.pt` with their run files to this PC, add them to the GUIs' model
+lists (run with `--window 2`), and measure R5 in the complete test.
+
+## 159 - Correction: entry numbers of iterations 16-17, and the requirements changed while they ran
+
+- Date: 2026-11-09
+- Iteration: 16-17
+- Type: Correction, Requirements
+- Commit: uncommitted, on top of b30de01
+
+**What changed.** Iterations 16 and 17 were written as entries 148-151 while the team's commits
+b4c8ab6, d8ed086 and b30de01 (pulled into this checkout during the runs) added entries 148-154 of
+their own. The iteration 16-17 entries, never committed, are renumbered 155-158, and their
+references with them; nothing else in them changed.
+
+The team's entries 148-150 (b4c8ab6, 2026-11-09 11:20) replaced REQUIREMENTS.md while iteration 16
+ran (11:11-12:19): models are now judged by **confidence** (the network score), as high as
+possible with a drone and as low as possible without one, first against the war soundscape, then
+with distractors, in three tests; no numeric targets. Iterations 16-17 were designed and judged
+under the old requirements (recall at a frozen threshold, R2/R3/R5). Their rules still say which
+variant separates drones better on Lund, but they say nothing about confidence in the three tests.
+Entry 158's "Next" (R5 for the 2 s window) is superseded: test 2 now asks for mean confidence 3 to
+7 s before impact. Per the new requirements, a new model is proposed for `Complete_Test_Gui`
+when it arrives.
+
+# Iteration 18 - It9B: the it9 CRNN trained to lean toward "drone"
+
+> **Changed from the it9 CRNN (entry 096):** drone windows weigh twice as much as no-drone windows in
+> the training loss (`--pos-weight 2`), and the threshold is frozen at 10% false alarms on
+> validation instead of 5% (`--deploy-fa 0.10`). Named **It9B** at Mads's request.
+> **Why:** Mads wants a model for the virtual tests that is more confident when a drone is present,
+> accepting that it tells drones from other sounds less well (2026-11-09). This matches the first
+> ranking criterion of the new requirements (confidence with a drone) at a cost to the second
+> (confidence without a drone, with distractors). Moving the threshold alone does not change the
+> confidence the GUIs plot: the network is the same, only the alarm line moves (0.483 to 0.404 for
+> the it9 CRNN, `final_crnn.json`). A class weight changes the network itself.
+> **Kept the same:** everything else of the it9 CRNN's recipe: 1 s window, 64 log-mel MFE,
+> `simdist`, speed 0.8-1.25, 200,000 windows, every rig pooled, nothing held out.
+> **Hypothesis:** with balanced batches a weight of 2 should roughly double the odds the network
+> gives for "drone", so the mean score rises on every window, drone or not, while the ranking
+> (recall at a matched false-alarm rate) stays about the same.
+> **Judged by:** no pass rule; this is a requested model. Reported against the it9 CRNN recipe
+> (iteration 16's `ref` CRNN, the same three seeds): mean score on drone and no-drone windows of
+> validation, Lund and the mower session (`scripts/it9b_scores.py`), and recall, Lund recall and
+> mower false alarms at each model's own 10% threshold. Seed 0 is the shipped model. ITU ARIS is
+> not used (the new requirements keep it for scoring finished models).
+
+## 160 - It9B: a drone class weight in the trainer, and the runs
+
+- Date: 2026-11-09
+- Iteration: 18
+- Type: Model, Tuning
+- Commit: uncommitted, on top of b30de01
+
+**What changed.**
+- `src/dad/realrun.py`, `NetScorer.fit`: `pos_weight` (default 1.0, no change), passed to
+  `F.cross_entropy` as class weights `[1, pos_weight]`.
+- `scripts/run_range.py`: `--pos-weight`.
+- `tests/test_gpufront.py`: `test_pos_weight_raises_the_drone_score` trains a tiny DS-CNN twice on
+  tones in noise, weights 1 and 4, and checks that the weight lifts the mean score.
+  `.venv/Scripts/python -m pytest -q -p no:cacheprovider tests/test_gpufront.py`: 11 pass.
+- `scripts/it9b_scores.py`: mean score on drone and no-drone windows of validation, Lund and the
+  mower session.
+
+**Result.** Pending (entry 161).
+
+## 161 - It9B result: higher confidence everywhere, the same separation
+
+- Date: 2026-11-09
+- Iteration: 18
+- Type: Model, Evaluation
+- Commit: uncommitted. Server clone as in entry 158 plus entry 160's changes (checksums of
+  `realrun.py`, `run_range.py` and `it9b_scores.py` match this PC's, line endings aside).
+
+**How.** On the server, GPU S for seed S (S = 0, 1, 2; seed 0 is named `It9B`, the others `It9B_sS`):
+```
+.venv/bin/python -u scripts/run_range.py --name It9B --pool --arms none --recipes simdist --models crnn \
+  --device cuda --windows 200000 --speed 0.8 1.25 --deploy-fa 0.10 --pos-weight 2 --seed 0 --frontend mfe
+.venv/bin/python -u scripts/run_range.py --name it16_ref10_s0 --load-from it16_ref_s0 --pool --arms none \
+  --recipes simdist --models crnn --device cuda --speed 0.8 1.25 --deploy-fa 0.10 --seed 0 --frontend mfe
+.venv/bin/python -u scripts/it9b_scores.py artifacts/models/It9B_none_simdist_crnn.pt \
+  artifacts/models/it16_ref_s0_none_simdist_crnn.pt --device cuda > artifacts/runs/it9b_scores_s0.txt
+```
+207-215 s per It9B training run with scoring; the rescoring of the reference 11 s. No errors in the
+logs. The reference is iteration 16's `ref` CRNN (the it9 CRNN recipe, entry 155), the same
+checkpoints, with its threshold now frozen at 10% false alarms on validation.
+
+**Result.** 1 s windows, 0.5 s hop, nothing held out. Validation: 2,648 drone and 1,565 no-drone
+windows from the training rigs. Lund: 7,871 drone windows, no no-drone audio. Mower session: 1,045
+windows with drone and mower, 125 with the mower alone. Means over seeds 0-2 (per seed in brackets).
+
+Mean score (the confidence the GUIs plot):
+
+| Windows | it9 CRNN recipe | It9B | Change |
+|---|---|---|---|
+| Validation, drone | 0.774 (0.781 / 0.767 / 0.773) | 0.820 (0.825 / 0.820 / 0.815) | +0.046 |
+| Validation, no drone | 0.225 (0.221 / 0.219 / 0.235) | 0.327 (0.346 / 0.320 / 0.315) | +0.102 |
+| Lund, drone | 0.388 (0.435 / 0.361 / 0.368) | 0.522 (0.522 / 0.545 / 0.499) | +0.134 |
+| Mower session, drone + mower | 0.523 (0.579 / 0.493 / 0.496) | 0.654 (0.705 / 0.668 / 0.590) | +0.131 |
+| Mower session, mower alone | 0.437 (0.433 / 0.458 / 0.419) | 0.603 (0.595 / 0.632 / 0.582) | +0.166 |
+
+At each model's own threshold, frozen at 10% false alarms on validation:
+
+| | it9 CRNN recipe | It9B |
+|---|---|---|
+| Threshold | 0.371 / 0.370 / 0.396 | 0.554 / 0.517 / 0.504 |
+| Validation recall | 0.799 | 0.805 |
+| Validation recall at 5% false alarms (ranking only) | 0.790 | 0.789 |
+| Lund recall | 0.403 (0.462 / 0.381 / 0.365) | 0.448 (0.433 / 0.471 / 0.440) |
+| Mower-alone windows alarmed | 0.595 (0.632 / 0.664 / 0.488) | 0.699 (0.584 / 0.832 / 0.680) |
+
+**Assessment.**
+- **The hypothesis holds.** The weight lifts the score on every kind of window: drone windows by
+  0.05 (validation) to 0.13 (Lund, mower session), no-drone windows by 0.10 to 0.17. At matched false
+  alarms on validation the two recall the same (0.789 against 0.790 at 5%, 0.805 against 0.799 at
+  10%): It9B does not separate drones better or worse in distribution; its scores sit higher.
+- On the new requirements' first criterion, confidence with a drone, It9B is higher on all three
+  sets. On the second, confidence without a drone, it is worse: the mower alone now scores 0.60 on
+  average, above the GUI's 50% mark, against 0.44.
+- Lund recall at the threshold rises by 4.5 points and the mower false alarms by 10 points, with a
+  wide spread between seeds on the mower (0.58-0.83, 125 windows).
+- Not measured here: the war soundscape, the first priority of the new requirements. That is
+  `Complete_Test_Gui`'s test 1, now possible with It9B.
+- The threshold rose from about 0.38 to about 0.53 because the scores rose; only the score, not the
+  threshold, is what the complete test reads.
+
+**Next.** It9B is added to the model lists (`scripts/drone_war_grid.py` MODELS, which
+`Complete_Test_Gui` and `detect_gui` read; `src/dad/live.py` PRESETS; colour in
+`Complete_Test_Gui.COLORS`) as `"It9B"` -> `artifacts/runs/It9B.json`,
+`artifacts/models/It9B_none_simdist_crnn.pt` (seed 0). Server checksums: checkpoint
+93b98af87c69290c0aecc0e53c70e577 (2,972,005 bytes), run file 0f5c680d37db2866b3b201397bce10ae
+(11,917 bytes). They still have to be copied to this PC; `artifacts/` is git-ignored, so pushing
+them needs `git add -f`. Then test 1 in `Complete_Test_Gui` with It9B against the it9 CRNN.
+
+## 162 - It9B copied to this PC and loaded through the GUIs' model list
+
+- Date: 2026-11-09
+- Iteration: 18
+- Type: Infrastructure
+- Commit: uncommitted
+
+**What.** `It9B_none_simdist_crnn.pt` and `It9B.json` downloaded from the server through Mads's
+Chrome (on his go-ahead) and moved to `artifacts/models/` and `artifacts/runs/`. MD5 equal to the
+server's (93b98af87c69290c0aecc0e53c70e577, 0f5c680d37db2866b3b201397bce10ae).
+`drone_war_grid._detectors("It9B")` (the loader `Complete_Test_Gui` and `detect_gui` use) returns
+threshold 0.554 (entry 161) and scores 1 s windows; `"It9B"` is in `live.PRESETS`.
+`Complete_Test_Gui.py` parses. Not run: the GUIs themselves, and test 1 with It9B.
+`artifacts/` is git-ignored: pushing the two files needs `git add -f`.

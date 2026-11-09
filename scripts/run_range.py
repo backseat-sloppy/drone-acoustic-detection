@@ -29,7 +29,7 @@ from dad import realrun as rr  # noqa: E402
 from dad.config import FrontendConfig  # noqa: E402
 from dad.realdata import load_manifest  # noqa: E402
 
-NETS = ("dscnn", "resnet", "crnn", "transformer")
+NETS = ("dscnn", "resnet", "crnn", "transformer", "dscnnwide", "crnnwide")
 HOP_S = {"glasgow": 2.0}   # 8.7 h of near-range hover; a coarser grid is plenty
 
 
@@ -66,6 +66,8 @@ def main() -> None:
     p.add_argument("--n-fft", type=int, default=None,
                    help="STFT frame in samples (default 400 = 25 ms; 1024 = 64 ms for --frontend linear)")
     p.add_argument("--n-mfcc", type=int, default=20)
+    p.add_argument("--n-mels", type=int, default=64)
+    p.add_argument("--pos-weight", type=float, default=1.0, help="loss weight of drone windows (It9B: 2)")
     p.add_argument("--eval-hop", type=float, default=0.5)
     p.add_argument("--deploy-fa", type=float, default=0.10)
     p.add_argument("--seed", type=int, default=0)
@@ -75,7 +77,8 @@ def main() -> None:
     args = p.parse_args()
 
     n_fft = args.n_fft or (1024 if args.frontend == "linear" else 400)
-    cfg = FrontendConfig(window_seconds=args.window_seconds, kind=args.frontend, n_fft=n_fft, n_mfcc=args.n_mfcc)
+    cfg = FrontendConfig(window_seconds=args.window_seconds, kind=args.frontend, n_fft=n_fft, n_mfcc=args.n_mfcc,
+                          n_mels=args.n_mels)
     print(f"frontend: {cfg.describe()}", flush=True)
     manifest = load_manifest()
     if args.pair:
@@ -161,7 +164,7 @@ def main() -> None:
                     continue
                 net = rr.NetScorer(arch, variant, cfg, args.device)
                 t = time.time()
-                net.fit(sampler, n_windows=args.windows)
+                net.fit(sampler, n_windows=args.windows, pos_weight=args.pos_weight)
                 net.save(ckpt)
                 evaluate(net, arch, rname, dict(train_seconds=round(time.time() - t, 1), history=net.history,
                                                 windows=args.windows))
