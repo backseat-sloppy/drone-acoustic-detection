@@ -15,6 +15,7 @@ def find_pd():
     # macOS: Pd lives inside the app bundle. Adjust if yours is named differently.
     import glob
     hits = sorted(glob.glob("/Applications/Pd-*.app/Contents/Resources/bin/pd"))
+    hits += sorted(glob.glob("C:/Program Files*/Pd*/bin/pd.com"))   # Windows (console build)
     if hits:
         return hits[-1]
     sys.exit("Could not find Pd. Set PD_PATH at the top of this script.")
@@ -50,7 +51,7 @@ def render(speed, reso, vol, seconds, out_path):
     n = len(obj_lines)
     obj_lines += [
         "#X obj 780 120 del 300;",                                    # n    wait, then open+start
-        f"#X msg 780 150 open -bytes 2 {out_path} \\, start;",       # n+1
+        f"#X msg 780 150 open -bytes 2 {out_path.replace(os.sep, '/')} \\, start;",   # n+1 (Pd eats backslashes)
         f"#X obj 780 190 del {int(seconds*1000)+300};",               # n+2  recording length
         "#X obj 780 220 t b b;",                                      # n+3
         "#X msg 780 250 stop;",                                       # n+4

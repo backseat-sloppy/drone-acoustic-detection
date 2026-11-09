@@ -15,7 +15,9 @@ from pathlib import Path
 
 import numpy as np
 
-PROCESSED = Path(__file__).resolve().parents[2] / "data" / "processed"
+from .sealed import forbid_in_training
+
+PROCESSED =Path(__file__).resolve().parents[2] / "data" / "processed"
 SAMPLE_RATE = 16_000
 
 
@@ -55,9 +57,11 @@ class Recording:
 
 def load_manifest(root: Path | str = PROCESSED) -> list[Recording]:
     root = Path(root)
+    forbid_in_training(root, where="load_manifest")
     out: list[Recording] = []
     with open(root / "manifest.csv", newline="", encoding="utf-8") as f:
         for r in csv.DictReader(f):
+            forbid_in_training(r["source"], r["recording_id"], r["group"], r["file"], where="load_manifest")
             out.append(Recording(
                 source=r["source"], recording_id=r["recording_id"], label=int(r["label"]),
                 kind=r["kind"], group=r["group"], subset=r["subset"],

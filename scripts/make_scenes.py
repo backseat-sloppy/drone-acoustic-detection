@@ -42,6 +42,10 @@ import soundfile as sf
 from scipy.signal import resample_poly
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from dad.sealed import forbid_in_training  # noqa: E402
+
 PD_DIR = ROOT / "Pure-data+Script" / "EnviromentTest"
 STEMS = ROOT / "data" / "processed" / "stems" / "manifest.csv"
 FS = 16000
@@ -56,7 +60,9 @@ GAIN_DB = {"bed": (-10, 0), "event": (-6, 6), "confuser": (-6, 6)}
 
 def load_stems(sources: set[str] | None) -> dict[str, list[dict]]:
     rows = [r for r in csv.DictReader(STEMS.open()) if sources is None or r["source"] in sources]
-    pools = {role: [r for r in rows if r["cls"] in classes] for role, classes in ROLES.items()}
+    for r in rows:
+        forbid_in_training(r["source"], r["file"], where="make_scenes stems")
+    pools ={role: [r for r in rows if r["cls"] in classes] for role, classes in ROLES.items()}
     for role, pool in pools.items():
         if not pool:
             raise SystemExit(f"no {role} stems left after --sources {sorted(sources)}")

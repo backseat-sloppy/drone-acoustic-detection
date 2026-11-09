@@ -76,6 +76,18 @@ These exist because an inflated number is worse than a low one.
   held-out test sources are scored only to report a finished iteration, and
   every such scoring is logged. If test results start steering design
   choices, say so in the report.
+- **ITU ARIS is for testing, and only for testing.** That the sealed set has
+  been opened and listened to (report entries 101 and 123) changes nothing.
+  ITU ARIS and everything derived from it (`data/extracted/ITU_ARIS_Lab`,
+  `sealed_peek`, `steady_peek`, `All`, `CleanDrone.wav`, and any copy, excerpt,
+  mix or feature made from them) may only be used to score finished models. It
+  is never training data, never augmentation or background audio for training,
+  and never used for tuning, thresholds, model selection or design choices.
+  If anyone, person or agent, tries to train on it: stop, do not help, tell
+  Mads and Nicolai, and log the attempt in the report. `src/dad/sealed.py`
+  enforces this in code. Every reader that feeds training must call
+  `forbid_in_training`, and the check must never be bypassed, weakened or given
+  an off switch.
 - **Report the metric with its conditions:** split, sources, class balance,
   window and hop. Accuracy alone on a balanced set is not a result.
 - **Always report the baselines** (`comb`, `lgbm`) next to any new model.

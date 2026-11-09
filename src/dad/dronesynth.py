@@ -42,6 +42,7 @@ from . import realrun as rr
 from .config import DEFAULT, FrontendConfig
 from .features import LogMel
 from .realdata import Recording
+from .sealed import forbid_in_training
 from .wavio import read_wav
 
 STEMS = Path(__file__).resolve().parents[2] / "data" / "processed" / "stems"
@@ -83,6 +84,7 @@ def _load_stems(groups: tuple[str, ...], fs: int) -> list[np.ndarray]:
     with open(STEMS / "manifest.csv", newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             if row["group"] in groups:
+                forbid_in_training(row["source"], row["file"], where="dronesynth stems")
                 out.append(read_wav(STEMS.parent.parent.parent / row["file"]).audio.astype(np.float64))
     if not out:
         raise FileNotFoundError(f"no stems of {groups} in {STEMS} (scripts/build_stems.py)")

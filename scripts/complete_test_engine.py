@@ -37,8 +37,13 @@ from __future__ import annotations
 
 import csv
 import itertools
+import glob
+import hashlib
 import json
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -65,6 +70,17 @@ OUT_ROOT = dwg.ROOT / "artifacts/complete_test"
 WAR_TRACK = dwg.es.WAR / "war_track.wav"
 WIND_STEM = dwg.es.STEMS / dwg.es.WIND
 WSN_LOOP_S = 60.0
+PD_CACHE = OUT_ROOT / "layers"                               # Pure Data renders, made once per patch version
+WIND_DIR = dwg.ROOT / "Distrators/Wind"
+WIND_PD = dict(speed=40, reso=40, vol=50, seconds=60.0)      # the patch's own defaults; the round sets the level
+CAR_DIR = dwg.ROOT / "Pure-data+Script/CarDistractor"
+CAR_PD = dict(speed_kmh=50, dist_m=10, dur_s=20)             # the patch's defaults; one pass-by per engine
+PD_SETTINGS = dict(wind=dict(speed=WIND_PD["speed"], reso=WIND_PD["reso"]),   # what a test can change, and its limits:
+                   cars=dict(speed_kmh=CAR_PD["speed_kmh"], dist_m=CAR_PD["dist_m"]))
+PD_LIMITS = dict(wind=dict(speed=(0, 127), reso=(0, 127)),   # the patches' own slider and number box ranges
+                 cars=dict(speed_kmh=(1, 300), dist_m=(1, 1000)))
+PD_ROUND_KEYS = {"wind_speed": ("wind (Pd)", "wind", "speed"), "wind_reso": ("wind (Pd)", "wind", "reso"),   # a round's
+                 "car_speed_kmh": ("cars", "cars", "speed_kmh"), "car_dist_m": ("cars", "cars", "dist_m")}   # r["pd"] keys
 
 
 def rms_for(db_spl: float) -> float:
@@ -116,8 +132,103 @@ def _wind():
     return resample_poly(x[:, 0], SR, sr)
 
 
+def _pd() -> str | None:
+    """Pure Data's console program, or None."""
+    found = glob.glob("C:/Program Files*/Pd*/bin/pd.com") + glob.glob("/Applications/Pd*.app/Contents/Resources/bin/pd")
+    return found[0] if found else shutil.which("pd")
+
+
+def _pd_cached(stem: str, *sources: Path) -> Path:
+    """Where a render of these patch files is kept: a changed patch gets a new file."""
+    tag = hashlib.md5(b"".join(p.read_bytes() for p in sources)).hexdigest()[:8]
+    return PD_CACHE / f"{stem}_{tag}.wav"
+
+
+def _read_44k(f: Path) -> np.ndarray:
+    x, sr = sf.read(f, dtype="float64")
+    return resample_poly(x, SR, sr)
+
+
+def _need_pd():
+    if not _pd():
+        raise RuntimeError("Pure Data is not on this machine, and there is no kept render with these settings")
+
+
+def _wind_file(cfg: dict) -> Path:
+    return _pd_cached("wind_{speed:g}_{reso:g}_{seconds:g}s".format(**cfg), WIND_DIR / "wind.pd")
+
+
+def _wind_pd(cfg: dict):
+    f = _wind_file(cfg)
+    if not f.exists():
+        _need_pd()
+        sys.path.insert(0, str(WIND_DIR))
+        import render_wind
+        PD_CACHE.mkdir(parents=True, exist_ok=True)
+        render_wind.render(cfg["speed"], cfg["reso"], cfg["vol"], cfg["seconds"], str(f))
+    return _read_44k(f)
+
+
+def _car_engines() -> list[Path]:
+    """The engine recordings car_distractor.pd reads, one per pass-by."""
+    lines = (CAR_DIR / "car_engines.txt").read_text(encoding="utf-8").split("\n")
+    return [(CAR_DIR / ln.split()[0]).resolve() for ln in lines if ln.strip()]
+
+
+def _cars_file(cfg: dict) -> Path:
+    return _pd_cached("cars_{speed_kmh:g}kmh_{dist_m:g}m_{dur_s:g}s".format(**cfg), CAR_DIR / "car_distractor.pd",
+                      CAR_DIR / "car_engines.txt")
+
+
+def _cars(cfg: dict):
+    """One pass-by per engine, one after the other: closest to the microphone halfway through each."""
+    f = _cars_file(cfg)
+    if not f.exists():
+        _need_pd()
+        parts = []
+        with tempfile.TemporaryDirectory() as tmp:           # Pd takes no spaces or backslashes in a path
+            for e in range(len(_car_engines())):
+                wav = Path(tmp) / f"{e}.wav"
+                r = subprocess.run([_pd(), "-nogui", "-nosound", "-batch", "-r", "44100", "-open", str(CAR_DIR / "car_distractor.pd"),
+                                    "-send", "car-batch 1", "-send", f"car-clip {e}", "-send", f"car-speed {cfg['speed_kmh']:g}",
+                                    "-send", f"car-dist {cfg['dist_m']:g}", "-send", f"car-dur {cfg['dur_s']:g}",
+                                    "-send", f"car-rec symbol {wav.as_posix()}", "-send", "car-go bang"],
+                                   capture_output=True, text=True, timeout=600)
+                if not wav.exists() or wav.stat().st_size < 1000:
+                    raise RuntimeError(f"Pure Data wrote no car render for engine {e}:\n{r.stdout}{r.stderr}")
+                parts.append(sf.read(wav, dtype="float64")[0])
+            PD_CACHE.mkdir(parents=True, exist_ok=True)
+            whole = Path(tmp) / "whole.wav"                  # moved when complete: several workers may render this
+            sf.write(whole, np.concatenate(parts).astype(np.float32), 44100, subtype="FLOAT")
+            shutil.move(str(whole), str(f))
+    return _read_44k(f)
+
+
+def _pd_layer_state() -> dict:
+    """(available, note) of the two Pure Data layers: Pd and what it needs, or a kept render of the defaults."""
+    pd = _pd()
+    ok_wind = _wind_file(WIND_PD).exists() or bool(pd)
+    wind = (ok_wind, f"Pure Data wind.pd, {WIND_PD['seconds']:g} s, looped" if ok_wind else "Pure Data not found on this machine")
+    have_stems = all(p.exists() for p in _car_engines())
+    ok = _cars_file(CAR_PD).exists() or (bool(pd) and have_stems)
+    cars = (ok, "Pure Data pass-bys, one per engine, looped" if ok else
+            "engine recordings missing: data/processed/stems/distracter/idling" if not have_stems else
+            "Pure Data not found on this machine")
+    return dict(wind=wind, cars=cars)
+
+
+PD_RENDER = {"wind (Pd)": (WIND_PD, _wind_pd), "cars": (CAR_PD, _cars)}
+
+
+def pd_config(name: str, pd: dict) -> dict:
+    """What a Pure Data layer renders with a round's settings (r["pd"]); the patch's own values otherwise."""
+    return {**PD_RENDER[name][0], **{f: pd[k] for k, (n, _, f) in PD_ROUND_KEYS.items() if n == name and k in pd}}
+
+
 def make_layers() -> dict[str, Layer]:
-    """Every background layer the GUI lists, available or not (cars, helicopter, insects: not yet)."""
+    """Every background layer the GUI lists, available or not (helicopter, insects: not yet). The two
+    Pure Data layers here are at the patches' own values; Test.layers_for gives a round's."""
+    pd = _pd_layer_state()
     return {
         "war soundscape": Layer("war soundscape", "the 600 s war track (scripts/war_track.py), calm, normal and "
                                 "intense phases", WAR_TRACK.exists(), _war_track),
@@ -125,7 +236,8 @@ def make_layers() -> dict[str, Layer]:
                                   dwg.WSN_GAIN.exists(), _wsn),
         "wind": Layer("wind", "wind on the capsule (FSD50K stem), looped" if WIND_STEM.exists() else
                       "stem missing on this machine: run scripts/build_stems.py", WIND_STEM.exists(), _wind),
-        "cars": Layer("cars", "not set up yet", False),
+        "wind (Pd)": Layer("wind (Pd)", pd["wind"][1], pd["wind"][0], lambda: _wind_pd(WIND_PD)),
+        "cars": Layer("cars", pd["cars"][1], pd["cars"][0], lambda: _cars(CAR_PD)),
         "helicopter": Layer("helicopter", "not set up yet", False),
         "insects": Layer("insects", "not set up yet", False),
     }
@@ -150,6 +262,25 @@ class Plan:
     synth: dict = field(default_factory=lambda: dict(drone_seed=1, pscale=0.85, elev_deg=40.0))
     speeds: list | None = None                               # modified only
     approach: dict = field(default_factory=lambda: dict(APPROACH))
+    pd_settings: dict = field(default_factory=lambda: {k: dict(v) for k, v in PD_SETTINGS.items()})   # lists after init
+    also_without: list = field(default_factory=list)         # layers also tested absent, besides at their levels
+
+    def __post_init__(self):
+        """Every Pure Data setting as a list of values (a plan may hold single values)."""
+        self.pd_settings = {s: {k: [float(x) for x in np.atleast_1d(v)] for k, v in d.items()} for s, d in self.pd_settings.items()}
+
+    def pd_combos(self, background: dict | None = None) -> list[dict]:
+        """Every combination of the Pure Data settings of the layers in `background` (default: every
+        ticked layer), as r["pd"]; [{}] without such layers. A layer that is off has no settings to vary."""
+        present = self.layers if background is None else background
+        keys = [k for k, (name, _, _) in PD_ROUND_KEYS.items() if name in present]
+        vals = [self.pd_settings[PD_ROUND_KEYS[k][1]][PD_ROUND_KEYS[k][2]] for k in keys]
+        return [dict(zip(keys, c)) for c in itertools.product(*vals)]
+
+    def pd_swept(self) -> list[str]:
+        """The r["pd"] keys that take more than one value."""
+        combos = self.pd_combos()
+        return [k for k in combos[0] if len({c[k] for c in combos}) > 1]
 
     def drone_keys(self) -> list:
         """The drones the rounds go through: the files or speeds, or for modified every file at every
@@ -165,26 +296,31 @@ class Plan:
         return [float(round(s, 6)) for s in np.arange(0, last + 1e-9, self.step_s)]
 
     def backgrounds(self) -> list[dict]:
+        """Every combination of the layers' levels; a layer in also_without is also left out of it."""
         names = list(self.layers)
-        return [dict(zip(names, combo)) for combo in itertools.product(*(self.layers[n] for n in names))]
+        options = (self.layers[n] + ([None] if n in self.also_without else []) for n in names)
+        return [{n: v for n, v in zip(names, combo) if v is not None} for combo in itertools.product(*options)]
 
     def rounds(self) -> list[dict]:
         """Every round, in the order they run: drone rounds, then the no-drone rounds."""
         out = []
         levels = self.drone_levels if self.drone_levels is not None else [None]
         for bg in self.backgrounds():
-            for d in self.drone_keys():
-                for lv in levels:
-                    for s in self.starts():
-                        out.append(dict(drone=d, drone_level_db=lv, start_s=s, background=bg))
+            for pd in self.pd_combos(bg):
+                for d in self.drone_keys():
+                    for lv in levels:
+                        for s in self.starts():
+                            out.append(dict(drone=d, drone_level_db=lv, start_s=s, background=bg, pd=pd))
         if self.no_drone_rounds:
-            out += [dict(drone=None, drone_level_db=None, start_s=None, background=bg) for bg in self.backgrounds()]
+            out += [dict(drone=None, drone_level_db=None, start_s=None, background=bg, pd=pd)
+                    for bg in self.backgrounds() for pd in self.pd_combos(bg)]
         for i, r in enumerate(out, 1):
             r["round"] = i
+            r["off"] = [n for n in self.layers if n not in r["background"]]
         return out
 
     def count(self) -> dict:
-        n_bg = len(self.backgrounds())
+        n_bg = sum(len(self.pd_combos(bg)) for bg in self.backgrounds())
         n_lv = len(self.drone_levels) if self.drone_levels is not None else 1
         keys = self.drone_keys()
         drone_rounds = len(self.starts()) * len(keys) * n_lv * n_bg
@@ -214,6 +350,11 @@ class Plan:
             out.append("tick at least one detector")
         if not self.layers and not self.drones:
             out.append("nothing to test")
+        for layer, sec in (("wind (Pd)", "wind"), ("cars", "cars")):
+            if layer in self.layers:
+                for key, (lo, hi) in PD_LIMITS[sec].items():
+                    if any(not lo <= v <= hi for v in self.pd_settings[sec][key]):
+                        out.append(f"{layer}: {key} must be from {lo} to {hi}")
         return out
 
 
@@ -438,7 +579,7 @@ def hop_levels(parts: dict, t_end: np.ndarray) -> dict:
 # ------------------------------------------------------------------ a whole test
 
 def row_fields(plan: Plan) -> list[str]:
-    return (["round", "kind", "drone", "drone_level_db", "start_s", *[f"{n}_db" for n in plan.layers], "detector",
+    return (["round", "kind", "drone", "drone_level_db", "start_s", *[f"{n}_db" for n in plan.layers], *plan.pd_combos()[0], "detector",
              "threshold", "tp", "fn", "fp", "tn", "left_out", "recall", "false_positive_rate", "precision",
              "first_alarm_s", "delay_s", "lead_s", "any_alarm", "any_false_alarm", "mean_conf_drone",
              "mean_conf_no_drone", "snr_db", "signal_share", "drone_db"])
@@ -452,15 +593,34 @@ class Test:
         self.plan, self.device = plan, device
         self.out = Path(out_dir or OUT_ROOT / f"{time.strftime('%Y%m%d_%H%M%S')}_{plan.kind}")
         self.layers = make_layers()
+        self._pd_layers: dict[tuple, Layer] = {}             # (layer, settings) -> its render, shared by rounds
         self.rounds = plan.rounds()
         self.results: dict[int, dict] = {}                   # round -> detector -> row (+ "scores")
         self.start_s = plan.soundscape_start_s
         self.drones = None
         self.thr = self.scorers = None
 
+    def layers_for(self, r: dict) -> dict[str, Layer]:
+        """The layers of round r: the shared ones, the Pure Data ones at the round's settings."""
+        out = dict(self.layers)
+        for name in r["background"]:
+            if name in PD_RENDER:
+                cfg = pd_config(name, r["pd"])
+                key = (name, *sorted(cfg.items()))
+                if key not in self._pd_layers:
+                    self._pd_layers[key] = Layer(name, "", True, lambda c=cfg, f=PD_RENDER[name][1]: f(c))
+                out[name] = self._pd_layers[key]
+        return out
+
     def prepare(self, progress=print):
+        for r in self.rounds:                                # renders first, so a sweep says what it is waiting for
+            self.layers_for(r)
+        for i, (key, L) in enumerate(self._pd_layers.items(), 1):
+            progress(f"Pure Data: {key[0]}, combination {i} of {len(self._pd_layers)}")
+            L.signal()
         if self.start_s is None:                             # one start per batch, so the longest window fits
-            longest = max((self.layers[n].signal()[0].size for n in self.plan.layers), default=0) / SR
+            first = self.layers_for(self.rounds[0]) if self.rounds else self.layers
+            longest = max((first[n].signal()[0].size for n in self.plan.layers), default=0) / SR
             span = max(longest - self.plan.length_s, 0)
             self.start_s = float(np.random.default_rng(dwg.WSN_SEED).integers(0, int(span) + 1)) if span else 0.0
         self.drones = Drones(self.plan, progress)
@@ -472,7 +632,7 @@ class Test:
         (self.out / "config.json").write_text(json.dumps(cfg, indent=1, default=str), encoding="utf-8")
 
     def rebuild(self, r: dict) -> dict:
-        return mix_round(r, self.plan, self.layers, self.drones, self.start_s)
+        return mix_round(r, self.plan, self.layers_for(r), self.drones, self.start_s)
 
     def run(self, progress=print, on_round=None, stop=lambda: False):
         if self.drones is None:
@@ -499,7 +659,7 @@ class Test:
                                     drone=drone_label(r["drone"]) if r["drone"] is not None else "none",
                                     drone_level_db="as rendered" if r["drone"] is not None and r["drone_level_db"] is None
                                     else r["drone_level_db"], start_s=r["start_s"],
-                                    **{f"{n}_db": lv for n, lv in r["background"].items()},
+                                    **{f"{n}_db": r["background"].get(n, "off") for n in self.plan.layers}, **r["pd"],
                                     detector=k, threshold=self.thr[k], **v["row"]))
                 fh.flush()
                 el = time.time() - t0
@@ -515,9 +675,13 @@ def write_summary(test: Test) -> Path:
     """summary.csv: per detector, and per detector and each varied setting, the mean of the round numbers."""
     rows = []
     keys = ["drone", *(["file", "speed_kmh"] if test.plan.kind == "modified" else []), "drone_level_db", "start_s",
-            *test.plan.layers]
+            *test.plan.layers, *test.plan.pd_combos()[0]]
 
     def setting(r, k):
+        if k in PD_ROUND_KEYS:
+            return r["pd"].get(k)                            # None when its layer is off
+        if k in r["off"]:
+            return "off"
         if k in r["background"]:
             return r["background"][k]
         if k in ("drone", "file", "speed_kmh"):
@@ -543,7 +707,7 @@ def write_summary(test: Test) -> Path:
         if nd:
             rows.append(dict(detector=det, setting="no-drone rounds", value="", **agg(nd)))
         for k in keys:
-            vals = sorted({str(setting(r, k)) for r, _ in drone})
+            vals = sorted({str(setting(r, k)) for r, _ in drone if setting(r, k) is not None})
             if len(vals) > 1:
                 for v in vals:
                     rows.append(dict(detector=det, setting=k, value=v,

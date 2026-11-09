@@ -38,6 +38,7 @@ sys.path.insert(0, str(REPO / "src"))
 from dad import realrun as rr  # noqa: E402
 from dad.config import DEFAULT  # noqa: E402
 from dad.features import LogMel  # noqa: E402
+from dad.sealed import forbid_in_training  # noqa: E402
 
 FS = DEFAULT.sample_rate
 N = DEFAULT.samples_per_window
@@ -54,11 +55,14 @@ def read16k(path: Path) -> np.ndarray:
 
 def load_drones(root: Path, val_seed: int, limit: int | None):
     """[(audio, lo, hi)] per scene, train and validation; lo/hi: drone label in samples."""
+    forbid_in_training(root, where="train_clean drones")
     train, val = [], []
     for k, lab in enumerate(sorted((root / "labels").glob("*.json"))):
         if limit and k >= limit:
             break
-        d = json.loads(lab.read_text())
+        text = lab.read_text()
+        forbid_in_training(lab.name, text, where="train_clean drones")
+        d = json.loads(text)
         ev = [e for e in d["events"] if e["role"] == "drone"]
         if not ev:
             continue
@@ -73,6 +77,9 @@ def load_nodrone(root: Path, val_rig: str, limit: int | None):
     """[(audio, group)] per clip; the clips of rig val_rig validate."""
     rows = [(r["wav"], r["source"]) for r in csv.DictReader((root / "recordings.csv").open())]
     rows += [(r["file"], "stem:" + r["group"]) for r in csv.DictReader((root / "stems.csv").open())]
+    forbid_in_training(root, where="train_clean no-drone")
+    for rel, group in rows:
+        forbid_in_training(rel, group, where="train_clean no-drone")
     train, val = [], []
     for k, (rel, group) in enumerate(rows):
         if limit and k >= limit * 2:

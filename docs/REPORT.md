@@ -10357,3 +10357,361 @@ since no level calibration is applied.
 
 **Next.** The specifications of test 3 from Mathias, including which model it runs (the live tools still default
 to the it6 CNN, while It9B is now available as a preset) and how the demo is judged.
+## 155 - Conclusions, modified drone test: drones pooled per speed, no bar per file and speed
+
+- Date: 2026-11-09
+- Type: Engineering (GUI display only; no model, metric, mix or split changed)
+- Commit: uncommitted, on top of d8ed086: `scripts/Complete_Test_Gui.py`
+
+**Why.** Nicolai: the "drone" graph showed one bar per file and speed, so the same drone appeared three times;
+it should pool all drones at the same speed.
+
+**Change.** For modified drone tests `parameter_values` no longer gives the "drone" graph (file x speed).
+"speed (km/h), all drones" pools every file at each speed, in speed order; "drone file, all speeds" pools every
+speed per file and appears when there are several files. Both are window-weighted, as before.
+
+**How it got here.** This was first made and logged earlier the same day, uncommitted. GitHub Desktop put
+both in a stash (`!!GitHub_Desktop<master>`) when the branch was switched before the pull to d8ed086, so the
+change was re-applied by hand and is logged here. The stash was left alone.
+
+**Checks (made before the stash, same one-line change).** Made-up rounds, 2 files x 2 speeds, known answers:
+50 km/h 0.5, 150 km/h 0.7, file a 0.35. The real `Conclusions` window on a copy of run
+`20261109_112257_modified` (`Steady_07.wav`, it9 CRNN, one file, 3 speeds): 50 km/h true 64%, 100 km/h 53%,
+150 km/h 46% and false 14%, the same numbers as the old bars. Not run: a real run with several files.
+
+## 156 - Complete test: wind and cars from Pure Data as background layers
+
+- Date: 2026-11-09
+- Type: Engineering (test tooling; no model, metric or split changed)
+- Commit: uncommitted, on top of d8ed086: `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`,
+  `Distrators/Wind/render_wind.py`
+
+**Why.** Nicolai: after the pull, set up the cars and wind parameters, both from Pure Data, in `Complete_Test_Gui`
+for the real drone test. They are the secondary and tertiary backgrounds of entry 150.
+
+**Change.**
+- New layer "wind (Pd)": `Distrators/Wind/wind.pd` at the patch's defaults (speed 40, resonance 40), 60 s, looped.
+  Beside the old "wind" (FSD50K stem, missing on this PC), kept so older plans keep their meaning.
+- Layer "cars", until now "not set up yet": `car_distractor.pd`, one pass-by per engine at the patch's defaults
+  (50 km/h, 10 m, 20 s, 6 engines) one after the other, 129 s, looped.
+- Both behave like the other layers: tick, then min, max and # in dB SPL. The level is the long-term RMS of the
+  whole render. For cars that includes the quiet stretches, so the pass-by itself is louder than the set level.
+- A render is made once and kept in `artifacts/complete_test/layers/` (git-ignored), named by a hash of the patch
+  files, so a changed patch renders anew.
+- Layers are shared by the pages, so the two rows also appear on the synthetic and modified pages.
+- `render_wind.py` could not run on Windows: it now finds Pd there, and writes forward slashes in the path it
+  gives Pd, which treats a backslash as an escape.
+
+**Checks.** Pd 0.57.0 on this PC.
+- Wind, real render: 60.00 s, raw peak 0.138 (no clipping), 1 s levels vary by 9.0 dB. Set to 50 dB SPL, the whole
+  source measures 50.00; a 10 s stretch measures 49.26.
+- Wind through the engine: `Steady_07.wav` at 60 dB SPL, war soundscape 90, wind (Pd) 70, war start 120 s, 10 s:
+  it9 CRNN mean confidence 0.382 with the drone, 0.202 in a no-drone round; comb 0.022 and 0.022. One round to
+  check the plumbing, not a performance figure. `rounds.csv` has the layer's column.
+- The GUI opens with both rows; the wind boxes give 3 levels and a valid plan, set from code.
+- Cars were NOT rendered from the real engines: `data/processed/stems/distracter/idling/` (FSD50K dev clips
+  369049, 369053, 387676, 387677, 387679, 401552) is not on this PC and raw FSD50K audio is not local either, so
+  the row is greyed and says so. The render path was tested with stand-in engines (harmonics plus noise) in a
+  scratch copy of the patch folder: 6 renders in 4.3 s, 129.00 s, and each pass-by peaks halfway (about -43 dB
+  against -70 dB at its ends).
+
+Not listened to by Claude. `uv run pytest` not run: no test imports these files.
+
+**Next.** The six engine recordings on this PC, from Mads's machine or fetched from FSD50K.
+
+## 157 - The cars layer's six engine recordings rebuilt from FSD50K; cars render for real
+
+- Date: 2026-11-09
+- Type: Data
+- Commit: uncommitted, on top of d8ed086: new `scripts/fetch_car_engines.py`; `data/` is git-ignored
+
+**What changed.** Nicolai chose to fetch them. `uv run python scripts/fetch_car_engines.py` reads only the six
+FSD50K dev clips from Zenodo by range request (4.97 MB in all), and treats them as `build_stems.py` treats a
+distracter: loudest 10 s, spectral gate unless it costs more than 1 dB, active RMS -26 dBFS. Written to
+`data/processed/stems/distracter/idling/`; `manifest.csv` gained six rows (53 now). All six are CC0 or CC BY.
+The gate cost 5 to 19 dB on each, so all six were kept ungated ("percentile->none").
+
+**Check against the originals.** `car_engines.txt` holds values computed from the stems on Mads's machine. The
+same computation (`make_tables.py`) on the rebuilt stems gives the same loop start and length for all six and the
+same A-correction to 0.01 dB (-12.55, -13.81, -5.53, -14.73, -2.30, -15.91). So the patch's tables fit them.
+
+**Result.** The "cars" row is available. The render with the real engines: 129.00 s, 4.3 s to make, raw peak 0.026,
+each pass-by peaking halfway. With the layer set to 50 dB SPL (long-term RMS), the 1 s levels are at most 61.1,
+median 39.3 and at least 30.7 dB SPL: a pass-by's peak is about 11 dB above the set level. One round to check the
+plumbing (`Steady_07.wav` at 60 dB SPL, war soundscape 90, cars 70, 10 s, war start 120 s): it9 CRNN mean confidence
+0.398 with the drone, 0.331 in a no-drone round; comb 0.0 and 0.0. Not a performance figure.
+
+**Assessment.** The six clips are from FSD50K **dev**, which training draws from (entry 105). Whether these six
+were among the training negatives of the it9 CRNN was not checked: the training store is not on this PC. Until
+checked, low confidence on the cars layer may partly be memory of the engines; say so when test 1 reports it.
+Not listened to by Claude.
+
+**Next.** None; the layer is ready for test 1.
+
+## 158 - Complete test: guidelines under the background layers
+
+- Date: 2026-11-09
+- Type: Engineering (GUI text only; no model, metric, mix or split changed)
+- Commit: uncommitted, on top of d8ed086: `scripts/Complete_Test_Gui.py`
+
+**Why.** Nicolai asked for the notes to be in the GUI as guidelines.
+
+**Change.** A "Guidelines" block under the background layers, on all three pages (they share the layers), with
+three points: keep levels at about 60 to 100 dB SPL because confidence follows the dB difference (entries 130, 150);
+a car pass-by peaks about 11 dB above the set level and typically sits about 11 dB below it (entry 157); the car
+engines are FSD50K dev clips, so say so when reporting (entry 157). The first point goes beyond the two notes of
+entry 157: it comes from the earlier answer on floor and clipping, and governs the same boxes.
+
+**Checks.** The window built on all three pages, each with three guideline lines of at most 977 pixels on a page
+of 1165; a screenshot was looked at. `uv run pytest` not run: no test imports this file.
+
+## 159 - Complete test: Conclusions becomes a scrollable page of four summaries
+
+- Date: 2026-11-09
+- Type: Engineering (GUI display only; no model, metric, mix or split changed)
+- Commit: uncommitted, on top of b30de01: `scripts/Complete_Test_Gui.py`
+
+**Why.** Nicolai asked whether Conclusions gives insight into all the parameters, and for a scrollable page headed
+Speed summary, War soundscape summary, Wind summary and Car summary, each with a bar chart of confidence over the
+parameter's values, a graph above four points. It did not: a layer got a graph only when its level varied, on one
+figure shrinking with the number of graphs, and its x-axis was drone dB / layer dB (entry 130 calls that axis
+misleading) rather than the layer's level.
+
+**Change.** `Conclusions` is now one tall figure inside a scrolling canvas; the mouse wheel scrolls it and no longer
+reaches the main window behind it. The four sections are always there, in that order (`summary_sections`). A layer's
+graph has its own level in dB SPL on the x-axis and is drawn even for a single level; wind shows `wind` and
+`wind (Pd)` as separate graphs when both are ticked. A section with nothing to show says why (a real drone test has
+no set speed; a layer not ticked). Speed is `speed_kmh` on modified and synthetic drones; the modified test's
+over-time graphs per speed moved into the Speed summary. Up to four values are bars, above that a curve, as before.
+Anything else that varies (drone level, drone file, start, other layers) stays in an "Other settings" section,
+unchanged, so drone level and the other layers there are still on the dB-ratio axis. The number lines moved below
+the graphs. Save PNG saves the whole page. Grid lines now sit behind the bars, and the over-time title was shortened
+because it ran off the figure.
+
+A speed graph has no false bar unless drone rounds also contain no-drone windows: a no-drone round has no speed.
+
+**Checks (plumbing, not performance: one file, `data/extracted/steady_peek/Steady_07.wav`, 10 s soundscape).** A
+scratch script ran plans through the real engine (it9 CRNN only) and opened the real window on each: real, 60 rounds
+(war 80/90, wind (Pd) 50/60, cars 50/60/70/80/90, drone 60/70); modified, 4 rounds (speeds 50/100/200, war 90);
+synthetic, 3 rounds (60 and 120 km/h, war 90). Every plan gave the expected sections and notes, cars with five levels
+a curve, and the saved real and modified pages were looked at (before the grid and title fixes; the window was
+re-run after them, the images not looked at again). A generated wheel event moved the page (0 to 0.087 on the real
+run) and left the main window at 0. At 900 pixels wide the figure followed the window width at the same height.
+`uv run pytest` not run: no test imports this file.
+
+## 160 - Conclusions: an Overall section keeps the dB ratio, everything below uses the setting's own values
+
+- Date: 2026-11-09
+- Type: Engineering (GUI display only; no model, metric, mix or split changed)
+- Commit: uncommitted, on top of b30de01: `scripts/Complete_Test_Gui.py`
+
+**Why.** After entry 159 the layers' ratio graphs were gone and drone level was the one setting still on the ratio
+axis. Nicolai chose: drone level on its own axis, and a section at the top that still has the ratio.
+
+**Change.** A new first section, "Overall", has one graph per ticked layer with drone dB / layer dB on the x-axis
+(`level_ratio_points`, unchanged). The ratio is only for orientation: entry 130 still applies, confidence follows the
+dB difference and not this quotient. "Other settings" now uses each setting's own values, so drone level reads in
+dB SPL and helicopter, insects and war-shaped noise in their levels. `ratio_layer` had no use left and was removed.
+The ratio graphs group drone rounds only, as before, so their false bars come only from no-drone windows inside
+drone rounds.
+
+**Checks (plumbing, not performance: the same three scratch plans as entry 159, one file, 10 s soundscape).** Real
+(60 rounds), modified (4) and synthetic (3) all opened the window; Overall had one graph per layer, three on the real
+plan (four ratios each as bars for war and wind (Pd), a curve for cars with more than four), and drone level showed
+60 and 70 dB SPL. The saved real page was looked at. A generated wheel event moved the page (0 to 0.061 on the real
+run) and left the main window at 0. `uv run pytest` not run: no test imports this file.
+
+## 161 - Complete test: wind (Pd) and cars settings can be set in the GUI
+
+- Date: 2026-11-09
+- Type: Engineering (test configuration; no model, metric or split changed; default mixes unchanged)
+- Commit: uncommitted, on top of b30de01: `scripts/Complete_Test_Gui.py`, `scripts/complete_test_engine.py`
+
+**Why.** Nicolai wants control of the values that were fixed in the two Pure Data layers (entry 156): wind speed and
+resonance, car speed and closest distance.
+
+**Change.** The layer rows now have those four values as boxes in their description, one value each per test, not a
+sweep. They default to the patches' own values (wind 40/40, cars 50 km/h at 10 m). `Plan.pd_settings` carries them
+into `make_layers`, config.json and saved plans; a run or plan without them gets the defaults, which is what such runs
+used. Limits are the patches' own ranges (wind 0-127, car speed 1-300 km/h, distance 1-1000 m) and only apply to a
+ticked layer. Each new combination is rendered once and kept under `artifacts/complete_test/layers`; the file name
+holds the settings, and the default combinations keep their existing files. Wind duration (60 s), wind volume and
+car duration (20 s per pass-by) stay fixed. A new guideline says the settings do not change loudness, and the car
+peak guideline now states that it holds at 50 km/h and 10 m.
+
+**What the settings do (measured, with the layer set to 70 dB SPL; signal statistics of the renders, not detection
+performance).** The layer's level sets the RMS of the whole render, so a closer car is not louder on average.
+
+| render | render time (s) | 1 s max (dB) | 1 s median (dB) | spectral centroid, first 8 s (Hz) |
+|---|---|---|---|---|
+| wind 40/40 (speed/resonance) | kept | 71.5 | 70.0 | 321 |
+| wind 90/20 | 60.9 | 70.6 | 70.0 | 604 |
+| wind 40/90 | 60.7 | 71.7 | 70.1 | 306 |
+| cars 50 km/h, 10 m | kept | 81.1 | 59.3 | 853 |
+| cars 100 km/h, 30 m | 4.4 | 79.5 | 60.7 | 1171 |
+| cars 50 km/h, 3 m | 4.3 | 82.9 | 54.4 | 852 |
+
+**Checks.** A scratch script filled the boxes on the real window: out-of-range values were named by `Plan.check`, text
+gave the error on the status line. A two-round test (Steady_07, it9 CRNN; plumbing, no performance claim) with wind
+90/20 and cars 100 km/h at 30 m ran, wrote its settings to config.json, and `load_test` returned them and the identical
+cars signal (difference 0.0). A config without the settings loaded with the defaults. The layers frame needs 1043 pixels
+of the 1101 it has; the window was looked at. `uv run pytest` not run: no test imports these files.
+
+## 161 - Rule: ITU ARIS is only for testing, and training on it is stopped in code
+
+- Date: 2026-11-09
+- Type: Process and engineering (no model, metric, mix or split changed)
+- Commit: uncommitted, on top of b30de01: `CLAUDE.md`, `src/dad/sealed.py`, `src/dad/realdata.py`,
+  `src/dad/dronesynth.py`, `scripts/make_scenes.py`, `scripts/train_clean.py`, `tests/test_sealed.py`
+
+**Why.** Asked for from Nicolai's account: even though the sealed set has been opened, it may only be used for testing,
+and anyone who tries to train on ITU ARIS must be stopped. `REQUIREMENTS.md` already said "never for training or
+tuning" (entry 150) and is left unchanged. This entry adds the rule to the working agreement and an enforcement in code.
+It narrows what entries 123 and 137 say: entry 123's "they can steer design choices from now on" and entry 137's "no
+longer sealed" no longer give any permission to use it for anything but scoring.
+
+**Change.**
+- `CLAUDE.md` section 5: ITU ARIS and everything derived from it may only score finished models. Not training,
+  augmentation, background audio for training, tuning, thresholds, model selection or design choices. An attempt is
+  stopped, reported to Mads and Nicolai and logged.
+- `src/dad/sealed.py`: `forbid_in_training` raises `SealedDataError` if a path, source name or label text points at
+  ITU ARIS (`aris` as a word of its own, `sealed_peek`, `steady_peek`, `CleanDrone`, `extracted/All/`). It has no off
+  switch.
+- It is called by the readers that feed training: `realdata.load_manifest` (so `run_real`, `run_range` and the probes),
+  the stems of `dronesynth`, `make_scenes.load_stems`, and `load_drones` and `load_nodrone` in `train_clean`. Scoring
+  code does not call it, so the three tests can still use ITU ARIS.
+
+**What has been done with ITU ARIS so far (checked 2026-11-09, on this machine only).**
+- No trace of training on it: no training or data preparation script names it; the one local manifest under
+  `data/processed` (`stems`, 53 rows) has none of it; all 65 files in `artifacts/` that name it are `complete_test`
+  scorings.
+- It was not only a final test, however. It was read as a readout on every candidate from entry 123, at least nine
+  suite scorings (the count in the council's answer around entry 129's iteration, `REPORT.md` "The readout has become a
+  tuning set"). Design choices may have been steered by it, and results on it keep saying so.
+- Not checked: the JupyterLab server (`~/dad`, `~/drone`, `~/nodrone`, the accounts `mads` and `jupyter-mariusq`), where
+  the training ran, and any model others are training now.
+
+**Checks.** `.venv\Scripts\python.exe -m pytest -q`: 149 passed, among them `tests/test_sealed.py`, which feeds each
+reader an ITU ARIS entry and expects it to stop. A one-off script ran the check over the real local files: the 53 rows
+of `data/processed/stems/manifest.csv` pass, and 111 real ITU ARIS paths (up to 50 per folder under
+`data/extracted/`) are stopped.
+
+**Limits.** The check reads names and paths, not audio: a renamed or copied file, or an array handed directly to
+`fit`, gets through, and a machine running an older clone has no check at all. There the rule in `CLAUDE.md` is what
+holds.
+
+## 162 - Complete test: the wind (Pd) and cars settings can be swept
+
+- Date: 2026-11-09
+- Type: Engineering (test configuration; no model, metric or split changed; single-value mixes unchanged)
+- Commit: uncommitted, on top of b30de01: `scripts/Complete_Test_Gui.py`, `scripts/complete_test_engine.py`
+
+**Why.** Nicolai asked for the four settings of entry 161 to be sweepable like the levels. This replaces entry 161's
+single boxes.
+
+**Change.** Each setting has its own row under its layer with min, max and #, by the same rule as a level. A ticked
+layer's settings multiply into the rounds: `Plan.pd_settings` holds lists (a plan with single values still loads),
+`Plan.pd_combos` gives the combinations, each round carries its own as `r["pd"]`, and no-drone rounds are made for every
+combination too. `Test.layers_for` gives a round the render of its combination; non-Pure-Data layers stay shared. All
+renders are made first in `Test.prepare`, one progress line each. Car renders are now moved into place when complete,
+because several server workers may render the same file. `rounds.csv` and `summary.csv` have the settings, the Results
+table shows those that vary, and the Wind and Car summaries get a graph for each setting that varies. A varied setting's
+graph pools every round at that value, over all the others.
+
+**Checks (plumbing, not performance: one file, Steady_07, 10 s soundscape, it9 CRNN).** A scratch script filled the real
+boxes with wind speed 40 and 90, car speed 50 and 100, distance 10 to 50 in 5 steps: 20 combinations, 40 rounds as counted
+in the window, 12 distinct renders (2 wind, 10 cars), 40 results. A zero distance and a # 1 with min and max different were
+refused with their messages. Two rounds differing only in distance had different cars (max difference 0.0043 in WAV
+units) and identical wind (0.0). The Conclusions page showed the graphs, five distances as a curve; the Results table had
+the three varied columns; `load_test` returned the same 40 rounds with the same settings. With single default values a
+plan has the same rounds as before and the same two signals (difference 0.0). The layer table needs 1025 pixels of 1101;
+the window was looked at. The two-worker path in `complete_test_run.py` was not run. `uv run pytest` not run: no test
+imports these files.
+
+## 163 - Complete test: the about column says what to enter
+
+- Date: 2026-11-09
+- Type: Engineering (GUI text only; no model, metric, mix or split changed)
+- Commit: uncommitted, on top of b30de01: `scripts/Complete_Test_Gui.py`
+
+**Why.** Nicolai does not want the about column to describe the software, but to say what to put in the boxes.
+
+**Change.** Each available layer and each Pure Data setting now shows typical values, for example wind speed
+"light breeze: 10, steady wind: 40, strong wind: 70, gale: 100". A layer that cannot be used still says why. A new
+guideline says the values are rough guides.
+
+**Where the values come from.** Only "Test 1: 90" is a project value (`REQUIREMENTS.md`). Car speeds are ordinary road
+speeds. The rest are Claude's judgment and were not measured or listened to: the wind speed and resonance words come
+from how `wind.pd` maps its 0-127 sliders (speed 10 to 100: filter centre 220 to 622 Hz, a new gust every 2.3 to 0.9 s;
+resonance 0 to 127: filter Q 12 to 50), and no recording in the project states its wind speed (`docs/datasets.md`), so
+the sliders cannot be tied to m/s or Beaufort. The car levels lean on the pass-by limits of about 70 dB(A) at 7.5 m noted
+in `scripts/distracters.py`, from memory there, and the 11 dB peak of entry 157. The war and wind levels are estimates.
+
+**Checks.** The window was opened and looked at; the layers frame needs 1033 pixels of the 1101 it has. `uv run pytest`
+not run: no test imports this file.
+
+## 164 - Complete test: each background layer can also be tested without it
+
+- Date: 2026-11-09
+- Type: Engineering (test configuration; no model, metric or split changed; plans without the ticks unchanged)
+- Commit: uncommitted, on top of b30de01: `scripts/Complete_Test_Gui.py`, `scripts/complete_test_engine.py`
+
+**Why.** Nicolai asked for a tick per parameter that also tests without that parameter.
+
+**Change.** Each layer row has an "also without" tick (`Plan.also_without`). A ticked layer gets an extra option, absent,
+in the combinations of backgrounds; a layer's level columns in `rounds.csv` say `off`, and rounds carry `r["off"]`. A
+Pure Data layer that is off does not multiply by its own speed, resonance or distance. The tick is per layer: the speed,
+resonance and distance rows have none because they mean nothing with the layer away, and the drone already has
+"add one no-drone round per background". With every layer ticked there is also a round with the drone alone, and a
+no-drone round of digital silence.
+
+In Conclusions "off" is the first bar of a layer's graph. Above four numeric values the curve has the off values as
+dotted lines marked "without this layer". The Overall ratio graphs leave off rounds out: there is no ratio without a layer.
+
+**Checks (plumbing, not performance: one file, Steady_07, 10 s soundscape, it9 CRNN).** A scratch script ticked war 90,
+wind (Pd) 60 and cars 50 to 90 in 5 steps, car speed 50 and 100, all three "also without": 24 level combinations, 44 with
+car speed, 88 rounds as counted in the window, and 88 results from 3 renders. A round with cars off had only the drone,
+war and wind parts, and exactly one such round per background and drone. The two rounds with every layer off ran without
+error. `rounds.csv`, `summary.csv`, the Results table (selecting an off round included) and the Conclusions page showed
+off; `load_test` returned the same rounds. Without ticks a plan's rounds have empty off lists. The saved page and the
+window were looked at; the layers frame needs 1025 pixels of the 1101 it has. `uv run pytest` not run: no test imports
+these files.
+
+## 165 - Complete test: the about column's values replaced by sourced ones, where sources exist
+
+- Date: 2026-11-09
+- Type: Engineering (GUI text only; no model, metric, mix or split changed). Corrects the values logged in entry 163.
+- Commit: uncommitted, on top of b0e25cd: `scripts/Complete_Test_Gui.py`
+
+**Why.** Nicolai asked whether the levels were accurate or made up. Most were estimates (entry 163), and he asked for
+sources.
+
+**What each value now rests on.**
+
+| About column | Value | Source | Status |
+|---|---|---|---|
+| Car speed | 50, 80, 130 km/h | [VisitDenmark, driving regulations](https://www.visitdenmark.com/faq/driving-regulations): urban, normal roads outside urban areas, most motorways. A tourism site, not the law | Page opened |
+| Car level | One car at 10 m: up to 55-58 dB SPL; 49-52 at 20 m; 43-46 at 40 m | M1 limits 72, 70, 68 dB(A) in [Regulation (EU) 540/2014, Annex III](https://legislation.gov.uk/eur/2014/540/annex/III/data.xht); see below | Limits opened; the rest computed |
+| Closest distance | Pass-by test: 7.5 m | ISO 362 microphones 7.5 m from the centre line, as quoted from a Peutz paper and an [HBK article](https://www.hbkworld.com/en/knowledge/resource-center/articles/pass-by-noise-regulations). The Peutz URL gave no paper when opened | Search result only |
+| Wind level, landscape | 24 to 44 for 0 to 20 m/s | Rural LA90 rising about 1 dBA per m/s, an [IOA wind-farm paper](https://www.ioa.org.uk/system/files/proceedings/ma_kenyon_background_noise_measurements_for_wind_farm_developments.pdf) as quoted (OCR) in search results; the URL returned 404 when opened, so which of two IOA papers says it is not settled | Search result only |
+| Wind level, bare microphone | Up to 116 dB SPL at 12 m/s | Hearing aids (behind the ear), [review in PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC8463128/), as quoted in search results; the page returned a browser check when opened. A hearing aid is not our microphone | Search result only |
+| War soundscape | Test 1: 90; the track as built: 95 | 90 from `REQUIREMENTS.md`. 95 measured on `data/processed/war/war_track.wav` by a scratch script: 94.9 dB SPL RMS over 600 s (the track's own calibration, from the Army weapon tables and estimates in `scripts/war_track.py`) | Measured |
+| Wind speed, resonance | Low or broad 10, default 40, high or narrow 100 | No source possible: the sliders have no physical unit, so the words of entry 163 (breeze, gale, whistling) are gone | Patch mapping only |
+
+Searches for a measured level of a war soundscape at a distance found none: published figures are weapon peaks at the
+shooter. "Distant fighting: 70" and "close, heavy fighting: 100" of entry 163 are removed. Within the track, 1 s levels have
+a median 10.2 dB below its RMS, 10th percentile 27.3 dB below and 90th percentile 3.4 dB above; the phase called calm
+(93.7 dB) came out louder than the one called normal (89.3 dB), so those names do not describe the level of this track.
+
+**The car computation.** 68-72 dB(A) at 7.5 m, minus 2.5 dB to 10 m by spherical spreading, gives 65.5-69.5 at the peak;
+minus the 11 dB by which a pass-by peaks above the set level (entry 157, at 50 km/h and 10 m) gives 54.5-58.5 as the value to
+enter. Each doubling of distance takes 6 dB. It is an upper limit: the limits are what a car may not exceed in an accelerating
+test. dB(A) is read as dB SPL, which is not the same; and the 11 dB varied from 9.5 to 12.9 dB between the settings measured
+in entry 161.
+
+**Not in the GUI, for the drone-level question.** The 80-120 dB at 1 m suggested to Nicolai for test 2 had no source. Search
+results (informal forum readings, not opened) give hover levels at 1 m of 67-80 dB for DJI quadcopters; no measured level was
+found for a Shahed-type drone. Test 2's drone level is still undecided in `REQUIREMENTS.md`.
+
+**Checks.** The window was opened and looked at; the layers frame needs 1018 pixels of the 1101 it has. `uv run pytest` not run:
+no test imports this file.
