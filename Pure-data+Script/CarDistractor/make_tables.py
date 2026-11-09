@@ -6,13 +6,18 @@ car_tyre_gain.txt  tyre/road noise shape: amplitude gain per bin, mean(g^2) = 1.
                    pass-bys, smoothed over 1/3 octave, rolled off below 400 Hz (12 dB/octave).
 car_hann.txt       1024-point Hann window
 car_engines.txt    the engine recordings: path, title, A-weighting correction of the engine at the
-                   pitch it has at 45 km/h (dB(A) minus dB), and of the tyre noise; the patch reads it
+                   pitch it has at 45 km/h after the engine high-pass (dB(A) minus dB, plus the loop
+                   segment's RMS relative to -26 dBFS), the tyre
+                   noise's A-correction, loop start and length (samples: the steadiest 2.5 s) and
+                   the engine high-pass cutoff (Hz); the patch reads it
 car_gw*.txt        ISO 9613-2 ground term: per-bin weights for the octave bands 125, 250, 500, 1k and
                    2k-8k ("hi"), linear in log2(f) between band centres (63 Hz has no excess term)
 
 Run from the repo root: uv run python Pure-data+Script/CarDistractor/make_tables.py
 """
 from pathlib import Path
+
+import os
 
 import numpy as np
 import soundfile as sf
@@ -72,6 +77,22 @@ assert np.allclose(W.sum(0), 1)
 ENGINES = [("369049", "car_idle"), ("369053", "car_idle_loop"), ("387676", "car_engine_running_4"),
            ("387677", "car_engine_running_3"), ("387679", "car_engine_idle_running"), ("401552", "car_engine_outside_idle")]
 PITCH_45 = 45 * 31 / 800        # gear model in the patch: 45 km/h = 4th gear, 1395 rpm; recordings taken as 800 rpm
+ENGINE_HP_HZ = float(os.environ.get("ENGINE_HP_HZ", 200))   # two one-pole high-passes (hip~) on the engine
+LOOP_S = 2.5
+
+
+def steadiest(x):
+    """start of the LOOP_S window with the least drift of the 30-300 Hz centroid (pitch) and of level"""
+    nf, hop = 8192, 2205
+    w = np.hanning(nf); fr = np.array([np.abs(np.fft.rfft(x[k:k + nf] * w)) ** 2 for k in range(0, len(x) - nf, hop)])
+    fq = np.fft.rfftfreq(nf, 1 / SR); m = (fq > 30) & (fq < 300)
+    cen = (fr[:, m] * fq[m]).sum(1) / fr[:, m].sum(1); lev = 10 * np.log10(fr.sum(1))
+    n = int(LOOP_S * SR / hop)
+    if len(fr) <= n:
+        return 0, len(x)
+    sc = [np.std(np.log(cen[k:k + n])) * 100 + np.std(lev[k:k + n]) * 0.5 for k in range(len(fr) - n)]
+    k = int(np.argmin(sc))
+    return k * hop, min(int(LOOP_S * SR), len(x) - k * hop)
 
 
 def a_weight_db(fr):
@@ -88,10 +109,13 @@ c_tyre = a_corr(g[1:] ** 2, f[1:])
 lines = []
 for i, title in ENGINES:
     x, sr = sf.read(Path("data/processed/stems/distracter/idling") / f"fsd50k_dev_{i}.wav")
-    P = np.abs(np.fft.rfft(x)) ** 2; fx = np.fft.rfftfreq(len(x), 1 / sr) * PITCH_45   # played back at PITCH_45
+    st, ln = steadiest(x); seg = x[st:st + ln]
+    P = np.abs(np.fft.rfft(seg)) ** 2; fx = np.fft.rfftfreq(len(seg), 1 / sr) * PITCH_45   # played back at PITCH_45
     keep = (fx > 0) & (fx < sr / 2)
-    c = a_corr(P[keep], fx[keep])
-    lines.append(f"../../data/processed/stems/distracter/idling/fsd50k_dev_{i}.wav {title} {c:.2f} {c_tyre:.2f}")
-    print(f"{i} {title}: engine A-correction {c:.2f} dB")
+    hp = ((fx[keep] / ENGINE_HP_HZ) ** 2 / (1 + (fx[keep] / ENGINE_HP_HZ) ** 2)) ** 2      # |H|^2 of two one-pole high-passes
+    c = a_corr(P[keep] * hp, fx[keep]) + 10 * np.log10(np.sum(P[keep] * hp) / np.sum(P[keep]))  # dB(A) of filtered minus dB of unfiltered
+    c += 20 * np.log10(np.std(seg)) + 26        # the patch assumes -26 dBFS RMS; the loop segment may differ
+    lines.append(f"../../data/processed/stems/distracter/idling/fsd50k_dev_{i}.wav {title} {c:.2f} {c_tyre:.2f} {st} {ln} {ENGINE_HP_HZ:g}")
+    print(f"{i} {title}: loop {st / SR:.2f}-{(st + ln) / SR:.2f} s, engine A-correction {c:.2f} dB")
 (HERE / "car_engines.txt").write_text("\n".join(lines) + "\n")
 print(f"tyre noise A-correction {c_tyre:.2f} dB")

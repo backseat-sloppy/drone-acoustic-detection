@@ -30,3 +30,13 @@ Rendered examples:
 - `car_60kmh_20m.wav`: engine 2 (387676, Jagadamba, CC BY 3.0), 60 km/h, 20 m, 85 dB(A) at 1 m, 12 s.
 
 CC BY 3.0: https://creativecommons.org/licenses/by/3.0/ - CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
+
+Comparison figure `car_vs_real.png` (`compare_real.py`) shows spectrograms of these real pass-bys,
+next to Pd renders:
+
+| FSD50K id | Title | Uploader | Licence |
+|---|---|---|---|
+| 425650 | renault kangoo 1.6 16v exterior passby slow 30kmph mono NTG3.wav | Soundholder | CC BY 3.0 |
+| 425649 | renault kangoo 1.6 16v exterior passby slow 40kmph mono NTG3.wav | Soundholder | CC BY 3.0 |
+| 425381 | audi a4 allroad 20TFSI exterior passby 70kmph following mono NTG3.wav | Soundholder | CC BY 3.0 |
+| 425505 | BMW F12 640D Gran Coupe exterior wet asphalt passby 120kmph static mono 8040.wav | Soundholder | CC BY 3.0 |

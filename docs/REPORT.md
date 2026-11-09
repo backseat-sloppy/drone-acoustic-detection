@@ -9158,3 +9158,97 @@ send/receive names are unchanged, so headless renders take the same `-send` mess
 **Result.** The engine subpatch is unchanged except its position. The example render (engine 3,
 70 km/h, 15 m, 12 s, other settings default) is sample-identical to the one from entry 151
 (595328 samples, max difference 0.0). The GUI layout was not inspected on screen by Claude.
+
+## 153 - Car distractor against real pass-bys: spectrograms, spectra and level curves
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Evaluation
+- Commit: uncommitted (on f64eedf)
+
+**What changed.** New `Pure-data+Script/CarDistractor/compare_real.py` and its figure
+`car_vs_real.png`. Four real FSD50K dev pass-bys whose titles give the speed (425650 Kangoo 30 km/h,
+425649 Kangoo 40 km/h, 425381 Audi A4 70 km/h, 425505 BMW 120 km/h on a wet road) against
+`car_distractor.pd` (entry 152) at the same speed, engine 3 (387677), defaults otherwise. The closest
+distance of each real clip is estimated from its A-weighted level: a point source is within 3 dB of
+its peak for 2 d / v seconds, giving 5.8, 4.1, 10.7 and 9.6 m. 425381 is one of the four clips the
+tyre spectrum was averaged from (entry 146), so its spectrum comparison is not independent.
+
+**Why.** Mads asked to compare spectrograms of real cars passing by with the Pd sound.
+
+**How.** `uv run python Pure-data+Script/CarDistractor/compare_real.py` (renders with Pd 0.57).
+
+**Result.** 10 s around the loudest moment; spectrum = 1 s at the loudest moment, as a share of
+power; level = A-weighted, 0.2 s smoothing:
+
+| Clip | d est. m | -3 dB width s, real / Pd | centroid Hz, real / Pd | power share below 200 Hz, real / Pd | level 2 s from peak dB, real / Pd |
+|---|---|---|---|---|---|
+| 425650, 30 km/h | 5.8 | 1.40 / 1.44 | 583 / 207 | 0.25 / 0.85 | -9.6 / -7.7 |
+| 425649, 40 km/h | 4.1 | 0.74 / 0.72 | 643 / 297 | 0.21 / 0.82 | -15.1 / -16.4 |
+| 425381, 70 km/h | 10.7 | 1.10 / 1.04 | 901 / 505 | 0.08 / 0.62 | -12.3 / -13.9 |
+| 425505, 120 km/h | 9.6 | 0.57 / 0.63 | 1042 / 1012 | 0.29 / 0.09 | -18.3 / -20.1 |
+
+What agrees: the level curve over time (within about 2 dB out to +-2 s; the -3 dB width matches by
+construction, the rest does not), the Doppler crossing at the closest moment, and the spectrum above
+about 1 kHz at 40, 70 and 120 km/h.
+
+What does not:
+1. **Too much low frequency below about 250 Hz up to 70 km/h.** 62-85 % of the Pd car's power is
+   below 200 Hz against 8-25 % in the real cars, and 300 Hz-1 kHz is 5-10 dB short at 30 and 40 km/h.
+   The engine recording is bass-heavy, and the dB(A) balance of entry 150 set its unweighted level
+   10 dB above its dB(A) level. Part of the real clips' low-frequency deficit may be their recording
+   chain (shotgun microphones); not separated here.
+2. **Engine lines too strong and stepping.** The Pd spectrogram has a few strong harmonic lines that
+   jump in pitch every 1-3 s. The jumps are the loop crossfade moving between parts of 387677 that
+   run at slightly different revs. The real cars show weaker, smoother lines over more broadband
+   sound.
+3. **Symmetric at 120 km/h.** The real wet-road car stays 5-8 dB louder after it passes (spray and
+   rear-directed tyre noise); the Pd car fades the same way on both sides.
+4. **Less above 5 kHz at 30 and 120 km/h** (5-8 dB), consistent with no spray or wind noise.
+
+**Assessment.** Distance, timing and Doppler behave like real pass-bys; the spectrum is the weak
+part, mostly the engine. Four clips, one engine; distances are estimates. Synthetic scaffolding.
+
+**Next.** For Mads to decide: the low end and the stepping engine lines are the largest gaps.
+
+## 154 - Car distractor: steady engine loop and engine high-pass, checked on the held-out pass-bys
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on f64eedf)
+
+**What changed.** Two fixes for the gaps entry 153 found, in `make_tables.py` and
+`car_distractor.pd`:
+1. **Steady loop.** Each engine now loops only its steadiest 2.5 s: the window with the least drift
+   of the 30-300 Hz spectral centroid (a pitch proxy) and of level. `soundfiler` reads just that
+   part (`read -skip <start> -resize -maxsize <length>`; Pd prints "truncated to 110250 elements",
+   which is expected). Pitch drift of the centroid, whole clip -> loop: 369049 6.4 -> 4.7 %, 369053
+   6.5 -> 5.2 %, 387676 9.5 -> 7.7 %, 387677 10.5 -> 1.8 %, 387679 8.7 -> 5.7 %, 401552 3.7 -> 2.6 %.
+2. **Engine high-pass.** Two one-pole high-passes (`hip~`) at 200 Hz on the engine, before
+   propagation. The engine A-correction in `car_engines.txt` now includes the filter and the loop
+   segment's level relative to -26 dBFS, so the knob still means the engine's dB(A) at 1 m.
+   `car_engines.txt` gains three columns: loop start, loop length (samples), cutoff (Hz).
+
+**How the cutoff was chosen (not on the test clips).** Target = power share below 200 Hz in the
+loudest 1 s of six other single-car dev pass-bys: 425503 0.28, 425527 0.29, 237336 0.08, 237339
+0.08, 3184 0.32, 429176 0.99 (rumble, likely wind; treated as an outlier); target 0.25. Pd at
+40 km/h, 6 m, engines 0 and 3, two hip~ at 100 / 200 / 300 / 400 Hz: share 0.61-0.67 /
+0.24-0.34 / 0.09-0.15 / 0.05-0.07. 200 Hz chosen.
+
+**Result.** `compare_real.py` on entry 153's four held-out clips (same estimated distances):
+
+| Clip | centroid Hz real / Pd before / Pd now | share below 200 Hz real / before / now | level 2 s from peak dB real / now |
+|---|---|---|---|
+| 425650, 30 km/h | 583 / 207 / 611 | 0.25 / 0.85 / 0.47 | -9.6 / -8.7 |
+| 425649, 40 km/h | 643 / 297 / 780 | 0.21 / 0.82 / 0.33 | -15.1 / -14.2 |
+| 425381, 70 km/h * | 901 / 505 / 998 | 0.08 / 0.62 / 0.15 | -12.3 / -13.2 |
+| 425505, 120 km/h | 1042 / 1012 / 1111 | 0.29 / 0.09 / 0.10 | -18.3 / -20.1 |
+
+(* also in the tyre-spectrum average.) In the figure the Pd spectra now lie on the real ones from
+about 300 Hz to 10 kHz at 30, 40 and 70 km/h, and the engine lines no longer jump in pitch.
+
+**Remaining gaps.** Bass is still 0.07-0.22 above the real share at 30-70 km/h; engine lines are
+steadier but still more prominent than in the real cars; at 120 km/h the real wet-road car has more
+below 150 Hz and stays louder after it passes (entry 153, items 3-4), unchanged.
+
+**Limits.** Four test clips, one engine (3), distances estimated. The steadiness score is a centroid
+proxy, not a pitch tracker. Not listened to by Claude.
