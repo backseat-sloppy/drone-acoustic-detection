@@ -1,4 +1,4 @@
-<REAPER_PROJECT 0.1 "7.84/macOS-arm64" 1794306640 0
+<REAPER_PROJECT 0.1 "7.84/macOS-arm64" 1794314799 0
   <NOTES 0 2
   >
   RIPPLE 0 0
@@ -20,8 +20,8 @@
   PANMODE 3
   PANLAWFLAGS 3
   CURSOR 9
-  ZOOM 4.10874880408743 0 0
-  VZOOMEX 12.72719574 124
+  ZOOM 3.6662435496996 0 0
+  VZOOMEX 4.45833349 29
   USE_REC_CFG 0
   RECMODE 1
   SMPTESYNC 0 30 100 40 1000 300 0 0 1 0 0
@@ -68,8 +68,8 @@
   GLOBAL_AUTO -1
   TEMPO 120 4 4 0
   PLAYRATE 1 0 0.25 4
-  SELECTION 0 0
-  SELECTION2 0 0
+  SELECTION 34 78.5
+  SELECTION2 34 78.5
   MASTERAUTOMODE 0
   MASTERTRACKHEIGHT 0 0
   MASTERPEAKCOL 16576
@@ -167,7 +167,7 @@
     BUSCOMP 0 0 0 0 0
     SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
     FIXEDLANES 9 0 0 0 0
-    SEL 1
+    SEL 0
     REC 0 0 1 0 0 0 0 0
     VU 64
     TRACKHEIGHT 0 0 0 0 0 0 0
@@ -421,15 +421,15 @@
       >
     >
     <ITEM
-      POSITION 48
+      POSITION 75
       SNAPOFFS 0
-      LENGTH 20.0680737370018
+      LENGTH 1
       LOOP 1
       ALLTAKES 0
       FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
-      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.17728047306699 1 1 0 0 1 0 0 1 0 0
       MUTE 0 0
-      SEL 1
+      SEL 0
       IGUID {788F7AB6-8A4A-B04C-8C80-F0E1D216A634}
       IID 17
       NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
@@ -442,6 +442,226 @@
         FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
       >
     >
+    <ITEM
+      POSITION 75.82271952693301
+      SNAPOFFS 0
+      LENGTH 0.297674380365
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.17728047306699 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.02246599097094 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {942BFE02-B556-A84D-936E-823CF7AF7819}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 1.39671943816888
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {1A34B516-B776-D54E-B7B5-FC7AEF46A99E}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 76.09792791632707
+      SNAPOFFS 0
+      LENGTH 0.2358929051949
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.02246599097094 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.01123299548547 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {C76983A3-3FCF-2C49-B368-46E5663A9110}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 2.07399991123586
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {9A2223C5-1281-B94C-B43B-85DD94B8DDF9}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 76.3225878260365
+      SNAPOFFS 0
+      LENGTH 0.34822286004962
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.01123299548547 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.01123299548547 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {79DF41C0-44F8-DE4B-ADDA-975689884A01}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 2.6918146629368
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {BD8E3EF2-EA34-8146-8E33-FD4764BEB9CC}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 76.65957769060064
+      SNAPOFFS 0
+      LENGTH 0.34042230939936
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.01123299548547 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.07644691549078 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {9BA1BE2F-0A32-2F49-A6BC-FAF01FD063D4}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 3.3692268369003
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {B8B15AF8-5372-FD42-8029-A4EDA1BC48AA}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 76.92355308450922
+      SNAPOFFS 0
+      LENGTH 0.35945585553509
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.07644691549078 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.07301447065556 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {B0AFECDA-DBD2-BE4F-A46A-E34CCAE92214}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 3.9814250908585
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {0A5E1767-E081-854E-AAC9-907FEC64D8FA}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 77.20999446938875
+      SNAPOFFS 0
+      LENGTH 0.29000553061125
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.07301447065556 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.02041363895994 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {6D7FB085-DB3E-7042-A9C0-F4B0BB258930}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 4.55787200634927
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {AE06A6BE-B31E-9241-9A93-09F3BA8A3953}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 77.47958636104006
+      SNAPOFFS 0
+      LENGTH 0.297674380365
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.02041363895994 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.05616497742736 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {97484D80-C1BE-6B45-A993-06CCC8787377}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 5.23185173547757
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {26A939A6-7F55-A240-9DFA-66F61F5DBB6B}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 77.7210957639777
+      SNAPOFFS 0
+      LENGTH 0.2789042360223
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.05616497742736 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.0275131862217 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {5A6B1B19-1AF1-B942-A26C-B054EE190E95}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 5.93199330220505
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {96E8E9BB-47A0-2F4F-92BB-265712C0679B}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 77.9724868137783
+      SNAPOFFS 0
+      LENGTH 0.35964359988355
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.0275131862217 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.1491205170249 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {386FA0B6-D296-424A-A76A-E57F1E77E572}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 6.6132023128421
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {8C3FAC25-F50E-D047-9BB1-A8D9FF939663}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 78.18300989663696
+      SNAPOFFS 0
+      LENGTH 13.04080533426954
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.1491205170249 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {A9AAE5E4-5B87-F541-8E01-A7F6E4C71FEE}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.14071549906379
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {AFA104EF-8C37-8942-B392-98DAA8734C38}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
   >
   <TRACK {38379C74-28A7-CF46-B466-C0F08DA16850}
     NAME flyby_A_200kmh_100m
@@ -449,7 +669,7 @@
     BEAT -1
     AUTOMODE 0
     PANLAWFLAGS 3
-    VOLPAN 0.54793648037502 0 -1 -1 1
+    VOLPAN 0.48404242685333 0 -1 -1 1
     MUTESOLO 0 0 0
     IPHASE 0
     PLAYOFFS 0 1
@@ -457,10 +677,10 @@
     BUSCOMP 0 0 0 0 0
     SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
     FIXEDLANES 9 0 0 0 0
-    SEL 0
+    SEL 1
     REC 0 0 1 0 0 0 0 0
     VU 64
-    TRACKHEIGHT 113 0 0 0 0 0 0
+    TRACKHEIGHT 0 0 0 0 0 0 0
     INQ 0 0 0 0.5 100 0 0 100
     NCHAN 2
     FX 1
@@ -561,7 +781,7 @@
       FADEIN 1 3.13217782931752 0 1 0 0 0 1 0 0 1 0 0
       FADEOUT 1 0.40182055521015 0 1 0 0 0 1 0 0 1 0 0
       MUTE 0 0
-      SEL 0
+      SEL 1
       IGUID {DFC6CCBC-3C41-4C40-AC90-9708C8E04C0A}
       IID 13
       NAME flyby_A_200kmh_100m.wav
@@ -572,6 +792,295 @@
       GUID {A368F3AE-5B7A-ED4C-A69A-723F8F422689}
       <SOURCE WAVE
         FILE "/Users/pedrolira/Documents/GitHub/drone-acoustic-detection/Distrators/Helicopter/Helicopter/flyby_A_200kmh_100m.wav"
+      >
+    >
+  >
+  <TRACK {0F93578F-F630-9A49-A7D1-6228D0E3ADFE}
+    NAME "Vehicles, Skid, Car, Skids, Scrape, Brake, On Dirt, Start, Fast SND137295"
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 1 0 -1 -1 1
+    MUTESOLO 0 0 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {0F93578F-F630-9A49-A7D1-6228D0E3ADFE}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <VOLENV2
+      EGUID {AD168A30-98DE-3540-B5AF-59B2B87D039C}
+      ACT 1 -1
+      VIS 1 1 1
+      LANEHEIGHT 0 0
+      ARM 1
+      DEFSHAPE 0 -1 -1
+      VOLTYPE 1
+      PT 0 1 0
+    >
+    <PANENV2
+      EGUID {A0EFEBF9-FBB5-6549-A13C-97561B10AA17}
+      ACT 1 -1
+      VIS 1 1 1
+      LANEHEIGHT 0 0
+      ARM 1
+      DEFSHAPE 0 -1 -1
+      PT 0 0 0
+      PT 63.9995 0 0
+      PT 64 -1 0
+      PT 66.80041274 -0.85185185 0
+      PT 66.84284075 -0.7037037 0
+      PT 68.05203896 -0.7037037 0
+      PT 68.07325296 -0.62962963 0
+      PT 68.09446696 -0.62962963 0
+      PT 68.11568097 -0.55555556 0
+      PT 68.43389102 -0.55555556 0
+      PT 68.51874704 -0.55555556 0
+      PT 68.56117504 -0.7037037 0
+      PT 68.58238905 -0.7037037 0
+      PT 68.62481706 -0.55555556 0
+      PT 68.66724506 -0.55555556 0
+      PT 68.70967307 -0.55555556 0
+      PT 68.75210108 -0.48148148 0
+      PT 68.81574309 -0.40740741 0
+      PT 68.8581711 -0.7037037 0
+      PT 68.92181311 -0.7037037 0
+      PT 68.94302711 -0.62962963 0
+      PT 68.98545512 -0.62962963 0
+      PT 69.00666912 -0.55555556 0
+      PT 69.04909713 -0.55555556 0
+      PT 69.09152514 -0.40740741 0
+      PT 69.13395314 0 0
+    >
+    <ITEM
+      POSITION 64
+      SNAPOFFS 0
+      LENGTH 8.5
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 1.8731908385648 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {CFD066C0-2448-DE4B-B1B7-25C7F658168C}
+      IID 20
+      NAME "Vehicles, Skid, Car, Skids, Scrape, Brake, On Dirt, Start, Fast SND137295.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {6CB77323-D92A-2C48-9B51-C8101B19E742}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Vehicles, Skid, Car, Skids, Scrape, Brake, On Dirt, Start, Fast SND137295.wav"
+      >
+    >
+  >
+  <TRACK {F0A8E6E9-D50F-574D-BCFB-C829086F59F1}
+    NAME 682098__henkonen__car-passing-by-doppler-dirt-road
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 0.18947831560292 0 -1 -1 1
+    MUTESOLO 0 0 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {F0A8E6E9-D50F-574D-BCFB-C829086F59F1}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <PANENV2
+      EGUID {FDDA4B07-A174-2642-A667-2E39F654C504}
+      ACT 1 -1
+      VIS 1 1 1
+      LANEHEIGHT 0 0
+      ARM 1
+      DEFSHAPE 0 -1 -1
+      PT 0 0 0
+      PT 45.34077201 0 0
+      PT 45.48202052 0.5 0
+      PT 45.76451755 0.77777778 0
+      PT 46.04701457 0.7037037 0
+      PT 46.4707601 0.62962963 0
+      PT 47.17700266 0.48148148 0
+      PT 47.60074819 0.48148148 0
+      PT 48.02449372 0.33333333 0
+      PT 48.73073628 0.33333333 0
+      PT 49.15448181 0.25925926 0
+      PT 49.29573032 0.18518519 0
+      PT 50.14322139 0.18518519 0
+      PT 50.70821543 0.03703704 0
+      PT 50.99071245 0.03703704 0
+      PT 51.27320947 -0.11111111 0
+      PT 51.41445798 -0.11111111 0
+      PT 51.5557065 -0.18518519 0
+      PT 51.69695501 -0.2345679 0
+      PT 51.97945203 -0.33333333 0
+      PT 52.12070054 -0.33333333 0
+      PT 52.54444607 -0.55555556 0
+      PT 53.25068863 -0.74074074 0
+      PT 53.53318565 -0.85185185 0
+      PT 53.81568267 -0.92592593 0
+      PT 54.09817969 -1 0
+      PT 55.65191331 -1 0
+      PT 56.21690736 -1 0 0 1
+      PT 56.35815587 -0.95061728 0 0 1
+      PT 56.64065289 -0.92592593 0 0 1
+      PT 56.92314991 -1 0 0 1
+      PT 58.75938055 -1 0 0 1
+      PT 59.3243746 -1 0 0 1
+      PT 59.60687162 -1 0 0 1
+      PT 61.30185375 -1 0
+      PT 61.58435077 0 0
+    >
+    <ITEM
+      POSITION 46
+      SNAPOFFS 0
+      LENGTH 15.1933125
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {FEF8D032-6133-2448-9D7F-D995AF760D62}
+      IID 21
+      NAME 682098__henkonen__car-passing-by-doppler-dirt-road.wav
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {C528C322-2292-9D44-8692-E8835C85DCEB}
+      <SOURCE WAVE
+        FILE "Media/682098__henkonen__car-passing-by-doppler-dirt-road.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME /Users/pedrolira/Documents/GitHub/drone-acoustic-detection/Virtual_SoundScape_Reaper/682098__henkonen__car-passing-by-doppler-dirt-road.wav
+      >
+    >
+  >
+  <TRACK {56F4CD2E-D16B-454D-BEAC-E4BE6F34A40E}
+    NAME 368824__klankbeeld__man-screaming-hey-breaking-voice
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 0.72629723955355 -0.28 -1 -1 1
+    MUTESOLO 0 0 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {56F4CD2E-D16B-454D-BEAC-E4BE6F34A40E}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 72
+      SNAPOFFS 0
+      LENGTH 0.8594375
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {3B464B57-E71C-5044-8DB3-1F2D7B794055}
+      IID 23
+      NAME 368824__klankbeeld__man-screaming-hey-breaking-voice.wav
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {26C243F3-A37A-DB46-BA08-D1337232D91E}
+      <SOURCE WAVE
+        FILE "Media/368824__klankbeeld__man-screaming-hey-breaking-voice.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME /Users/pedrolira/Documents/GitHub/drone-acoustic-detection/Virtual_SoundScape_Reaper/368824__klankbeeld__man-screaming-hey-breaking-voice.wav
+      >
+    >
+  >
+  <TRACK {FDD160F7-ED4A-9347-8B20-10D42CDD7585}
+    NAME 402644__theuncertainman__go-go-go-version-3-northern-british-soldier
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 0.23783287923456 -0.416 -1 -1 1
+    MUTESOLO 0 0 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {FDD160F7-ED4A-9347-8B20-10D42CDD7585}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 73
+      SNAPOFFS 0
+      LENGTH 3.20435416666666
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {50397537-489F-8241-AE39-4FC05CC35153}
+      IID 24
+      NAME 402644__theuncertainman__go-go-go-version-3-northern-british-soldier.wav
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {55253ACE-090E-2045-AB87-CB23EEB1C4D9}
+      <SOURCE WAVE
+        FILE "Media/402644__theuncertainman__go-go-go-version-3-northern-british-soldier.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME /Users/pedrolira/Documents/GitHub/drone-acoustic-detection/Virtual_SoundScape_Reaper/402644__theuncertainman__go-go-go-version-3-northern-british-soldier.wav
       >
     >
   >
