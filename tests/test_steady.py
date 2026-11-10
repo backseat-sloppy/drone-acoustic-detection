@@ -92,3 +92,18 @@ def test_real_steady_draw_has_rig_level_and_the_window_length():
         x, p = rg.RangeSampler.steady(s, rng)
         assert len(x) == FS and np.isfinite(x).all()
         assert abs(10 * np.log10(p / 1e-4)) < 3.5   # white rig background at 0.01 RMS, wobble up to +-3 dB
+
+
+def test_colour_recipe_draws_only_pink_and_brown_slopes_and_never_masks_a_drone(monkeypatch):
+    # Iteration 19 (entry 169): only slope noise at -3 and -6 dB/octave, no phase copies, no maskers.
+    r = rg.RECIPES["simdist_colour"]
+    assert r.steady_neg == 0.15 and r.steady_mask == 0.0 and set(r.steady_slopes) == {-3.0, -6.0}
+    rng = np.random.default_rng(6)
+    s, tone = _stub(rg.Recipe("t", {(0, 50): 1.0}, near_bury=False, steady_neg=1.0, steady_slopes=(-3.0, -6.0)))
+    drawn, real_slope = [], steady.slope_noise
+    monkeypatch.setattr(steady, "slope_noise", lambda n, db, rng, fs=FS: (drawn.append(db), real_slope(n, db, rng, fs))[1])
+    monkeypatch.setattr(steady, "phase_copy", lambda *a: (_ for _ in ()).throw(AssertionError("phase copy drawn")))
+    for _ in range(200):
+        rg.RangeSampler.steady(s, rng)
+        assert np.allclose(s.positive(rng), tone)
+    assert set(drawn) == {-3.0, -6.0} and 0.35 < np.mean(np.array(drawn) == -3.0) < 0.65

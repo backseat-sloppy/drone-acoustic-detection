@@ -81,7 +81,9 @@ DEFAULT_LEVELS = {"war soundscape": ("60", "60", "1"), "war-shaped noise": ("50"
 COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it10 CNN": "#d93025",
           "It9B": "#0b8a8a", "it16 CNN 600k s0": "#b8860b", "it16 CNN 600k s1": "#d4a72c",
           "it16 CNN 600k s2": "#8a6d0b", "it16 CRNN 600k s0": "#c2185b", "it16 CRNN 600k s1": "#e5609a",
-          "it16 CRNN 600k s2": "#880e4f", "comb": "#1baf7a"}
+          "it16 CRNN 600k s2": "#880e4f", "it19 CRNN colour s1": "#ff6f00", "it17 CNN 2s 600k s0": "#1b5e20", "it17 CNN 2s 600k s1": "#43a047",
+          "it17 CNN 2s 600k s2": "#81c784", "it17 CRNN 2s 600k s0": "#311b92", "it17 CRNN 2s 600k s1": "#5e35b1",
+          "it17 CRNN 2s 600k s2": "#9575cd", "comb": "#1baf7a"}
 PD_CONTROLS = {"wind (Pd)": ("wind", (("speed_ms", "speed (m/s, assumed)", "quiet: 1  ·  storm: 25"),
                                       ("reso", "resonance (0-127)", "open field: 10  ·  city: 90"))),
                "cars": ("cars", (("speed_kmh", "speed (km/h)", "town: 50  ·  motorway: 130"),
@@ -189,9 +191,10 @@ def detector_names() -> list[str]:
 
 def model_view(x: np.ndarray, sc, batch: int = 256) -> np.ndarray:
     """What network scorer `sc` is fed for the mix x, as one image over time (bands, frames): z-scores,
-    exactly NetScorer.score's input. The network sees 1 s windows; a hop is 12.5 frames, so the first
-    window is shown whole and each later one adds its newest 12 or 13 frames, normalised by that window."""
-    n, hop = DEFAULT.samples_per_window, DEFAULT.samples_per_hop
+    exactly NetScorer.score's input. The network sees its own window (1 s or 2 s); a hop is 12.5 frames,
+    so the first window is shown whole and each later one adds its newest 12 or 13 frames, normalised by
+    that window."""
+    n, hop = sc.cfg.samples_per_window, sc.cfg.samples_per_hop
     starts = np.arange(0, len(x) - n + 1, hop)
     per_hop = hop / sc.cfg.hop_length
     parts = []
@@ -903,7 +906,7 @@ class Results(tk.Toplevel):
                 v = dict(z=z, lim=(top - 80, top), ticks=np.arange(np.floor(top / 10) * 10, top - 80, -10), label="dBFS",
                          end=len(mix) / E.SR)
             else:                                            # a fixed scale: comparable between rounds
-                n, hop = DEFAULT.samples_per_window, DEFAULT.samples_per_hop
+                n, hop = self.test.scorers[key].cfg.samples_per_window, DEFAULT.samples_per_hop
                 v = dict(z=model_view(mix, self.test.scorers[key]), lim=MODEL_LIM, ticks=np.arange(MODEL_LIM[0], MODEL_LIM[1] + 1),
                          label="model input (z-score)", end=(n + (len(mix) - n) // hop * hop) / E.SR)
             self._views[key] = v
@@ -1117,8 +1120,8 @@ def confidence_over_time(test: E.Test, det: str, scores: dict) -> dict[float, di
     """Modified drone tests: per speed, `det`'s confidence at each moment of the drone file, over every
     drone round at that speed (all files, levels, starts and backgrounds). Time is time in the drone
     file with the impact at 10 s (E.DRONE_S); a 5-10 s file is aligned on its impact, so x = 7 is 3 s
-    before impact for every file. A point is the decision at the end of its 1 s window (the window
-    covers the second before it); hops are binned to 0.125 s. comb is squashed as drawn elsewhere.
+    before impact for every file. A point is the decision at the end of its window (1 s, or 2 s for
+    the 2 s models: the window covers the seconds before it); hops are binned to 0.125 s. comb is squashed as drawn elsewhere.
     -> speed -> dict(x, mean, p25, p75, n) with numpy arrays."""
     if test.plan.kind != "modified" or test.drones is None:
         return {}
@@ -1137,6 +1140,8 @@ def confidence_over_time(test: E.Test, det: str, scores: dict) -> dict[float, di
         y = E.dwg.squash(s, thr) if det == "comb" else s
         b = bins.setdefault(speed, {})
         for k, v in zip(np.round(x / hop).astype(int), y):
+            if np.isnan(v):                                  # a 2 s model's hops before its first window
+                continue
             b.setdefault(int(k), []).append(float(v))
     out = {}
     for speed, b in sorted(bins.items()):

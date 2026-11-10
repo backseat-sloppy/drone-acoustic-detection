@@ -22,8 +22,9 @@ Levels are real levels, not SNRs. Every WAV in this project has full scale = 110
 background layer's level is its long-term level, the RMS over the whole source (all 600 s of the war
 track, the whole wind stem): a calm stretch of the war track stays calm and an explosion stays loud.
 
-Each round is scored by every chosen detector hop by hop (dad.wavio.stream: 1 s window, 0.125 s
-hop). Windows that lie inside the drone's sound are drone, windows that lie wholly outside are no
+Each round is scored by every chosen detector hop by hop (dad.wavio.stream: the model's own window,
+1 s or 2 s, and a 0.125 s hop; scores.npz puts every detector on the 1 s time axis, NaN before a 2 s
+model's first window). Windows that lie inside the drone's sound are drone, windows that lie wholly outside are no
 drone, and windows that straddle its start or end are left out, as in dad.wavio.window_labels
 (requirement R2's reading, entry 039). Per round and detector: recall, false-positive rate,
 precision, first alarm (from a window at least half drone) and its delay after the drone starts,
@@ -525,13 +526,22 @@ def mix_round(r: dict, plan: Plan, layers: dict[str, Layer], drones: Drones, sta
     return dict(parts=parts, mix=mix, truth=truth)
 
 
+def on_grid(score: np.ndarray, cfg) -> np.ndarray:
+    """A detector's per-hop scores on the shared time axis of 1 s windows (the first ends at 1 s): a
+    longer window's first decision comes later, so the hops before it are NaN."""
+    lead = (cfg.samples_per_window - DEFAULT.samples_per_window) // DEFAULT.samples_per_hop
+    return np.concatenate([np.full(lead, np.nan), score])
+
+
 def score_round(m: dict, thr: dict, scorers: dict) -> dict:
-    """Every detector over a mixed round: decisions, labels and the round's numbers."""
+    """Every detector over a mixed round, each at its own window (sc.cfg: 1 s or 2 s): decisions,
+    labels and the round's numbers."""
     clip = Clip("round", m["mix"].astype(np.float32), SR, 1, "FLOAT")
     out = {}
     for k, sc in scorers.items():
-        d = stream(clip, sc, DEFAULT, thr[k])
-        lab = window_labels(d, m["truth"], DEFAULT.window_seconds)
+        win = sc.cfg.window_seconds
+        d = stream(clip, sc, sc.cfg, thr[k])
+        lab = window_labels(d, m["truth"], win)
         conf = dwg.squash(d.score, thr[k]) if k == "comb" else d.score
         tp, fn = int((d.drone & (lab == 1)).sum()), int((~d.drone & (lab == 1)).sum())
         fp, tn = int((d.drone & (lab == 0)).sum()), int((~d.drone & (lab == 0)).sum())
@@ -539,12 +549,12 @@ def score_round(m: dict, thr: dict, scorers: dict) -> dict:
         first = delay = lead = None
         if m["truth"].drones:
             k0 = m["truth"].drones[0]
-            hit = d.drone & (d.t_end - DEFAULT.window_seconds / 2 >= k0["start_s"]) & (d.t_end <= k0["end_s"])
+            hit = d.drone & (d.t_end - win / 2 >= k0["start_s"]) & (d.t_end <= k0["end_s"])
             if hit.any():
                 first = float(d.t_end[hit][0])
                 delay = first - k0["start_s"]
             if "impact_s" in k0:
-                lt = lead_times(d, m["truth"], DEFAULT.window_seconds)
+                lt = lead_times(d, m["truth"], win)
                 lead = lt[0]["lead_s"] if lt else None
         out[k] = dict(dec=d, labels=lab, conf=conf,
                       row=dict(tp=tp, fn=fn, fp=fp, tn=tn, left_out=int((lab == -1).sum()),
@@ -663,7 +673,7 @@ class Test:
                     v["row"].update(q)
                 self.results[r["round"]] = {k: v["row"] for k, v in res.items()}
                 for k, v in res.items():
-                    scores[f"{r['round']}|{k}"] = v["dec"].score
+                    scores[f"{r['round']}|{k}"] = on_grid(v["dec"].score, self.scorers[k].cfg)
                     w.writerow(dict(round=r["round"], kind=self.plan.kind,
                                     drone=drone_label(r["drone"]) if r["drone"] is not None else "none",
                                     drone_level_db="as rendered" if r["drone"] is not None and r["drone_level_db"] is None

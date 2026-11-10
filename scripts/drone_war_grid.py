@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import dataclasses
 import functools
 import json
 import sys
@@ -66,6 +67,13 @@ MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file
           # it9 recipe trained on 600,000 windows instead of 200,000, three seeds (report entries 156 and 168)
           **{f"it16 {name} 600k s{s}": (ROOT / f"artifacts/runs/it16_600k_s{s}.json",
                                         MODEL_DIR / f"it16_600k_s{s}_none_simdist_{arch}.pt")
+             for name, arch in (("CNN", "dscnn"), ("CRNN", "crnn")) for s in (0, 1, 2)},
+          # 600k with pink and brown noise as no-drone windows; seed 1 has the best validation recall (entry 171)
+          "it19 CRNN colour s1": (ROOT / "artifacts/runs/it19_colour_s1.json",
+                                  MODEL_DIR / "it19_colour_s1_none_simdist_colour_crnn.pt"),
+          # the same with a 2 s window (iteration 17, entries 157-158); Complete_Test_Gui and detect_gui only
+          **{f"it17 {name} 2s 600k s{s}": (ROOT / f"artifacts/runs/it16_win2s600k_s{s}.json",
+                                           MODEL_DIR / f"it16_win2s600k_s{s}_none_simdist_{arch}.pt")
              for name, arch in (("CNN", "dscnn"), ("CRNN", "crnn")) for s in (0, 1, 2)}}
 OFF = float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
 NO_DRONE = 0.0                                               # drone "speed" of the no-drone row (war only)
@@ -260,11 +268,21 @@ def _sources():
 
 
 @functools.cache
+def model_cfg(model: str):
+    """DEFAULT with the window MODELS[model] was trained on, read from its run file (a checkpoint
+    does not record it; a network fed the wrong window length scores nonsense without an error)."""
+    run = json.loads(Path(MODELS[model][0]).read_text(encoding="utf-8"))
+    w = run.get("window_s", 1.0) if "models" in run else run["args"].get("window_seconds", 1.0)
+    return dataclasses.replace(DEFAULT, window_seconds=float(w))
+
+
 def _detectors(model="it6 CNN", device="cpu"):
-    """(thresholds, scorers) for "CNN" = the network MODELS[model] (on `device`) and "comb" (CPU)."""
+    """(thresholds, scorers) for "CNN" = the network MODELS[model] (on `device`) and "comb" (CPU).
+    Each scorer carries its frontend in `.cfg`: stream with `sc.cfg`, not DEFAULT."""
     run, ckpt = MODELS[model]
-    thr = {"CNN": threshold_from_run(run, str(ckpt), DEFAULT.window_seconds), "comb": comb_threshold()}
-    return thr, {"CNN": load_scorer(str(ckpt), DEFAULT, device), "comb": load_scorer("comb", DEFAULT, "cpu")}
+    cfg = model_cfg(model)
+    thr = {"CNN": threshold_from_run(run, str(ckpt), cfg.window_seconds), "comb": comb_threshold()}
+    return thr, {"CNN": load_scorer(str(ckpt), cfg, device), "comb": load_scorer("comb", DEFAULT, "cpu")}
 
 
 def defaults():
@@ -312,6 +330,8 @@ def run(a, progress=print, on_level=None, stop=lambda: False):
     progress(f"rendering {len(speeds)} drones (cached after the first time)")
     drones = render_drones(speeds, a, ROOT / "artifacts/drone_war/drones")   # shared: names hold every drone parameter
     thr, scorers = _detectors(a.model)
+    if scorers["CNN"].cfg.window_seconds != DEFAULT.window_seconds:   # the grid's labels and SNR assume one window
+        raise SystemExit(f"{a.model} uses a {scorers['CNN'].cfg.window_seconds:g} s window; this grid scores 1 s windows only")
     work = a.out / "mixes"
     work.mkdir(parents=True, exist_ok=True)
     war = {o: es.build(10, o, a.wind, {}, n, 0, src)[1] for o in offsets}   # layers: war (0 dB) and wind

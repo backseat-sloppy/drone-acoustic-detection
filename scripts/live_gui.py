@@ -9,7 +9,7 @@
 The audio path is `dad live`'s (dad.live.LivePipeline): channel 0 (or --channel) at 16 kHz,
 resampled in software when the device will not open at 16 kHz, a 1 s window every 0.125 s, each
 decision stamped with the time its window ends. Detectors are named as in `dad live`: a preset
-("it6 CNN", "it9 CNN", "it9 CRNN", "it10 CNN", "It9B", "it16 CNN 600k s0" ... "it16 CRNN 600k s2"), "comb", or a .pt / .pkl checkpoint, each optionally
+("it6 CNN", "it9 CNN", "it9 CRNN", "it10 CNN", "It9B", "it16 CNN 600k s0" ... "it16 CRNN 600k s2", "it19 CRNN colour s1"), "comb", or a .pt / .pkl checkpoint, each optionally
 "@THRESHOLD"; presets and comb bring the threshold their run froze on validation. Default: it6 CNN
 and comb, as detect_gui.
 

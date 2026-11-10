@@ -35,6 +35,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 16 | 155 to 156 | it9 CNN and CRNN retrained four ways: 600k training windows, a 2 s window, wider networks, 128 mel bands on a 50 ms frame; three seeds against a re-run reference | Mads's request after the hyperparameter list; the training settings of the it9 networks were never varied | **The 2 s window wins for both networks**: Lund recall at the frozen threshold DS-CNN 0.409 to 0.518, CRNN 0.357 to 0.448, validation unchanged; costs 1 s of window fill (R5). 600k windows cut mower false alarms (CRNN 0.41 to 0.17) without passing the Lund rule. Wider networks and 128 mel bands: no gain. |
 | Iteration 17 | 157 to 158 | The 2 s window together with 600k training windows | The two levers of iteration 16 that helped act on different readouts | **Passes for the CRNN, fails for the DS-CNN.** CRNN Lund 0.462 (ref 0.357), mower false alarms 0.281 (ref 0.408), the best CRNN so far. The DS-CNN loses part of win2s's Lund gain (0.457 against 0.518); its best stays win2s. R5 for the 2 s window not checked yet. |
 | Iteration 18 | 159 to 161 | It9B: the it9 CRNN with drone windows weighted 2 in the loss, threshold at 10% false alarms | Mads wants higher confidence with a drone in the virtual tests, accepting worse separation; the requirements are now judged in confidence (entry 159) | **Hypothesis holds.** Mean score up on every window: drone +0.05 to +0.13, no drone +0.10 to +0.17 (mower alone 0.44 to 0.60); recall at matched false alarms unchanged (0.789 against 0.790). Added to the GUIs as "It9B"; war soundscape not measured yet. |
+| Iteration 19 | 169 to 171 | Pink (-3 dB/oct) and brown (-6 dB/oct) noise as 15% of the no-drone training windows, on the `600k` arm of iteration 16 | Mads's request; the networks alarm on pink and brown noise, which no planned test contains; iteration 11's broader steady noise fixed it but halved Lund recall | **Fails narrowly on Lund recall.** Pink and brown alarms to 0% for both networks (DS-CNN was 74% on pink), mower false alarms down (CRNN 0.171 to 0.112, DS-CNN 0.149 to 0.053), validation unchanged, but Lund recall -0.04 (limit -0.03). `it19 CRNN colour s1` pushed for the virtual tests. 2 s models now usable in Complete_Test_Gui (entry 170). |
 
 ## Templates
 
@@ -10803,3 +10804,185 @@ next to it9 CRNN and It9B (8 s on the CPU); thresholds 0.429 / 0.534 / 0.481 (CN
 0.577 / 0.528 / 0.630 (CRNN s0-s2). That run only shows the models work in the engine; synthetic
 numbers are not detection performance. `.venv/Scripts/python -m pytest -q -p no:cacheprovider`:
 all pass. Not run: the GUIs themselves.
+
+---
+
+# Iteration 19 - Pink and brown noise as no-drone training windows
+
+> **Changed from iteration 16 (the `600k` arm):** 15% of the negative training windows are pink
+> (-3 dB/octave) or brown (-6 dB/octave) noise alone, half each, at the level of a rig background
+> and with iteration 11's slow level wobble (recipe `simdist_colour`). Nothing else in the recipe
+> changes: no steady noise under drones, no random-phase copies, no other slopes.
+> **Why:** Mads's request (2026-11-09): put pink and brown noise in the no-drone label. The
+> networks alarm on this noise (entry 100; the `simdist` CRNN of entry 125 on 30-61% of pink and
+> brown windows, swinging 5-76% between seeds), and pink and brown noise are not in any test the
+> project plans: not in `Complete_Test_Gui`, not in REQUIREMENTS.md. Iteration 11's
+> `simdist_steady` (random slopes from -12 to +3 dB/octave and phase copies as 15% of negatives,
+> plus steady noise under 30% of drones) took pink and brown to 0% but halved Lund recall (entry
+> 125). Which part cost the recall was never separated; this iteration keeps only the narrowest
+> part.
+> **Kept the same:** iteration 16's `600k` arm: it9 recipe (`simdist`, pool arm `none`, speed
+> 0.8-1.25, MFE 64 mel, 1 s window, 0.125 s hop), 600,000 training windows, DS-CNN and CRNN,
+> seeds 0-2, threshold frozen at 5% false alarms on validation. The comparison is against
+> `it16_600k_s0-2`, run on the same server.
+> **Hypothesis:** the networks stop alarming on pink and brown noise without losing what the
+> `600k` arm has.
+> **Judged by** (seed means, per network, against `it16_600k`):
+> 1. pink and brown alarms at the frozen threshold, on fresh noise (20 s each, seeds the training
+>    never drew, -30 dBFS): at most 5%. A tripwire on synthetic noise, not detection performance.
+> 2. Lund recall at the frozen threshold: no lower than `600k` minus 0.03.
+> 3. Validation recall at the frozen threshold: no lower than `600k` minus 0.02.
+> 4. Mower-only false alarms at the frozen threshold: no higher than `600k` plus 0.05.
+> Passing all four: the recipe replaces `simdist` for the `600k` models. Failing 2-4: the cost of
+> pink and brown is recorded and the recipe stays out.
+
+## 169 - The `simdist_colour` recipe: pink and brown noise as negatives
+
+- Date: 2026-11-09
+- Iteration: 19
+- Type: Data
+- Commit: entry 171's commit, on top of e393b7d
+
+**What changed.** `src/dad/rangerun.py`: `Recipe.steady_slopes` (default `None`, every existing
+recipe unchanged) and the recipe `simdist_colour` = `simdist` plus `steady_neg=0.15` and
+`steady_slopes=(-3.0, -6.0)`. With `steady_slopes` set, `RangeSampler.steady` draws only
+`steady.slope_noise` at one of those slopes (each half the time), scales it to the in-band power
+of a rig background, and applies the wobble; it never draws a phase copy. `steady_mask` stays 0,
+so no drone window has this noise under it.
+
+**Why.** Iteration 19's box.
+
+**How.** Test: `tests/test_steady.py::test_colour_recipe_draws_only_pink_and_brown_slopes_and_never_masks_a_drone`
+(200 draws: only -3 and -6 dB/octave, each 35-65% of draws, no phase copy, positives untouched).
+`.venv/Scripts/python -m pytest -q -p no:cacheprovider tests/test_steady.py`: 7 passed.
+
+**Result.** No training yet.
+
+**Assessment.** The data change is in place and limited to the new recipe.
+
+**Next.** Train `it19_colour_s0-2` on the server (three GPUs, one seed each) and score the four
+readouts of the box.
+
+## 170 - Complete test and detect_gui follow each model's window; the 2 s + 600k models added
+
+- Date: 2026-11-09
+- Iteration: 17 (follow-up; logged here because iteration 19 is open)
+- Type: Infrastructure
+- Commit: entry 171's commit, on top of e393b7d
+
+**What changed.** Entry 168 left out the 2 s + 600k models of iteration 17, because the GUIs fed every
+detector 1 s windows. At Mads's request the tools now use each model's own window:
+- `scripts/drone_war_grid.py`: `model_cfg(model)` reads the window a model was trained on from its run
+  file (`args.window_seconds`, or `window_s` for `train_clean.py` runs) and `_detectors` loads the
+  scorer and threshold with it. `realrun.CombScorer` and `LgbmScorer` now keep `.cfg` like `NetScorer`,
+  so every scorer carries its frontend. The grid's own command line (`main`) still scores 1 s windows
+  only and stops with a message for a 2 s model.
+- `scripts/complete_test_engine.py`: `score_round` streams, labels, finds the first alarm and the lead
+  time with each scorer's window. `scores.npz` puts every detector on the shared 1 s time axis
+  (`on_grid`: a 2 s model's eight hops before its first window are NaN), so the GUI's round view and
+  the confidence-over-time graphs need no other change. The round numbers (recall, false-positive
+  rate, mean confidence and so on) come from the model's own windows.
+- `scripts/Complete_Test_Gui.py`: the model-input image uses the scorer's window; confidence over time
+  skips the NaN hops. Six colours added.
+- `scripts/detect_gui.py`: streams each model with `sc.cfg`, shades an alarm over the window it heard;
+  six colours added.
+- Six new entries in `drone_war_grid.MODELS`: `it17 CNN 2s 600k s0/s1/s2` and
+  `it17 CRNN 2s 600k s0/s1/s2` (files `artifacts/models/it16_win2s600k_s{0,1,2}_none_simdist_{dscnn,crnn}.pt`
+  and `artifacts/runs/it16_win2s600k_s{0,1,2}.json`, fetched from the server as one archive through
+  Mads's Chrome; the archive's and all nine files' MD5 sums equal the server's). Not in
+  `live.PRESETS`: the live stream feeds every detector one window length.
+
+**Why.** Iteration 17's CRNN (2 s window, 600k training windows) is the best CRNN so far on Lund
+recall with fewer mower false alarms (entry 158); Mads wants to run it in the virtual tests.
+
+**How.** Thresholds read through `_detectors` (frozen at 5% false alarms on validation): CNN 0.411 /
+0.468 / 0.434, CRNN 0.605 / 0.555 / 0.497 (s0 / s1 / s2). A headless `complete_test_engine.Test`
+(synthetic drone at 100 km/h, war soundscape at 90 dB SPL, one no-drone round, 10 s rounds, CPU) ran
+`it16 CRNN 600k s0`, the six 2 s models and comb: 73 decisions per round for the 1 s models, 65 for the
+2 s models, and every array in `scores.npz` 73 long with 8 leading NaN for the 2 s models;
+`model_view` gives a 64 x 998 image for both. Synthetic numbers, not detection performance (CLAUDE.md
+section 5). `.venv/Scripts/python -m pytest -q -p no:cacheprovider`: all pass.
+
+**Result.** No detection numbers in this entry. Not run: the GUIs themselves (Tk windows).
+
+**Assessment.** A 2 s model is now scored on 2 s windows everywhere it is listed. Its first decision
+comes 1 s later than a 1 s model's, which the graphs show as a later start of its curve; R5 for the
+2 s window is still not checked (entry 158).
+
+**Next.** Iteration 19's training is running on the server.
+
+## 171 - Iteration 19 result: pink and brown alarms gone, mower false alarms down, Lund recall just past its limit
+
+- Date: 2026-11-10
+- Iteration: 19
+- Type: Evaluation
+- Commit: this entry's commit, on top of e393b7d
+
+**What changed.** Six networks trained with `simdist_colour` (entry 169) and scored on the box's
+four readouts against iteration 16's `600k` arm. Two scripts: `scripts/it19_colour_check.py` (pink and
+brown noise alarms) and `scripts/it19_judge.py` (the box's verdict).
+
+**Why.** Iteration 19's box.
+
+**How.** On the server (3x TITAN X, one seed per GPU), from the clone at 00ee4e8 plus this session's
+patches (the `rangerun.py` and test change verified by MD5 against this PC):
+```
+CUDA_VISIBLE_DEVICES=S .venv/bin/python -u scripts/run_range.py --name it19_colour_sS --pool --arms none \
+    --recipes simdist_colour --models dscnn crnn --device cuda --windows 600000 --speed 0.8 1.25 \
+    --deploy-fa 0.05 --seed S --frontend mfe          # S = 0, 1, 2; 1316-1383 s each
+CUDA_VISIBLE_DEVICES= .venv/bin/python -u scripts/it19_colour_check.py
+.venv/bin/python scripts/it19_judge.py
+```
+The colour check: pink and brown noise from `steady.slope_noise`, 20 s per seed, seeds 1000-1004, at
+-50, -30 and -10 dBFS RMS, each model at its frozen threshold, 1 s window, 0.125 s hop, 153 windows per
+file (765 per cell). Its `it16_600k_s0` rows were also run on this PC's CPU and are identical. All files
+(six checkpoints, three run files, the check's JSON and the logs) were fetched as one archive; its MD5
+equals the server's.
+
+**Result.** Means over seeds 0-2 at the deployment threshold (5% false alarms on validation). Validation
+and Lund: drone windows of every range; mower: the 125 windows of the Nightjar mower-only session.
+
+| Network | Arm | Validation recall | Lund recall | Mower false alarms | Pink -30 dBFS | Brown -30 dBFS |
+|---|---|---|---|---|---|---|
+| DS-CNN | `600k` | 0.785 | 0.437 | 0.149 | 0.739 | 0.024 |
+| DS-CNN | `colour` | 0.773 | 0.400 | 0.053 | 0.000 | 0.000 |
+| CRNN | `600k` | 0.788 | 0.397 | 0.171 | 0.003 | 0.126 |
+| CRNN | `colour` | 0.788 | 0.358 | 0.112 | 0.000 | 0.000 |
+
+Per seed (s0 / s1 / s2), `colour`: DS-CNN validation 0.770 / 0.766 / 0.782, Lund 0.392 / 0.394 / 0.416,
+mower 0.032 / 0.048 / 0.080; CRNN validation 0.790 / 0.793 / 0.779, Lund 0.340 / 0.403 / 0.332, mower
+0.080 / 0.152 / 0.104. `600k`: DS-CNN Lund 0.460 / 0.393 / 0.458, CRNN Lund 0.383 / 0.424 / 0.384.
+
+Pink and brown alarms per level, `600k`: the DS-CNN alarms on 74% of pink windows at every level (89 /
+50 / 83% by seed; the network normalises level, so -50 to -10 dBFS score the same) and on 0.3-2.6% of
+brown; the CRNN on 0.3% of pink and on 0.7% (-50 dBFS), 12.6% (-30) and 13.3% (-10) of brown, 27-28% on
+seed 1. `colour`: 0.000 in every cell, both networks, every seed and level.
+
+Baselines: these runs train only the networks; `comb` and `lgbm` are in entry 156's seed-0 reference
+and are not changed by a training recipe. Synthetic noise is a tripwire, not detection performance.
+
+**Assessment.** Against the box:
+1. Pink and brown at most 5%: **met**, 0% for both networks.
+2. Lund recall no lower than `600k` minus 0.03: **not met**, DS-CNN -0.037, CRNN -0.039. The seed spread
+   of Lund is larger than the drop (CRNN `colour` 0.332-0.403, `600k` 0.383-0.424), so the drop is not
+   clearly real; by the rule fixed in advance it fails.
+3. Validation recall no lower than `600k` minus 0.02: met (DS-CNN -0.012, CRNN -0.001).
+4. Mower false alarms no higher than `600k` plus 0.05: met and better (DS-CNN -0.096, CRNN -0.059).
+
+**Verdict: the hypothesis fails on rule 2, narrowly.** The narrow pink/brown recipe costs much less Lund
+recall than iteration 11's broad steady noise (0.04 here against 0.17 in entry 125), and it also cuts
+mower false alarms, but it does not come free. `simdist_colour` does not replace `simdist` as the
+default recipe. No war-soundscape or Complete Test numbers were measured for it; REQUIREMENTS.md is
+judged on those, so this iteration says nothing about the requirements.
+
+At Mads's request one model is pushed for the virtual tests: **`it19 CRNN colour s1`**
+(`artifacts/models/it19_colour_s1_none_simdist_colour_crnn.pt`, threshold 0.612), chosen as the CRNN
+seed with the highest validation recall (0.793; Lund 0.403, mower 0.152). It is in
+`drone_war_grid.MODELS`, `live.PRESETS`, `Complete_Test_Gui` (colour `#ff6f00`) and `detect_gui`. The
+other five checkpoints are kept on this PC and not pushed. A headless Complete Test round with it ran
+(synthetic, not performance); all tests pass.
+
+**Next.** Iteration 19 is closed. Whether pink and brown noise belong in training is Mads's call: the
+price is about 0.04 Lund recall for no colour alarms and fewer mower alarms. A war-soundscape run in
+`Complete_Test_Gui` with `it19 CRNN colour s1` next to `it16 CRNN 600k s1` would show whether the trade
+matters for the requirements.

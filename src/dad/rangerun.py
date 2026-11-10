@@ -130,6 +130,7 @@ class Recipe:
     near_bury: bool = True                       # near positives buried in FSD50K, as iteration 2
     steady_neg: float = 0.0                      # share of negatives that are steady noise alone (iteration 11)
     steady_mask: float = 0.0                     # share of positives with steady noise under the drone
+    steady_slopes: tuple | None = None           # only slope noise at these dB/octave, no phase copies (iteration 19)
 
 
 RECIPES = {
@@ -137,6 +138,9 @@ RECIPES = {
     "range": Recipe("range", {(0, 50): 0.20, (50, 100): 0.25, (100, 150): 0.30, (150, 200): 0.25}),
     "simdist": Recipe("simdist", {(0, 50): 1.0}, sim_share=0.80),
     "simdist_steady": Recipe("simdist_steady", {(0, 50): 1.0}, sim_share=0.80, steady_neg=0.15, steady_mask=0.30),
+    # Iteration 19: pink (-3 dB/oct) and brown (-6 dB/oct) noise as 15% of the negatives, never under a drone.
+    "simdist_colour": Recipe("simdist_colour", {(0, 50): 1.0}, sim_share=0.80, steady_neg=0.15,
+                             steady_slopes=(-3.0, -6.0)),
 }
 
 
@@ -310,7 +314,11 @@ class RangeSampler:
         """Iteration 11: generator (a) or (b), each half the time, with a slow level wobble.
         Returns the noise and its in-band power; (a) is at the level of a rig background."""
         a, pa = self._rig_background(rng)
-        if rng.random() < 0.5:
+        slopes = self.recipe.steady_slopes
+        if slopes:
+            x = steady.slope_noise(len(a), float(rng.choice(slopes)), rng, self.cfg.sample_rate)
+            x = x * math.sqrt(pa / max(rr.inband_power(x), 1e-20))
+        elif rng.random() < 0.5:
             x = steady.slope_noise(len(a), rng.uniform(*steady.SLOPE_DB_PER_OCT), rng, self.cfg.sample_rate)
             x = x * math.sqrt(pa / max(rr.inband_power(x), 1e-20))
         else:

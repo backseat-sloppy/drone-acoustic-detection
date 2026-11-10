@@ -42,7 +42,8 @@ from .config import DEFAULT, FrontendConfig
 
 ROOT = Path(__file__).resolve().parents[2]
 # Name -> (run file holding the threshold frozen on validation, checkpoint). The same
-# models as scripts/drone_war_grid.py MODELS, so the live tool and the GUIs agree.
+# models as scripts/drone_war_grid.py MODELS, so the live tool and the GUIs agree, except the 2 s
+# window models (it17): the live stream feeds every detector one window length.
 PRESETS = {
     "it6 CNN": ("artifacts/runs/it6_final.json", "artifacts/models/it6_final_none_simdist_dscnn.pt"),
     "it9 CNN": ("artifacts/runs/final_dscnn.json", "artifacts/models/final_dscnn_none_simdist_dscnn.pt"),
@@ -52,6 +53,8 @@ PRESETS = {
     **{f"it16 {name} 600k s{s}": (f"artifacts/runs/it16_600k_s{s}.json",
                                   f"artifacts/models/it16_600k_s{s}_none_simdist_{arch}.pt")
        for name, arch in (("CNN", "dscnn"), ("CRNN", "crnn")) for s in (0, 1, 2)},
+    "it19 CRNN colour s1": ("artifacts/runs/it19_colour_s1.json",
+                            "artifacts/models/it19_colour_s1_none_simdist_colour_crnn.pt"),
 }
 COMB_RUN = "artifacts/runs/it6_final.json"     # comb keeps model 6's frozen threshold, as in detect_gui
 RESAMPLE_MARGIN_S = 0.05                       # extra input kept so the resampler's start-up falls outside the window

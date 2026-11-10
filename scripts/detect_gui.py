@@ -17,6 +17,8 @@ threshold. Each uses the threshold its own run froze at 5% false alarms on valid
   it10 CNN  artifacts/it10_clean/clean_s0_dscnn.pt (seed 0, trained on synthetic drones only)
   It9B      artifacts/models/It9B_none_simdist_crnn.pt (it9 CRNN with drone windows weighted 2, entry 160)
   it16 CNN/CRNN 600k s0-s2  artifacts/models/it16_600k_s*_none_simdist_{dscnn,crnn}.pt (600,000 training windows, entry 168)
+  it19 CRNN colour s1  artifacts/models/it19_colour_s1_none_simdist_colour_crnn.pt (600k plus pink and brown noise as no drone, entry 171)
+  it17 CNN/CRNN 2s 600k s0-s2  artifacts/models/it16_win2s600k_s*_none_simdist_{dscnn,crnn}.pt (the same with a 2 s window, entry 170)
 comb, when ticked, keeps model 6's frozen threshold whichever models are picked.
 
 War noise (optional): tick "add war noise" before opening files, pick its source and type one or
@@ -106,7 +108,8 @@ NAMES = {"CNN": "CNN", "comb": "DSP (comb)"}                 # detector -> name 
 LIST_ROWS = 16                                               # files shown in the list at once
 MODELS = dwg.MODELS
 MODEL_COLORS = dict(zip(MODELS, ["#2a78d6", "#e8710a", "#9334e6", "#d93025", "#0b8a8a", "#b8860b", "#d4a72c",
-                                 "#8a6d0b", "#c2185b", "#e5609a", "#880e4f", "#6b4e16"]))
+                                 "#8a6d0b", "#c2185b", "#e5609a", "#880e4f", "#ff6f00", "#1b5e20", "#43a047", "#81c784",
+                                 "#311b92", "#5e35b1", "#9575cd"]))
 assert len(MODEL_COLORS) == len(MODELS), "add a colour for every model in drone_war_grid.MODELS"
 COMB_COLOR = dwg.COLORS["comb"]
 
@@ -255,7 +258,7 @@ def score(clip, thr, scorers) -> tuple[dict, dict]:
     as drawn, s/(s+threshold))."""
     dec, summary = {}, {}
     for k, sc in scorers.items():
-        d = stream(clip, sc, DEFAULT, thr[k])
+        d = stream(clip, sc, sc.cfg, thr[k])          # each model at its own window (1 s or 2 s)
         first = d.t_end[d.drone]
         p = peaks(d.drone)
         dec[k] = d
@@ -434,14 +437,14 @@ def conf_axes(n: int, box=CONF_BOX) -> list:
 def plot_score(ax, d, y, k):
     """Confidence over time with alarms shaded. A short file has few decisions (a 1 s file has
     one, at 1.00 s), and a line through one point draws nothing, so few decisions get dots and
-    each alarmed one shades the 1 s window it heard."""
+    each alarmed one shades the window it heard."""
     few = len(d.t_end) < 20
     ax.plot(d.t_end, y, color=color(k), lw=1.2, label=shown_as(k), marker="o" if few else None, ms=5,
             clip_on=not few)                                 # the last dot sits on the right edge
     if few:                                                  # overlapping windows merged, shaded once
         spans = []
         for t in d.t_end[d.drone]:
-            a = max(t - DEFAULT.window_seconds, 0)
+            a = max(t - d.t_end[0], 0)                  # the first decision ends one window in (1 or 2 s)
             if spans and a <= spans[-1][1]:
                 spans[-1][1] = t
             else:

@@ -431,7 +431,7 @@ class CombScorer:
 
     def __init__(self, cfg: FrontendConfig = DEFAULT) -> None:
         from .gate import HarmonicCombGate
-        self.gate = HarmonicCombGate(cfg)
+        self.cfg, self.gate = cfg, HarmonicCombGate(cfg)
 
     def score(self, audio: np.ndarray) -> np.ndarray:
         from .gate import decision_score
@@ -441,7 +441,7 @@ class CombScorer:
 class LgbmScorer:
     def __init__(self, variant: Variant, cfg: FrontendConfig = DEFAULT) -> None:
         from .models.baseline import MfccBaseline
-        self.variant, self.fe, self.model = variant, LogMel(cfg), MfccBaseline()
+        self.cfg, self.variant, self.fe, self.model = cfg, variant, LogMel(cfg), MfccBaseline()
         self.name = f"mfcc + lightgbm [{variant.name}]"
 
     def fit(self, sampler: WindowSampler, n_windows: int = 40_000, batch_size: int = 64) -> "LgbmScorer":
