@@ -9476,3 +9476,599 @@ split changed. Not decided: how close two models must be for the second priority
 
 **Next.** Test 1 set up in the complete test; the council on the evaluation protocol comes first
 (`CLAUDE.md` section 4).
+## 155 - Bee distractor in Pure Data: real bee recordings flown past the microphone
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on b30de01)
+
+**What changed.** New folder `Pure-data+Script/BeeDistractor/`, built like the car distractor
+(entries 144-154):
+- `bee_distractor.pd`. The main window has three panels:
+  - BEE: one of 4 recordings, and the number of bees, 1-8.
+  - FLIGHT: speed in m/s, closest distance, flight height, loudness in dB(A) at 1 m per bee,
+    duration, and a FLY PAST button.
+  - LISTEN: as in the car patch.
+
+  `[pd more-settings]` holds the wingbeat pitch ×, erratic flight (0-1), microphone height and
+  ground reflection.
+- `bee_voice.pd` (one bee). It loops the steadiest 2.5 s of a recording, using two read heads with a
+  50 ms crossfade.
+  - Voice 1 plays at the recording's pitch; voices 2-8 are detuned at random by ±5 %.
+  - A random walk, stepping every 250 ms, moves pitch by ±4 % and level by ±35 %, both times the
+    erratic-flight knob.
+- `bee_path.pd`. The bee flies a straight line at the chosen height, with the direct path plus the
+  ground-reflected path (image source). Each path has its own `vd~` delay r/c (c = 343.2 m/s, which
+  gives the Doppler shift) and 1/r spreading from 1 m.
+- `make_tables.py` writes `bee_clips.txt`:
+  - path and title;
+  - an A-weighting correction that also includes the loop's RMS relative to -26 dBFS;
+  - loop start and length;
+  - a low-pass cutoff that keeps birds in the recordings' background out.
+- Before propagation, the bees pass two `hip~` at 80 Hz and two `lop~` at the clip's cutoff.
+
+Recordings (FSD50K dev; buzzing_insect stems), with their loops and A-corrections:
+
+| # | id | Title | Loop s | Low-pass Hz | A-corr. dB |
+|---|---|---|---|---|---|
+| 0 | 59451 | Bees_1.wav (honeybee, ~225 Hz) | 3.45-5.95 | 5000 | -5.26 |
+| 1 | 17350 | 20060326.marshes.beeswarm02 (swarm, ~235 Hz) | 4.70-7.20 | 2500 | -5.55 |
+| 2 | 273214 | BeesBuzzing2May2nd2015 (bees in flowers) | 0.25-2.75 | 2000 | -9.75 |
+| 3 | 79931 | bourdon.wav (bumblebee, ~170 Hz) | 2.50-5.00 | 5000 | -7.55 |
+
+Choosing the clips:
+- The wingbeat pitch, harmonic share and level spread of 15 bee, wasp and swarm clips were measured,
+  and their spectrograms were looked at.
+- Left out:
+  - 233783 BUMBLEBEE 12: its steadiest 2.5 s still swings 11 dB. Kept as a comparison clip
+    (entry 156).
+  - 170758/9 "Bee buzz": labelled Human_voice, probably imitated.
+  - 361453/4 wasps and 119641: mostly rumble below 100 Hz.
+  - 201613 and 17349: kept for comparison.
+  - Every eval clip (held out).
+- The loop is the 2.5 s window with the least drift of the 80-800 Hz centroid and of level, and the
+  smallest 50 ms level jump. With a level weight of 0.5, the honeybee loop moved 3.6-7.6 dB over its
+  0.25 s frames. With weight 3, its 0.25 s RMS std is 1.0 dB (swarm 0.4, flowers 2.1, bumblebee 1.0).
+
+Defaults: honeybee, 1 bee, 2 m/s, 0.5 m, flight height 1.5 m (the microphone's), 35 dB(A) at 1 m,
+8 s, erratic flight 0.5, ground reflection 0.6 (grass).
+
+**Assumption, not measured.** 35 dB(A) at 1 m for one bee is a guess; no calibrated bee level was
+found in the data. The patch's other levels are exact relative to it.
+
+**Not modelled.** Air absorption and the ISO 9613-2 ground and weather terms of the car. At bee
+distances (under 20 m), air absorption at 4 kHz is below 1 dB. The ground reflection is one
+frequency-flat coefficient. A swarm is one point source.
+
+**Bug found while building.** Pd's `lop~` coefficient is 2πfc/sr clipped to 1, so `lop~ 8000` at
+44.1 kHz does nothing. The first A-corrections assumed analog one-pole filters. The bumblebee then
+came out 2.9 dB too loud. `make_tables.py` now uses Pd's own `hip~` and `lop~` responses, and the
+cutoffs are 5000 Hz or lower.
+
+**How.** `uv run python Pure-data+Script/BeeDistractor/make_tables.py`, then renders with
+`pd -nogui -nosound -r 44100 -open bee_distractor.pd -send "bee-batch 1" -send "bee-clip N" ... -send "bee-rec symbol <abs path>.wav" -send "bee-go bang"`
+(Pd 0.57).
+
+**Result.** Each check is a render with erratic flight 0, 8 s, 2 m/s. It compares the A-weighted
+level in 0.5 s frames over the whole flight against L + 10 log10(1/r1² + (q/r2)²):
+
+| Render | measured - theory, mean dB | std dB |
+|---|---|---|
+| honeybee, 0.5 m | -0.0 | 1.3 |
+| swarm, 0.5 m | -0.0 | 0.7 |
+| flowers, 0.5 m | -0.2 | 2.1 |
+| bumblebee, 0.5 m | -0.4 | 1.1 |
+| honeybee, 5 m | +0.1 | 1.4 |
+| honeybee, 8 bees, 0.5 m (theory + 10 log10 8) | +0.0 | 0.7 |
+
+- The std is the loop's own level movement.
+- Pitch × 1.2: the long-term spectrum shifts by ×1.196.
+- Doppler was not checked separately. `bee_path.pd` is `car_path.pd` (Doppler checked there) with
+  the source height as a setting and c = 343.2 m/s.
+
+Example renders:
+- `bee_example.wav`: defaults.
+- `bee_swarm_3m.wav`: swarm, 8 bees, 3 m, 1 m/s, 10 s.
+
+Not listened to by Claude. Synthetic scaffolding.
+
+**Next.** Compare with real bee recordings that the patch does not use (entry 156).
+
+## 156 - Bee distractor against real bee recordings
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Evaluation
+- Commit: uncommitted (on b30de01)
+
+**What changed.** New `Pure-data+Script/BeeDistractor/compare_real.py` and its figure
+`bee_vs_real.png`. It compares three real FSD50K dev bee clips that the patch does not use against
+Pd renders of the closest kind:
+- 201613 Bees.wav against the honeybee;
+- 17349 beeswarm01 against the swarm;
+- 233783 BUMBLEBEE 12 against the bumblebee.
+
+The Pd renders use 0.5 m, 2 m/s, 8 s and defaults otherwise, with the middle 6 s scored. The figure
+shows spectrograms, long-term spectra and a wingbeat pitch track (harmonic sum, 80-400 Hz,
+0.25 s frames).
+
+**Why.** Mads asked for "the same thing" as the car, with insects, especially bees. The car got
+the same comparison (entries 153-154).
+
+**How.** `uv run python Pure-data+Script/BeeDistractor/compare_real.py`.
+
+**Result.**
+
+| Real clip | median f0 Hz real / Pd | median pitch step % real / Pd | median level step dB real / Pd |
+|---|---|---|---|
+| 201613 honeybees | 212 / 216 | 6.5 / 3.2 | 1.2 / 1.8 |
+| 17349 swarm | 238 / 238 | 2.0 / 5.2 | 0.8 / 1.3 |
+| 233783 bumblebee | 148 / 328 | 3.2 / 6.4 | 5.5 / 2.1 |
+
+What agrees:
+- Honeybee and swarm: the wingbeat fundamental and the harmonic spectrum from about 150 Hz to
+  3 kHz lie on the real ones (figure, row 3).
+
+What does not:
+1. **Less above 3 kHz, and nothing below 100 Hz.** In the real clips this is mostly the recording's
+   background: a flat floor up to 10 kHz in 201613, and birds at 5-8 kHz in 17349. The patch has no
+   background on purpose, because the test mixes backgrounds separately.
+2. **The bumblebee pitch.** 79931 sits at about 170 Hz with a strong 2nd harmonic, so the tracker
+   jumps between 170 and 340 Hz (Pd median 328). The real bumblebee is 148 Hz. Wingbeat pitch × 0.87
+   would match it; the default is unchanged.
+3. **The pitch and level step numbers are not a reliable measure.** The tracker jumps on the real
+   clips too (drops to 90-110 Hz in 201613), so the erratic-flight default (0.5) is not tuned on
+   them.
+
+**Assessment.** The bee sound itself (pitch and harmonics) matches real honeybees and a swarm. The
+gaps are the background, which is left out on purpose, and one bumblebee recording's pitch. Three
+clips, a crude tracker. Synthetic scaffolding; not detection performance.
+
+**Next.** For Mads to decide whether the bees should go into the distractor set of the complete
+test, and whether other insects (flies, mosquitoes: the mosquito stems are 400-600 Hz wingbeats)
+should get the same patch.
+
+## 157 - Bee distractor: calm defaults, a couple of bees instead of a fly-over
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on b30de01)
+
+**What changed.** These are the defaults of `bee_distractor.pd` (entry 155). The patch has no other
+changes.
+
+| Setting | Before | Now |
+|---|---|---|
+| Speed | 2 m/s | 0.5 m/s |
+| Closest distance | 0.5 m | 1.5 m |
+| Number of bees | 1 | 2 |
+| Duration | 8 s | 10 s |
+
+`bee_example.wav` is re-rendered with the new defaults, and `bee_swarm_3m.wav` with 0.5 m/s, 3 m,
+8 bees and 10 s.
+
+**Why.** Mads listened: "They sound like a plane flying, it should not be very violent, just a
+couple of insects."
+
+The cause was the old defaults: a bee that starts 8 m away, passes 0.5 m from the microphone and
+leaves. The level of the old `bee_example.wav` swung 25.2 dB in 8 s, a fly-over envelope. This was
+measured as the max - min of the unweighted RMS in 0.25 s frames.
+
+The ground reflection was not the cause: the same render with reflection 0 swings 25.3 dB.
+
+**Result.** The same measure on the new renders:
+- `bee_example.wav` swings 6.5 dB, with a peak of 39.5 dB SPL in 0.25 s.
+- `bee_swarm_3m.wav` swings 3.6 dB.
+
+In the spectrogram, the bright burst at the closest moment is gone (scratch figure, not kept).
+
+Not listened to by Claude. Entries 155-156 used the old defaults, so their numbers describe those
+settings. Entry 156 rendered at 0.5 m and 2 m/s explicitly.
+
+**Next.** Mads listens again.
+
+## 158 - Bee distractor: 8 s loops instead of 2.5 s, slower and wider pitch glides
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on b30de01)
+
+**What changed.**
+1. **Longer loops.** In `make_tables.py`, `LOOP_S` went from 2.5 to 8 s. The new loops and
+   A-corrections are:
+   - 59451: 1.80-9.80 s, -4.45 dB;
+   - 17350: 1.30-9.30 s, -5.30 dB;
+   - 273214: 0.00-8.00 s, -7.15 dB;
+   - 79931: 0.25-8.25 s, -6.33 dB.
+2. **Smoother erratic flight.** In `bee_voice.pd`, the random walk steps every 600 ms and glides
+   600 ms to each new target (was 250 ms). Its pitch range is ±8 % times the knob, so ±4 % at the
+   default of 0.5 (was ±4 % times the knob).
+
+`bee_example.wav` and `bee_swarm_3m.wav` are re-rendered with the settings of entry 157.
+
+**Why.** Mads: "Still doesn't look like a real insect" (after entry 157). Spectrograms (0-2.5 kHz,
+4096-point FFT) were compared:
+- Pd default against five real dev clips: 59451, 201613, 233783, 52073 and 167455.
+- The Pd render repeated the same pattern every 2.5 s, the loop length. A bird chirp at about
+  2.3 kHz in the 59451 loop showed up four times in 10 s.
+- The real insects' harmonic lines glide slowly, by up to about ±10 % over 0.5-1 s (52073 most
+  clearly). The Pd lines instead jittered in 250 ms steps.
+- In entry 156 the level steadiness of the 2.5 s loops was bought at the price of this repetition.
+  At the calm defaults of entry 157, the recordings' own level movement in 8 s windows (0.25 s RMS
+  std 1.1-2.6 dB, measured) reads as a real bee moving rather than as an error.
+
+**Result.**
+- The new render shows the honeybee harmonics up to 2.5 kHz with slow wavy glides, close to the
+  source recording. The loop repeats only every 8 s (scratch figure, not kept).
+- The chirp in 59451 still appears once per loop.
+- The level-versus-theory check of entry 155 was not rerun on the 8 s loops. The A-corrections
+  were recomputed for the new loops in the same way.
+
+**Remaining difference.** In a spectrogram, the real recordings have a broadband background between
+the harmonics; the Pd output is silent there by design, because backgrounds are mixed in the test.
+
+Not listened to by Claude. Synthetic scaffolding.
+
+**Next.** Mads listens and looks again.
+
+## 159 - Bee distractor rebuilt: synthetic bees, silent background, each bee flying its own path (replaces 155-158's design)
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on b30de01)
+
+**What changed.** `bee_distractor.pd` no longer plays recordings. Mads: "I want silent background,
+1 or more bees flying around. You can create it synthetic if you want to."
+
+- **Wingbeat sound from real bees, without their background.** `make_tables.py` measures each
+  recording as follows:
+  1. f0 per 8192-sample frame, using a harmonic sum in the bee's f0 range.
+  2. For every harmonic: its peak power within ±3 % (at most ±0.2 f0), minus the median power
+     between the harmonics. A harmonic is kept only if it is 6 dB above that background.
+  3. The mean over the most harmonic half of the frames.
+
+  It writes one wingbeat cycle per type (`bee_wave<k>.txt`: 2048 samples plus tabread4~ guard
+  points, random fixed phases). Each table is scaled to -26 dBFS A-weighted RMS, so the loudness
+  knob is dB(A) at 1 m per bee. It also writes `bee_types.txt` (title, f0). The types are:
+
+  | Type | id | f0 Hz | Harmonics kept | Up to |
+  |---|---|---|---|---|
+  | 0 honeybee | 59451 | 227.8 | 43 | 10 kHz |
+  | 1 honeybee_2 | 17350 | 237.0 | 12 | 3 kHz |
+  | 2 bumblebee | 233783 | 149.5 | 66 | 10 kHz |
+  | 3 bumblebee_2 | 79931 | 169.0 | 59 | 10 kHz |
+
+  17350 is cut at 3 kHz because its birds at 3-8 kHz passed the 6 dB test and came out as
+  "harmonics" in the first version (visible in the comparison figure). 233783 was left out of
+  entry 155 for its level swings; that does not matter for a harmonic average.
+- **`bee_voice.pd`, one synthetic bee.**
+  - Its frequency is f0 × pitch × (1 + detune + glide + jitter):
+    - detune is 0 for bee 1 and a random ±6 % for the others;
+    - glide is a random target every 600 ms, ±8 % × the glides knob;
+    - jitter is noise low-passed at 20 Hz, about 3 % rms. The weight was tried at 0.3, 1 and 2;
+      at 2 the 4th harmonic's -10 dB width matched the real swarm's (377 Hz). 1.5 was chosen
+      without listening.
+  - **Its own flight path.** Each axis glides at the flight speed to a random point in a box
+    around the centre (x and y ±area, z ±area/2), then picks the next one.
+  - Its own direct and ground-reflected paths, each with its own delay (Doppler) and 1/r.
+  - Random seeds come from a seed number and the bee number, so renders are repeatable and a new
+    seed gives new paths.
+- **Front panel.**
+  - BEES: kind (4), number of bees (1-8), variation (seed).
+  - WHERE THEY FLY: distance to the bees, height, area ±m, flight speed, loudness dB(A) at 1 m per
+    bee, file length, RECORD TO FILE.
+  - LISTEN: unchanged.
+  - The bees buzz all the time. RECORD waits 1.5 s for them to spread out, then writes the file.
+- **Defaults:** honeybee, 2 bees, 2 m, height 1.5 m, area ±1 m, 1 m/s, 35 dB(A), 10 s, ground
+  0.6, glides 0.5.
+- **Removed:** `bee_clips.txt` and `bee_path.pd` (folded into `bee_voice.pd`).
+- **`compare_real.py`** now renders types 0 and 1 (2 bees, 1 m). 233783 is no longer held out,
+  and no clean held-out bumblebee clip exists in dev.
+
+**Result.** Calibration renders with 1 bee fixed at 1 m (area 0, glides 0, no ground), 2 s
+measured:
+- Types 0-3: 35.0, 35.0, 35.0 and 35.0 dB(A) without jitter, against 35.
+- With jitter on: types 0, 1 and 2 give 35.0, 35.0 and 34.9.
+- 8 bees: 44.1 dB(A) (theory 44.0). At 4 m: 23.0 (theory 23.0).
+- Pitch × 1.2: line at 273.0 against 227.5 (×1.200).
+- Silent background: nothing but the harmonics.
+
+`compare_real.py` against the held-out 201613 and 17349:
+
+| Real clip | median f0 Hz real / Pd | median pitch step % real / Pd | median level step dB real / Pd |
+|---|---|---|---|
+| 201613 honeybees | 212 / 230 | 6.5 / 2.5 | 1.2 / 1.8 |
+| 17349 swarm | 238 / 240 | 2.0 / 1.6 | 0.8 / 2.2 |
+
+- Harmonic spectrum: the swarm type lies on the real swarm from about 200 Hz to 3 kHz.
+- Honeybee type 0 lies on 201613 up to about 1 kHz, then falls 5-15 dB below it. That is partly
+  201613's background, and is not separated here.
+- Level swing (max - min of 0.25 s RMS over 10 s): 9.6 dB for the default 2 bees (seed 1, before
+  the jitter change), 12.3 dB for real 59451.
+
+**Limits.**
+- One fixed wingbeat waveform per type: no change of timbre with flight.
+- Bees are point sources with no wing-noise component.
+- The level of 35 dB(A) at 1 m is still an assumption (entry 155).
+
+Not listened to by Claude. Synthetic scaffolding.
+
+**Next.** Mads listens. Mosquitoes or flies would need only a new wavetable type in `make_tables.py`.
+
+## 160 - Bee distractor: wing noise, timbre that changes as a bee turns, curved paths, landings
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on b30de01)
+
+**What changed.** Four additions to `bee_voice.pd` (entry 159), each with a setting in
+`[pd more-settings]`, plus one fix.
+
+1. **Wing noise.** Noise passes `hip~ 500` and `lop~ 6000`, then is pulsed twice per wingbeat by
+   (0.5 - 0.5 cos 4πφ)², where φ is the wingbeat phase. It is mixed in at the "wing noise dB re
+   buzz" setting, default -25 dB (A-weighted). The gain 0.013676 for -25 dB comes from a numpy
+   model of the same chain (A-weighted RMS 0.206 before the gain). The level of real wing noise was
+   not measured, because in the recordings it cannot be told apart from the background, so -25 dB
+   is an assumption. -60 turns it off.
+2. **Timbre that changes as a bee turns.** Two `hip~ 1500` on the wingbeat are added back with a
+   weight that glides to a new random value in ±0.5 × "timbre change" every 900 ms (default 1).
+   That moves the harmonics above about 1.5 kHz between roughly -6 and +3.5 dB, standing in for the
+   bee's orientation.
+3. **Curved paths.** `lop~ 1.5` on each axis, so a bee rounds its turns instead of flying straight
+   lines with corners.
+4. **Landings.** If "land now and then" is on (default), every 3-10 s a bee lands for 1-4 s:
+   - on landing, the level fades out over 300 ms and the pitch drops to 0.75 over 300 ms;
+   - on take-off, the level comes back over 150 ms and the pitch sweeps up from 0.7 to 1 over
+     400 ms.
+
+   Each bee has its own random times.
+5. **Fix: correlated bees.** Seeds were seed×100 + bee×10 + j. Pd's `random` is a linear
+   congruential generator, so nearby seeds give nearly parallel sequences. The first render had
+   both bees landing together (silences at the same moments). Seeds are now
+   (seed×7919 + bee×104729 + j×15485) mod 16777213. Bee 2's landings are now independent of bee 1's
+   (30 s renders: silent 22 % with 1 bee, 9 % with 2).
+
+**Why.** Mads: "It needs to be a bit more realistic" (after entry 159). Claude's reading of what
+was missing:
+- the clean, unchanging timbre;
+- straight flight legs;
+- no stop-and-go, which real bees around flowers show (233783 has silences where the bee landed or
+  left).
+
+These are not compared against a measured target, apart from the checks below.
+
+**Result.**
+- **Calibration.** 1 bee at 1 m, landings off, glides 0, no ground, with timbre change and wing
+  noise on, over 4 s: types 0-3 give 35.0, 35.0, 35.1 and 35.1 dB(A). Turning both new parts off
+  gives 35.0. 8 bees give 44.0 (theory 44.0).
+- **`compare_real.py`:**
+
+  | Real clip | median f0 Hz real / Pd | median pitch step % real / Pd | median level step dB real / Pd |
+  |---|---|---|---|
+  | 201613 honeybees | 212 / 231 | 6.5 / 2.3 | 1.2 / 1.5 |
+  | 17349 swarm | 238 / 240 | 2.0 / 2.5 | 0.8 / 1.3 |
+
+- **Spectrograms of the examples:** landings show as a downward pitch bend into silence and an
+  upward sweep out of it. The harmonics above 1.5 kHz brighten and dim slowly, and there is now a
+  faint noise floor between the harmonics that pulses with the wingbeat.
+- `bee_example.wav`, `bee_swarm_3m.wav` and `bee_bumblebee.wav` are re-rendered with the same
+  settings as in entry 159. `bee_example.wav` now contains one landing.
+
+**Limits.**
+- Wing-noise level, landing rates and the timbre range are choices, not measurements.
+- Not listened to by Claude. Synthetic scaffolding.
+
+**Next.** Mads listens. Each addition can be turned off on its own in more-settings, to hear which
+one helps.
+
+## 161 - Bee distractor: each wingbeat a little different (roughness), tuned on spectrogram line contrast
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on b30de01)
+
+**What changed.** In `bee_voice.pd`:
+- The 20 Hz pitch jitter of entry 159 (1.5 weight, about 3 % rms) is replaced by **cycle-to-cycle
+  variation**:
+  - pitch jitter is noise low-passed at 300 Hz, 0.65 % rms × roughness;
+  - level is multiplied by (1 + noise low-passed at 100 Hz, 0.29 rms × roughness), divided by
+    sqrt(1 + (0.294 roughness)²) to keep the power.
+- New setting "wingbeat roughness" in more-settings, default 2 (0 = a perfectly periodic
+  wingbeat).
+- New figure `bee_zoom_vs_real.png` (scratch script, not kept): 3 s and 0.6 s spectrograms of the
+  real 59451 and 233783 next to Pd. Each panel is 70 dB from its own maximum.
+
+**Why.** Mads: "It should look more like a real bee on the spectrogram." Side by side:
+- The entry-159 jitter made every Pd harmonic wiggle visibly at about 10 Hz. The real bees'
+  lines are straight over 0.6 s.
+- The same jitter smeared the bumblebee's harmonics above about 2.3 kHz into a noise band that the
+  real bumblebee does not have.
+- With the jitter only at 0.1 (tried), the Pd lines were ruler-straight and crisp up to 6 kHz,
+  with dark gaps between them. In the real bees, f0 and 2f0 are crisp and the higher harmonics
+  break up and blur into a fill. That is what small differences between successive wingbeats do:
+  fast, small pitch jitter broadens harmonic h in proportion to h.
+
+**How it was tuned.** "Line contrast": the median over harmonics of the peak (±0.15 f0) minus the
+minimum halfway to the next harmonic, in dB, from 8192-point frames over 8 s, by band. Pd used one
+bee fixed at 0.5 m (area 0, glides 0.2, no landings).
+
+| Clip | 150-1000 Hz | 1-3 kHz | 3-6 kHz |
+|---|---|---|---|
+| real 59451 honeybee | 32.0 | 22.1 | 18.3 |
+| Pd type 0, roughness 0 / 1 / 2 / 3 | 65.2 / 35.8 / 30.6 / 27.9 | 46.1 / 31.0 / 23.9 / 20.4 | 35.9 / 24.7 / 19.4 / 17.7 |
+| real 233783 bumblebee | 26.7 | 17.1 | 14.9 |
+| Pd type 2, roughness 0 / 1 / 2 / 3 | 59.6 / 33.5 / 27.9 / 24.6 | 48.2 / 29.9 / 22.2 / 19.1 | 44.6 / 23.7 / 16.5 / 14.4 |
+
+- Roughness 2 matches the honeybee within 1.6 dB in every band, and the bumblebee within 1.6-5.1 dB
+  (the bumblebee would want about 3).
+- One default of 2 was kept for all types.
+- Caveats: these are the recordings the wavetables were measured from, not held-out clips. The
+  real valleys include some background (59451 more than 233783), which lowers the real contrast,
+  so roughness 2 may be slightly high for the honeybee.
+
+**Result.**
+- Calibration: 1 bee at 1 m, 8 s, landings off, glides 0, no ground. Types 0-3 give 35.16, 35.18,
+  34.98 and 35.24 dB(A). Roughness 0 gives 35.02 and roughness 3 gives 35.19 (expected 35).
+- In `bee_zoom_vs_real.png` the Pd lines are now straight, with sharp low harmonics and blurred
+  high ones, and a fill between them, as in the real panels.
+- What still differs:
+  - the real honeybee's f0 and 2f0 stand out more against the rest;
+  - the real bumblebee has fine vertical striations (wing clicks), which Pd lacks.
+- `compare_real.py`:
+
+  | Real clip | median f0 Hz real / Pd | median pitch step % real / Pd | median level step dB real / Pd |
+  |---|---|---|---|
+  | 201613 honeybees | 212 / 231 | 6.5 / 1.0 | 1.2 / 1.7 |
+  | 17349 swarm | 238 / 240 | 2.0 / 1.0 | 0.8 / 1.7 |
+
+- `bee_example.wav`, `bee_swarm_3m.wav` and `bee_bumblebee.wav` are re-rendered with the settings
+  of entry 159.
+
+Not listened to by Claude. Synthetic scaffolding.
+
+**Next.** Mads looks and listens.
+
+## 162 - Bee distractor: cleaned real recordings instead of synthesis, no landings (replaces the sound of 159-161)
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on b30de01)
+
+**What changed.**
+- **Sound source.** `make_tables.py` no longer builds wavetables. It cleans the real recordings
+  in a short-time Fourier transform (4096-point Hann, hop 256):
+  - f0 per frame from a harmonic sum, median over 9 frames;
+  - the background per frame is the median power more than 0.3 f0 from any harmonic, then median
+    over 0.5 s;
+  - a soft mask max(0, 1 - 3·background/power) only within ±(15 Hz + 2 % of the harmonic's
+    frequency), at most ±0.35 f0, and up to a per-recording top frequency; zero everywhere else;
+  - inverted with the original phase.
+
+  It writes `bee_clean<k>.wav`: a loop of the cleaned recording, faded 20 ms at both ends and
+  scaled to -26 dBFS A-weighted RMS. It also writes `bee_types.txt` (title, median f0).
+
+  | Type | id | f0 Hz | Top kept | Loop s | Power removed dB |
+  |---|---|---|---|---|---|
+  | 0 honeybee | 59451 | 225.5 | 4 kHz | 1.75-9.75 | 1.4 |
+  | 1 honeybee_swarm | 17350 | 233.0 | 3 kHz (birds) | 1.50-9.50 | 6.1 |
+  | 2 bumblebee | 233783 | 147.5 | 5 kHz | 4.60-8.30 (no gate dropouts or clicks) | 3.9 |
+  | 3 bumblebee_2 | 79931 | 169.0 | 4 kHz | 0.00-8.00 | 5.9 |
+
+  A first pass (mask factor 2, top 8 kHz) left patchy residue above about 3 kHz, so the factor
+  became 3 and the top frequencies were lowered. Some bird traces that lie on the harmonics remain
+  in 59451 and 17350.
+- **`bee_voice.pd`.** It loops `bee-src` with two read heads half a loop apart and a 50 ms
+  crossfade (as in entry 155). Each bee:
+  - starts at its own random place in the loop;
+  - plays at pitch × (1 + detune ±4 % for bees 2-8 + glide ±4 % × glides);
+  - has its level × (1 + 0.1 × glides × the glide signal).
+- **Removed:** wavetables, jitter, roughness, wing noise, timbre tilt and landings (with their
+  settings and the `bee_wave*.txt` files).
+- **Kept:** the per-bee flight paths with rounded corners, Doppler, 1/r, ground reflection and the
+  scrambled seeds (entries 159-160).
+- **Defaults:** glides 0.3 (was 0.5); the rest is unchanged (honeybee, 2 bees, 2 m, ±1 m, 1 m/s,
+  35 dB(A) at 1 m per bee, 10 s).
+
+**Why.** Mads: "It sounds bad and it stops randomly." Asked what sounded wrong, Mads ticked all
+four options:
+- rough/crackly/gritty;
+- electronic/synth-like;
+- hissy/noisy;
+- wrong pitch or movement.
+
+Mads chose "cleaned real recordings" over "keep synthetic, smoother". The random stops were
+entry 160's landings.
+
+The lesson is that matching the spectrogram line contrast (entry 161) with modulation noise made
+the sound worse. Visual similarity is not audible similarity.
+
+**Result.**
+- **Calibration.** 1 bee at 1 m, area 0, glides 0, no ground. A-weighted level over exactly one
+  loop, unwindowed: types 0-3 give 34.98, 34.99, 35.08 and 35.01 dB(A) against 35. 8 bees give
+  44.00 (theory 44.0). A Hann-windowed 8 s measurement first gave 34.2-36.6, because the window
+  weights the middle of a non-stationary loop; the unwindowed one is correct.
+- **Pitch × 1.2:** the spectrum shifts ×1.200.
+- **`bee_zoom_vs_real.png`:** the Pd bees now carry the recordings' own harmonic structure and
+  wingbeat-to-wingbeat variation. Between the harmonics and above the top frequency they are
+  silent, by request.
+- **`compare_real.py`:**
+
+  | Real clip | median f0 Hz real / Pd | median pitch step % real / Pd | median level step dB real / Pd |
+  |---|---|---|---|
+  | 201613 honeybees | 212 / 228 | 6.5 / 2.0 | 1.2 / 2.2 |
+  | 17349 swarm | 238 / 234 | 2.0 / 2.9 | 0.8 / 1.5 |
+
+- `bee_example.wav`, `bee_swarm_3m.wav` and `bee_bumblebee.wav` are re-rendered.
+
+**Not addressed.** "Wrong pitch or movement" was ticked without detail. Pitch now comes from the
+recordings themselves. The flight (1 m/s inside ±1 m, 2 m away) is unchanged and waits for Mads's
+ear. Spectral masking can leave "watery" artefacts; Claude has not listened.
+
+Synthetic scaffolding.
+
+**Next.** Mads listens. If the movement is wrong, the next step is to ask what about it (too fast,
+too slow, too close, too regular).
+
+## 163 - Bee distractor: cleaning keeps the bee's high frequencies; swarm recording dropped
+- Date: 2026-11-09
+- Iteration: 15 (tooling)
+- Type: Data
+- Commit: uncommitted (on b30de01)
+
+**What changed.**
+- **Second mask in `make_tables.py`.** It is a broadband mask max(0, 1 - 6·floor/power), where
+  floor is the 20th percentile of each bin's power over the recording (non-silent frames only),
+  median-smoothed over 3 bins × 5 frames.
+  - It is used up to 16 kHz.
+  - The final mask is the larger of it and entry 162's harmonic mask, so the steady background is
+    still removed. Everything that rises above it, between and above the harmonics, is kept.
+  - The per-recording top frequencies of entry 162 (3-5 kHz) were dropped.
+- **17350 (swarm) removed as a type.** With its harmonic mask raised to 8 kHz, its 3-8 kHz content
+  was birds (spectrogram). Capped at 3 kHz it would stay muffled. A swarm is now N honeybees of
+  type 0.
+- The types are now 0 honeybee (59451), 1 bumblebee (233783) and 2 bumblebee_2 (79931), and the
+  front panel has 3 buttons. `compare_real.py` compares both real clips with type 0.
+
+**Why.** Mads: "It sounds muffled." Power share by band, in dB, of each loop against the same
+stretch of the raw recording:
+
+| Recording | 1-2 kHz | 2-4 kHz | 4-8 kHz | 8-16 kHz |
+|---|---|---|---|---|
+| 59451 raw / entry 162 / now | -11.0 / -12.1 / -11.4 | -15.5 / -20.4 / -16.2 | -19.0 / -67.5 / -21.2 | -20.9 / -148.0 / -23.5 |
+| 17350 raw / entry 162 | -8.8 / -12.6 | -9.9 / -15.5 | -8.0 / -132.1 | -32.2 / -140.9 |
+| 233783 raw / entry 162 / now | -7.9 / -5.2 / -7.8 | -11.6 / -12.5 / -11.5 | -6.2 / -12.7 / -6.2 | -6.1 / -141.4 / -6.0 |
+| 79931 raw / entry 162 / now | -14.7 / -11.0 / -13.9 | -15.9 / -14.7 / -15.6 | -10.1 / -48.6 / -9.5 | -3.6 / -143.1 / -3.1 |
+
+Entry 162 removed 40-130 dB above 4 kHz: the harmonic mask kept only narrow bands around the
+harmonics and nothing above 3-5 kHz. Now the loops are within about 2.5 dB of the raw recordings
+in every band.
+
+The power removed per loop is now 1.0 dB (59451), 0.1 dB (233783: a close, gated recording with
+little steady background) and 1.4 dB (79931).
+
+**Result.**
+- **Calibration.** 1 bee at 1 m, unwindowed over whole loops: 34.96, 34.79 and 34.14 dB(A)
+  against 35; 8 bees give 43.98 (theory 44.0). The 0.9 dB shortfall for 79931 is probably
+  `tabread4~` interpolation losing some of its strong content above 8 kHz (-3 dB share); not
+  verified.
+- **`bee_zoom_vs_real.png`:**
+  - the Pd bumblebee is now hard to tell from the real 233783;
+  - the honeybee has its high frequencies back, but it is patchy above about 2.5 kHz, where
+    59451's own clicks and bird bits rise above the floor and are kept;
+  - 79931 keeps its broadband vertical stripes (clicks in the recording, kept as part of the
+    bee).
+- **`compare_real.py`:**
+
+  | Real clip | median f0 Hz real / Pd | median pitch step % real / Pd | median level step dB real / Pd |
+  |---|---|---|---|
+  | 201613 honeybees | 212 / 228 | 6.5 / 2.1 | 1.2 / 2.0 |
+  | 17349 swarm | 238 / 228 | 2.0 / 2.1 | 0.8 / 2.0 |
+
+- Examples re-rendered: `bee_swarm_3m.wav` is now 8 honeybees of type 0, and `bee_bumblebee.wav`
+  is type 1 (233783).
+
+**Trade-off.** Muffled against clean. Anything non-steady in a recording (clicks, birds) now
+survives if it is louder than the floor. The background is silent only where it was steady.
+
+Not listened to by Claude. Synthetic scaffolding.
+
+**Next.** Mads listens.
