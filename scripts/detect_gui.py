@@ -19,6 +19,7 @@ threshold. Each uses the threshold its own run froze at 5% false alarms on valid
   it16 CNN/CRNN 600k s0-s2  artifacts/models/it16_600k_s*_none_simdist_{dscnn,crnn}.pt (600,000 training windows, entry 168)
   it19 CRNN colour s1  artifacts/models/it19_colour_s1_none_simdist_colour_crnn.pt (600k plus pink and brown noise as no drone, entry 171)
   it17 CNN/CRNN 2s 600k s0-s2  artifacts/models/it16_win2s600k_s*_none_simdist_{dscnn,crnn}.pt (the same with a 2 s window, entry 170)
+  it20 CNN/CRNN bp s0-s2  artifacts/models/it20_bp_s*_none_simdist_{dscnn,crnn}.pt (600k with an 80 Hz - 6 kHz bandpass, entry 192)
 comb, when ticked, keeps model 6's frozen threshold whichever models are picked.
 
 War noise (optional): tick "add war noise" before opening files, pick its source and type one or
@@ -109,7 +110,8 @@ LIST_ROWS = 16                                               # files shown in th
 MODELS = dwg.MODELS
 MODEL_COLORS = dict(zip(MODELS, ["#2a78d6", "#e8710a", "#9334e6", "#d93025", "#0b8a8a", "#b8860b", "#d4a72c",
                                  "#8a6d0b", "#c2185b", "#e5609a", "#880e4f", "#ff6f00", "#1b5e20", "#43a047", "#81c784",
-                                 "#311b92", "#5e35b1", "#9575cd"]))
+                                 "#311b92", "#5e35b1", "#9575cd", "#006064", "#0097a7", "#4dd0e1", "#3e2723",
+                                 "#6d4c41", "#a1887f"]))
 assert len(MODEL_COLORS) == len(MODELS), "add a colour for every model in drone_war_grid.MODELS"
 COMB_COLOR = dwg.COLORS["comb"]
 

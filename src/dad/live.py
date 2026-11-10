@@ -43,7 +43,8 @@ from .config import DEFAULT, FrontendConfig
 ROOT = Path(__file__).resolve().parents[2]
 # Name -> (run file holding the threshold frozen on validation, checkpoint). The same
 # models as scripts/drone_war_grid.py MODELS, so the live tool and the GUIs agree, except the 2 s
-# window models (it17): the live stream feeds every detector one window length.
+# window models (it17) and the bandpass models (it20): the live stream feeds every detector one
+# window length and the default frontend.
 PRESETS = {
     "it6 CNN": ("artifacts/runs/it6_final.json", "artifacts/models/it6_final_none_simdist_dscnn.pt"),
     "it9 CNN": ("artifacts/runs/final_dscnn.json", "artifacts/models/final_dscnn_none_simdist_dscnn.pt"),

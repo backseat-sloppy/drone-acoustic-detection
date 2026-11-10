@@ -36,7 +36,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 17 | 157 to 158 | The 2 s window together with 600k training windows | The two levers of iteration 16 that helped act on different readouts | **Passes for the CRNN, fails for the DS-CNN.** CRNN Lund 0.462 (ref 0.357), mower false alarms 0.281 (ref 0.408), the best CRNN so far. The DS-CNN loses part of win2s's Lund gain (0.457 against 0.518); its best stays win2s. R5 for the 2 s window not checked yet. |
 | Iteration 18 | 159 to 161 | It9B: the it9 CRNN with drone windows weighted 2 in the loss, threshold at 10% false alarms | Mads wants higher confidence with a drone in the virtual tests, accepting worse separation; the requirements are now judged in confidence (entry 159) | **Hypothesis holds.** Mean score up on every window: drone +0.05 to +0.13, no drone +0.10 to +0.17 (mower alone 0.44 to 0.60); recall at matched false alarms unchanged (0.789 against 0.790). Added to the GUIs as "It9B"; war soundscape not measured yet. |
 | Iteration 19 | 169 to 171 | Pink (-3 dB/oct) and brown (-6 dB/oct) noise as 15% of the no-drone training windows, on the `600k` arm of iteration 16 | Mads's request; the networks alarm on pink and brown noise, which no planned test contains; iteration 11's broader steady noise fixed it but halved Lund recall | **Fails narrowly on Lund recall.** Pink and brown alarms to 0% for both networks (DS-CNN was 74% on pink), mower false alarms down (CRNN 0.171 to 0.112, DS-CNN 0.149 to 0.053), validation unchanged, but Lund recall -0.04 (limit -0.03). `it19 CRNN colour s1` pushed for the virtual tests. 2 s models now usable in Complete_Test_Gui (entry 170). |
-| Iteration 20 | 172 to 173 | Optional bandpass (Butterworth 80 Hz - 6 kHz) and Wiener gain (noise median across frequency) on the power spectrum before the mel bank; CPU gates before any training | Mads asked for a bandpass and a Wiener filter; the frontend has no noise suppression, and steady noise reads as drone | In progress. Council (entry 172): Wiener against best practice, tried only as a gated ablation. **Wiener fails its gate** (entry 173): 66% of drone line bins kept at 0 dB SNR (80% required), 34% at -10 dB; rig background only 2.3 dB lower; dropped. The bandpass is not a no-op, but it mainly removes 6-8 kHz; its training arm waits for the server. |
+| Iteration 20 | 172 to 173, 192 to 193 | Optional bandpass (Butterworth 80 Hz - 6 kHz) and Wiener gain (noise median across frequency) on the power spectrum before the mel bank; CPU gates before any training | Mads asked for a bandpass and a Wiener filter; the frontend has no noise suppression, and steady noise reads as drone | **Both fail; the frozen frontend stays.** Council (entry 172): Wiener against best practice, tried only as a gated ablation. Wiener fails its CPU gate (entry 173): 66% of drone line bins kept at 0 dB SNR (80% required), 34% at -10 dB; rig background only 2.3 dB lower. The bandpass mainly removes 6-8 kHz; trained on the `600k` arm, three seeds (entry 192): Lund recall DS-CNN +0.058, CRNN +0.028 (bar +0.07), but mower false alarms 0.149 to 0.395 and 0.171 to 0.357, brown noise alarms up. The 6-8 kHz band seems to trade range against confuser rejection (untested). PCEN is the next frontend candidate. The six bandpass models are in the test GUIs for the virtual tests (entry 193). |
 
 ## Templates
 
@@ -11500,3 +11500,194 @@ The four files were zipped on the server (`~/10_11_TBITest_result.zip`, 146,054,
 | with wind + cars | 15 % | 13 % | 12 % |
 
 it19 CRNN colour s1 is highest before impact by 0.8 points over it9 CRNN, and lower on every no-drone figure. it17 CRNN 2s is 4-5 points lower before impact and lowest without a drone. Cars again raise no-drone confidence most (cars alone at 1-20 dB SPL against war as set). For every model the no-drone confidence is higher with the wind layer off than on (it9 CRNN 27 % off against 14-16 % on); why was not examined. One drone file, one car and one wind setting, war above about 110 dB unclipped (entry 130), no baselines. The war levels in the plan reach 120 dB SPL, so its 3-7 s figure pools rounds where the drone is buried.
+
+## 192 - Iteration 20 result: the bandpass fails; mower false alarms more than double, Lund gains less than the bar
+
+- Date: 2026-11-10
+- Iteration: 20
+- Numbering: written on 2026-11-10 as entry 174. GitHub Desktop stashed it, uncommitted, before a pull at
+  13:31 (`stash@{0}`); meanwhile entries 174-191 were used by other work. Restored from the stash as 192,
+  text unchanged. The code it describes was committed in 4856aa3.
+- Type: Evaluation
+- Commit: uncommitted, on top of 2014d6e. Server clone `~/drone-acoustic-detection` at 00ee4e8 with the
+  earlier patches. MD5 checked before anything was copied:
+  - `config.py`, `features.py`, `gpufront.py`, `run_range.py`, `it19_colour_check.py`, `rangerun.py`,
+    `zoo.py` and `test_steady.py` equal this PC's HEAD.
+  - `realrun.py` differs only by entry 170's `.cfg` on the comb and LightGBM scorers, which training does
+    not use.
+  - Then this entry's files were copied in and checked against this PC's (LF) MD5 sums.
+  - `drone_war_grid.py` was not copied; the server has an older one, and training does not use it.
+  - Entry 173's GPU parity test was appended to the server's older `tests/test_gpufront.py`.
+
+**What changed.** The bandpass arm of iteration 20's box, `it20_bp`: iteration 16's `600k` arm with
+`--bandpass 80 6000` (Butterworth order 4, folded into the mel bank, entry 173), on both networks, three
+seeds. The bandpass is applied to every window the networks see:
+- training windows, drone and no-drone alike;
+- validation, Lund and the mower session;
+- the colour check.
+
+To make that last item hold, `scripts/it19_colour_check.py` now builds each run's frontend from its run
+file (`bandpass`, `wiener`). A run list on the command line writes `<prefix>_colour_check.json`, so entry
+171's file is untouched. New `scripts/it20_judge.py` applies the box's rules. Before the run it was checked
+by feeding it entry 171's files as the arm; it reproduced entry 171's table.
+
+**Why.** Gate A (entry 173): the bandpass is not a no-op, so the box trains it.
+
+**How.** On the server (3x TITAN X, one seed per GPU, upload and commands through the Jupyter REST API in
+Mads's Chrome). The three GPUs were shared with Mads's own Complete Test runs (`~/ct_9_11`). That costs
+time, not results.
+```
+CUDA_VISIBLE_DEVICES=S nohup setsid .venv/bin/python -u scripts/run_range.py --name it20_bp_sS --pool \
+    --arms none --recipes simdist --models dscnn crnn --device cuda --windows 600000 --speed 0.8 1.25 \
+    --deploy-fa 0.05 --seed S --frontend mfe --bandpass 80 6000      # S = 0, 1, 2; 2232, 2066, 2106 s
+.venv/bin/python -u scripts/it19_colour_check.py it20_bp_s0 it20_bp_s1 it20_bp_s2
+.venv/bin/python scripts/it20_judge.py
+```
+`.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_filters.py tests/test_gpufront.py
+tests/test_frontends.py` on the server: 18 passed, before training.
+
+Outputs stay on the server, not fetched to this PC:
+- `artifacts/runs/it20_bp_s{0,1,2}.json` and `.log`;
+- `artifacts/runs/it20_bp_colour_check.json` and `.log`;
+- `artifacts/models/it20_bp_s{0,1,2}_none_simdist_{dscnn,crnn}.pt`.
+
+**Result.** Means over seeds 0-2 at the deployment threshold (5% false alarms on validation). Validation
+and Lund: drone windows of every range. Mower: the 125 windows of the Nightjar mower-only session. Pink and
+brown: -30 dBFS, as in entry 171.
+
+| Network | Arm | Validation recall | Lund recall | Mower false alarms | Pink | Brown |
+|---|---|---|---|---|---|---|
+| DS-CNN | `600k` | 0.785 | 0.437 | 0.149 | 0.739 | 0.024 |
+| DS-CNN | `bandpass` | 0.798 | 0.495 | 0.395 | 0.764 | 0.197 |
+| CRNN | `600k` | 0.788 | 0.397 | 0.171 | 0.003 | 0.126 |
+| CRNN | `bandpass` | 0.791 | 0.425 | 0.357 | 0.024 | 0.146 |
+
+Per seed (s0 / s1 / s2), `bandpass`:
+
+| Network | Readout | s0 | s1 | s2 |
+|---|---|---|---|---|
+| DS-CNN | Lund | 0.449 | 0.533 | 0.504 |
+| DS-CNN | Mower | 0.344 | 0.400 | 0.440 |
+| DS-CNN | Threshold | 0.450 | 0.408 | 0.411 |
+| CRNN | Lund | 0.381 | 0.436 | 0.458 |
+| CRNN | Mower | 0.368 | 0.344 | 0.360 |
+| CRNN | Threshold | 0.560 | 0.562 | 0.536 |
+
+`600k`, same order:
+
+| Network | Readout | s0 | s1 | s2 |
+|---|---|---|---|---|
+| DS-CNN | Lund | 0.460 | 0.393 | 0.458 |
+| DS-CNN | Mower | 0.232 | 0.080 | 0.136 |
+| CRNN | Lund | 0.383 | 0.424 | 0.384 |
+| CRNN | Mower | 0.176 | 0.200 | 0.136 |
+
+Every one of the six bandpass networks alarms more on the mower than every one of the six `600k` networks.
+
+Pink and brown at -50 / -30 / -10 dBFS, `bandpass`:
+
+| Network | Noise | s0 | s1 | s2 |
+|---|---|---|---|---|
+| DS-CNN | Pink | 65 / 73 / 73% | 82 / 84 / 84% | 72 / 72 / 72% |
+| DS-CNN | Brown | 2 / 18 / 36% | 5 / 21 / 21% | 5 / 21 / 47% |
+| CRNN | Pink | 0 / 0 / 0% | 4 / 6 / 6% | 1 / 1 / 1% |
+| CRNN | Brown | 3 / 5 / 2% | 8 / 32 / 16% | 2 / 7 / 8% |
+
+Baselines: these runs train only the networks. `comb` and `lgbm` were not rerun. On the pooled arm they
+hold the mower at 25% and 17% at Lund recall 0.02 (entry 128). The comb has its own spectrum, and LightGBM
+was not retrained with the bandpass, so neither has a bandpass number. Synthetic noise is a tripwire, not detection performance. ITU ARIS was not scored, as the box
+fixed.
+
+**Assessment.** Against the box:
+1. Lund recall at least `600k` + 0.07 for one network: **not met.**
+   - DS-CNN +0.058, CRNN +0.028.
+   - The DS-CNN gain is on two of three seeds (s0 is 0.011 lower) and inside the seed spread of the
+     reference (0.393-0.460).
+2. Validation recall no lower than `600k` - 0.02: met. DS-CNN +0.013, CRNN +0.002.
+3. Mower false alarms no higher than `600k` + 0.05: **broken by a wide margin.** DS-CNN +0.245 (0.149 to
+   0.395), CRNN +0.187 (0.171 to 0.357), on every seed.
+4. Pink and brown no higher than `600k`'s: **broken.** DS-CNN brown 0.024 to 0.197, pink +0.026; CRNN pink
+   0.003 to 0.024, brown +0.019.
+
+**Verdict: the bandpass fails.** The frozen frontend stays, and so does entry 173's verdict on the Wiener
+filter: iteration 20 adds no filter to any model. The two stages stay in the code as options that are off by
+default.
+
+What the numbers suggest, as interpretation, not tested:
+- Gate A showed the bandpass changes the features mainly by removing 6-8 kHz.
+- Removing that band makes the mower and steady noise look more like a drone, on all six networks. The
+  networks seem to use 6-8 kHz to tell a mower or broadband noise from a drone. A combustion engine's
+  harmonic comb sits in the same low band as the blade-pass comb, and what differs may sit higher.
+- The small Lund gain fits the same picture from the other side. Air absorption removes most of 6-8 kHz
+  from a drone 100-200 m away (`propagation.py`, ISO 9613-1), so a network that cannot lean on that band
+  loses less at range.
+- If this holds, the 6-8 kHz band trades range against confuser rejection. A narrower test (dropping only
+  that band, or only the low edge) would show it; it was not run.
+
+The Devil's Advocate's decisive objection on the bandpass (entry 172: a no-op, or it cuts the whine)
+stands in its second form. The Scholar's warning (a bandpass is defensible only if it removes no target
+energy) also stands.
+
+**Next.** Iteration 20 is closed. Its last open point is the next frontend candidate the council named:
+PCEN in place of log compression (entry 172). That is a new frontend and needs its own council before
+it is tried. The checkpoints are on the server only; fetching them needs Mads's go-ahead.
+
+## 193 - The six bandpass models of iteration 20 copied to this PC and added to the test GUIs
+
+- Date: 2026-11-10
+- Iteration: 20 (follow-up)
+- Type: Infrastructure
+- Commit: uncommitted, on top of 48d560c
+
+**What changed.** Mads wants to try the iteration 20 bandpass models in the virtual tests, although they fail
+their box (entry 192).
+- The six checkpoints `it20_bp_s{0,1,2}_none_simdist_{dscnn,crnn}.pt`, their run files and logs, and the
+  colour check's JSON and log were packed into one archive on the server (9,369,600 bytes, MD5
+  52186cdd507e6ecbf5487107def6cf4e). It was downloaded through Mads's Chrome, on his go-ahead.
+  - Chrome left the file as an unconfirmed download (`Documents/Unconfirmed 181988.crdownload`), waiting
+    for a save prompt.
+  - Its bytes were complete and its MD5 equals the server's, so it was copied and unpacked into
+    `artifacts/models/` and `artifacts/runs/`. No file there had these names before.
+  - The archive was then deleted on the server.
+- `scripts/drone_war_grid.MODELS` has six new entries: `it20 CNN bp s0/s1/s2` and `it20 CRNN bp s0/s1/s2`.
+  `model_cfg` reads `bandpass` from the run file (entry 173), so every loader built on `_detectors` scores
+  them with the bandpass. That covers `complete_test_engine`, `Complete_Test_Gui` and `detect_gui`.
+- Six colours in `Complete_Test_Gui.COLORS` and `detect_gui.MODEL_COLORS`, and a line in `detect_gui`'s
+  docstring.
+- Not in `live.PRESETS`: the live stream feeds every detector the default frontend, so a bandpass model
+  would get unfiltered features there. The comment in `live.py` says so.
+
+**Why.** Mads's request (2026-11-10): test iteration 20 in the virtual tests.
+
+**How.**
+- `_detectors` returns, for each of the six models, a scorer whose `cfg.bandpass` is (80, 6000). The
+  thresholds equal the run files' deployment thresholds:
+
+  | Network | s0 | s1 | s2 |
+  |---|---|---|---|
+  | CNN | 0.450 | 0.408 | 0.411 |
+  | CRNN | 0.560 | 0.562 | 0.536 |
+
+- On the same four windows of white noise, each model scores differently with its own frontend than with
+  the default one. `it16 CRNN 600k s1` scores the same both ways. So the filter is in use, and only where it
+  belongs.
+- A headless `complete_test_engine.Test` ran on the CPU with `it20 CRNN bp s1`, `it20 CNN bp s1`,
+  `it16 CRNN 600k s1` and comb:
+  - a synthetic drone at 100 km/h;
+  - the war soundscape at 90 dB SPL;
+  - one no-drone round;
+  - 10 s rounds.
+
+  It gave 73 decisions per round for every detector. Synthetic numbers, not detection performance
+  (CLAUDE.md section 5).
+- `uv run pytest -q -p no:cacheprovider`: all pass. Both GUI scripts parse. Not run: the Tk GUIs themselves.
+
+**Result.** No detection numbers in this entry.
+
+**Assessment.** The bandpass models can be picked in `Complete_Test_Gui` (the three CRNNs only: entry 185 took
+every DS-CNN off its setup page) and `detect_gui` (all six), and are scored
+with their own frontend. `dad wav` (`wavio`) still builds its frontend from `--window` only and would score
+them without the bandpass (entry 173).
+
+**Next.** Mads runs the virtual tests. Expect more mower and steady-noise alarms than the `600k` models
+(entry 192).
