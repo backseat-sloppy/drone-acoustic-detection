@@ -52,10 +52,27 @@ def mel_filterbank(cfg: FrontendConfig = DEFAULT) -> np.ndarray:
 
 def band_matrix(cfg: FrontendConfig = DEFAULT) -> np.ndarray:
     """Power spectrum -> bands: the mel filterbank, or for `kind="linear"` the bins in fmin-fmax as they are.
-    MFCC starts from the log-mel too; its DCT comes after level normalisation (realrun.to_model)."""
-    if cfg.kind == "linear":
-        return np.eye(cfg.n_freq_bins, dtype=np.float32)[list(cfg.linear_bins())]
-    return mel_filterbank(cfg)
+    MFCC starts from the log-mel too; its DCT comes after level normalisation (realrun.to_model).
+    A `cfg.bandpass` is folded in here, so every frontend path gets it at no cost."""
+    fb = (np.eye(cfg.n_freq_bins, dtype=np.float32)[list(cfg.linear_bins())] if cfg.kind == "linear"
+          else mel_filterbank(cfg))
+    if cfg.bandpass:
+        from scipy.signal import butter, sosfreqz
+        sos = butter(cfg.bandpass_order, cfg.bandpass, "bandpass", fs=cfg.sample_rate, output="sos")
+        _, h = sosfreqz(sos, worN=np.linspace(0.0, cfg.sample_rate / 2.0, cfg.n_freq_bins), fs=cfg.sample_rate)
+        fb = fb * (np.abs(h) ** 2).astype(np.float32)[None, :]
+    return fb
+
+
+def wiener(spec: np.ndarray, cfg: FrontendConfig) -> np.ndarray:
+    """(frames, bins) power -> the same with the Wiener gain of cfg (identity when cfg.wiener is off).
+    The noise estimate runs across frequency only, so steady harmonic lines are not taken for noise
+    (entry 172) and the gain needs no state between frames."""
+    if not cfg.wiener:
+        return spec
+    from scipy.ndimage import median_filter
+    noise = median_filter(spec, size=(1, cfg.wiener_bins), mode="nearest")
+    return spec * np.maximum(1.0 - noise / np.maximum(spec, _EPS), cfg.wiener_floor)
 
 
 class LogMel:
@@ -79,7 +96,7 @@ class LogMel:
             shape=(n, cfg.n_fft),
             strides=(x.strides[0] * cfg.hop_length, x.strides[0]),
         )
-        spec = np.abs(np.fft.rfft(idx * self._win, axis=1)) ** 2
+        spec = wiener(np.abs(np.fft.rfft(idx * self._win, axis=1)) ** 2, cfg)
         mel = spec.astype(np.float32) @ self._fb.T
         return np.log(mel + _EPS).T.astype(np.float32)
 
@@ -120,7 +137,7 @@ class StreamingLogMel:
             shape=(n_new, cfg.n_fft),
             strides=(buf.strides[0] * cfg.hop_length, buf.strides[0]),
         )
-        spec = np.abs(np.fft.rfft(idx * self._win, axis=1)) ** 2
+        spec = wiener(np.abs(np.fft.rfft(idx * self._win, axis=1)) ** 2, cfg)
         mel = np.log((spec.astype(np.float32) @ self._fb.T) + _EPS).astype(np.float32)
         for row in mel:
             self._frames.append(row)

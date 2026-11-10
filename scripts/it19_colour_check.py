@@ -6,6 +6,7 @@ Fresh noise, 20 s per seed, seeds 1000-1004 (training draws its noise from the r
 at -50, -30 and -10 dBFS RMS. The box of iteration 19 judges -30 dBFS. Scored as the GUIs score
 (dad.wavio.stream: 1 s window, 0.125 s hop). A tripwire on synthetic noise, not detection performance.
 """
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -35,17 +36,21 @@ for run in RUNS:
     args = json.loads(rj.read_text())["args"]
     for arch in args["models"]:
         ckpt = next((ROOT / "artifacts/models").glob(f"{run}_none_*_{arch}.pt"))
-        thr = threshold_from_run(rj, str(ckpt), DEFAULT.window_seconds)
-        sc = load_scorer(str(ckpt), DEFAULT, device)
+        # Iteration 20: a filtered model is scored with its own frontend (run args `bandpass`, `wiener`).
+        cfg = dataclasses.replace(DEFAULT, bandpass=tuple(args["bandpass"]) if args.get("bandpass") else None,
+                                  wiener=bool(args.get("wiener", False)))
+        thr = threshold_from_run(rj, str(ckpt), cfg.window_seconds)
+        sc = load_scorer(str(ckpt), cfg, device)
         for c in SLOPES:
             for lv in LEVELS_DBFS:
-                d = [stream(Clip(c, noise[(c, lv, s)], DEFAULT.sample_rate, 1, "FLOAT"), sc, DEFAULT, thr)
+                d = [stream(Clip(c, noise[(c, lv, s)], cfg.sample_rate, 1, "FLOAT"), sc, cfg, thr)
                      for s in SEEDS]
                 rows.append(dict(run=run, arch=arch, colour=c, dbfs=lv, threshold=thr,
                                  alarm=float(np.mean(np.concatenate([x.drone for x in d]))),
                                  mean_score=float(np.mean(np.concatenate([x.score for x in d])))))
                 print(f"{run:15} {arch:6} {c:5} {lv:+5.0f} dBFS  alarms {rows[-1]['alarm']:6.1%}  "
                       f"mean score {rows[-1]['mean_score']:.3f}  (threshold {thr:.3f})", flush=True)
-out = ROOT / "artifacts/runs/it19_colour_check.json"
+# Default runs keep entry 171's file; other runs write <prefix of the last run>_colour_check.json.
+out = ROOT / "artifacts/runs" / (f"{RUNS[-1].rsplit('_s', 1)[0]}_colour_check.json" if sys.argv[1:] else "it19_colour_check.json")
 out.write_text(json.dumps(rows, indent=1))
 print("wrote", out)

@@ -36,6 +36,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 17 | 157 to 158 | The 2 s window together with 600k training windows | The two levers of iteration 16 that helped act on different readouts | **Passes for the CRNN, fails for the DS-CNN.** CRNN Lund 0.462 (ref 0.357), mower false alarms 0.281 (ref 0.408), the best CRNN so far. The DS-CNN loses part of win2s's Lund gain (0.457 against 0.518); its best stays win2s. R5 for the 2 s window not checked yet. |
 | Iteration 18 | 159 to 161 | It9B: the it9 CRNN with drone windows weighted 2 in the loss, threshold at 10% false alarms | Mads wants higher confidence with a drone in the virtual tests, accepting worse separation; the requirements are now judged in confidence (entry 159) | **Hypothesis holds.** Mean score up on every window: drone +0.05 to +0.13, no drone +0.10 to +0.17 (mower alone 0.44 to 0.60); recall at matched false alarms unchanged (0.789 against 0.790). Added to the GUIs as "It9B"; war soundscape not measured yet. |
 | Iteration 19 | 169 to 171 | Pink (-3 dB/oct) and brown (-6 dB/oct) noise as 15% of the no-drone training windows, on the `600k` arm of iteration 16 | Mads's request; the networks alarm on pink and brown noise, which no planned test contains; iteration 11's broader steady noise fixed it but halved Lund recall | **Fails narrowly on Lund recall.** Pink and brown alarms to 0% for both networks (DS-CNN was 74% on pink), mower false alarms down (CRNN 0.171 to 0.112, DS-CNN 0.149 to 0.053), validation unchanged, but Lund recall -0.04 (limit -0.03). `it19 CRNN colour s1` pushed for the virtual tests. 2 s models now usable in Complete_Test_Gui (entry 170). |
+| Iteration 20 | 172 to 173 | Optional bandpass (Butterworth 80 Hz - 6 kHz) and Wiener gain (noise median across frequency) on the power spectrum before the mel bank; CPU gates before any training | Mads asked for a bandpass and a Wiener filter; the frontend has no noise suppression, and steady noise reads as drone | In progress. Council (entry 172): Wiener against best practice, tried only as a gated ablation. **Wiener fails its gate** (entry 173): 66% of drone line bins kept at 0 dB SNR (80% required), 34% at -10 dB; rig background only 2.3 dB lower; dropped. The bandpass is not a no-op, but it mainly removes 6-8 kHz; its training arm waits for the server. |
 
 ## Templates
 
@@ -10986,3 +10987,222 @@ other five checkpoints are kept on this PC and not pushed. A headless Complete T
 price is about 0.04 Lund recall for no colour alarms and fewer mower alarms. A war-soundscape run in
 `Complete_Test_Gui` with `it19 CRNN colour s1` next to `it16 CRNN 600k s1` would show whether the trade
 matters for the requirements.
+
+# Iteration 20 - Bandpass and Wiener filtering in the frontend
+
+> **Changed from iteration 19:** the frontend gets two optional stages on the STFT power spectrum, before
+> the mel bank: a Butterworth bandpass (`scipy.signal`), and a Wiener gain G = max(1 - N/P, g_min) whose
+> noise estimate N is a running median across frequency in the same frame (`scipy.ndimage`). Both default
+> to off, so every existing model and run is unchanged. The training recipe is iteration 16's `600k` arm.
+> **Why:** Mads asked for a bandpass and a Wiener filter (2026-11-10). The frontend has no noise
+> suppression of any kind; steady broadband noise pushes the networks toward "drone" (entries 100, 102,
+> 171), and the war soundscape lowers the CRNN's drone score (iteration 15).
+> **Kept the same:** iteration 16's `600k` arm (it9 recipe `simdist`, pool arm `none`, speed 0.8-1.25, MFE
+> 64 mel, 1 s window, 0.125 s hop, 600,000 windows, DS-CNN and CRNN, seeds 0-2, threshold frozen at 5% false
+> alarms on validation), judged against `it16_600k_s0-2` as iteration 19 was.
+> **Hypothesis:** a frequency-whitening Wiener gain keeps the drone's harmonic lines and lowers steady
+> broadband background, so the networks separate drone from no-drone better on an unseen rig. A bandpass
+> changes almost nothing, because each mel band is standardised with a fixed mean and deviation.
+> **Judged by**, fixed before any number was seen:
+> - Gate A (CPU, decides whether a bandpass arm is trained): features of 2,000 training-source windows with
+>   and without an 80 Hz - 6 kHz order-4 bandpass, each standardised with its own per-band mean and
+>   deviation. If the RMS difference is under 0.05 sigma and under 2% of cells move more than 0.25 sigma,
+>   the bandpass is a no-op and no arm is trained.
+> - Gate B (CPU, decides whether a Wiener arm is trained): near drones from the training sources, summed
+>   into a rig background at 0 dB in-band SNR. "Line bins" are the bins where the drone alone, averaged over
+>   the window, stands 6 dB or more above its own median across frequency. Pass: at least 80% of line bins
+>   keep a mean gain above 0.5 in the mixture, and the background alone loses at least 6 dB of in-band power.
+>   Otherwise the Wiener filter is dropped.
+> - The GPU arm, if a gate passes (seed means, per network, against `it16_600k`): Lund recall at the frozen
+>   threshold at least `600k` + 0.07 (beyond the seed spread) for at least one network; validation recall no
+>   lower than `600k` - 0.02; mower-only false alarms no higher than `600k` + 0.05; pink and brown alarms no
+>   higher than `600k`'s. Pass: the filter becomes an option for the GUI models. Fail: the frozen frontend
+>   stays. `comb` and `lgbm` reported alongside. ITU ARIS is not scored unless an arm passes.
+
+## 172 - Council: bandpass and Wiener filters in front of the networks
+
+- Date: 2026-11-10
+- Iteration: 20
+- Type: Council
+- Commit: uncommitted, on top of 2014d6e
+
+**Question.** Add a bandpass filter and/or a Wiener filter (STFT-domain noise suppression) to the feature
+frontend and retrain, or keep the current frontend? Options: bandpass only, Wiener only, both, neither. For
+the Wiener filter, three noise estimates: (i) a low percentile over time within the window, (ii) a running
+median across frequency in each frame, (iii) a long running estimate in the live stream.
+
+**Devil's Advocate.** Decisive objections:
+1. A noise estimate taken over time treats the drone's steady harmonic lines as noise and removes them. It
+   also removes a slowly approaching drone, which is the scenario of Test 2. *Answered:* options (i) and (iii)
+   are dropped; only (ii) estimates across frequency. Whether (ii) also eats the lines is measured in Gate B
+   before any training.
+2. A bandpass is a no-op in log-mel after per-band standardisation and the random EQ, or it cuts the 100 Hz
+   fundamental and the 4-8 kHz whine. *Answered in part:* the standardisation was checked in the code
+   (`realrun.NetScorer.fit`: one fixed mean and deviation per band from the first 64 training batches). Gate A
+   measures the no-op claim before any training.
+
+Serious objections:
+3. Whitening is already tested: the comb whitens with a ~400 Hz median and has Lund recall 0.02 (entry 128,
+   checked). *Left partly standing:* the comb is a hand-set rule, not a network fed whitened features, so the
+   number does not settle it. But it is a warning, and the GPU arm needs a Lund gain beyond the seed spread
+   to pass.
+4. Many knobs, one unseen rig, a seed spread near 0.07: a false win is likely. *Answered:* every setting (the
+   80 Hz - 6 kHz band, order 4, the ±200 Hz median, g_min 0.1) is fixed in the box before any number. There
+   is no knob search, and the pass mark is set above the seed spread.
+5. War transients cause musical noise, which looks tonal. *Left standing:* not measured by the box. A
+   war-soundscape readout is needed before any filtered model goes into the GUIs.
+6. Opportunity cost: a seed ensemble or two-mic beamforming could buy as much. *Noted:* the CPU gates cost
+   minutes, and the GPU arm runs only if a gate passes.
+
+**Scholar** (context-free). Best practice for a network trained from scratch is multi-condition training on a
+fixed log-mel or PCEN frontend, without enhancing the input. Single-channel enhancement in front of a
+classifier "only slightly improves or even degrades" recognition, mostly through its artefacts (Iwamoto et
+al., Interspeech 2022, checked). DNNs reach the state of the art "without any explicit noise compensation"
+(Seltzer, Yu and Wang, ICASSP 2013, checked). PCEN is the established robustness frontend for unseen sites
+(Lostanlen et al., PLoS ONE 2019, checked).
+
+The Scholar's placement of the options:
+- neither: standard;
+- PCEN: standard, with a time constant that interacts with steady targets;
+- a fixed bandpass: a defensible minor variation if it removes no target energy;
+- Wiener before the network: against current practice, at most an ablation applied the same way in training
+  and test;
+- both: against practice.
+
+It also warns that a minimum-statistics estimator treats a target steady for 1-2 s as noise (Martin 2001,
+checked; applying this to rotor tones is the Scholar's reasoning).
+
+*Departure from best practice and why:* the Wiener filter is tried as an ablation only, applied identically in
+training, validation and live inference (one shared function, no stream state). The reason is that Mads asked
+for it, and the project has a specific failure (steady broadband noise read as drone) that a whitening gain
+targets directly. PCEN is not tried in this iteration; it stays the next frontend candidate if this fails.
+
+**Problem Solver.** Verdict: *try a modified version.* Skip the bandpass arm unless a CPU check shows it is not
+a no-op. Train one Wiener variant, noise estimated across frequency, with a floor of g_min 0.1 (-10 dB) so
+smeared upper harmonics are softened rather than deleted. Run CPU checks first (bandpass no-op, line
+survival), then one GPU arm on the it19 protocol. Confidence: high that the bandpass is a no-op;
+medium-high that a time-based estimate hurts; low-medium that the frequency-whitening variant gains beyond
+the seed spread.
+
+**Where they disagree, and the fact it turns on.** The Scholar says no Wiener filter; the Problem Solver says
+try the frequency variant. It turns on whether the gain keeps the harmonic lines: if it does, the network
+gets the same lines on a flatter background; if not, it loses its main cue. Gate B measures exactly that.
+
+One risk none of the three named, found while weighing them: with 25 ms frames the bins are 40 Hz wide, so a
+100 Hz fundamental puts a line every 2.5 bins. A median over ±200 Hz (11 bins) may then sit at the line
+level and remove the lines of a low-fundamental drone. Gate B reports line survival per fundamental.
+
+**Decision.**
+- Build both stages as frontend options that are off by default.
+- Libraries: `scipy.signal.butter` and `sosfreqz` for the bandpass, `scipy.ndimage.median_filter` for the
+  noise estimate, `torch` unfold and median for the GPU frontend.
+- Run Gates A and B on the CPU.
+- Train on the server only an arm whose gate passes.
+
+## 173 - The two filter stages in the frontend, and the CPU gates: the Wiener filter fails, the bandpass is not a no-op
+
+- Date: 2026-11-10
+- Iteration: 20
+- Type: Preprocessing
+- Commit: uncommitted, on top of 2014d6e
+
+**What changed.**
+
+The frontend:
+- `FrontendConfig` gets `bandpass` (lo, hi) Hz with `bandpass_order` (default 4), and `wiener` with
+  `wiener_hz` (400) and `wiener_floor` (0.1). Both default to off, so nothing existing changes.
+  `describe()` names them when on.
+- `features.band_matrix` folds a bandpass into the band matrix as |H(f)|^2 at each STFT bin. It uses
+  `scipy.signal.butter` and `sosfreqz`. `LogMel`, `StreamingLogMel` and `GpuFrontend` all use the band
+  matrix, so all three get the bandpass at no cost.
+- `features.wiener` multiplies each bin's power by max(1 - N/P, 0.1). N is
+  `scipy.ndimage.median_filter` over 11 bins (400 Hz) across frequency in the same frame, edges repeated.
+  `LogMel` and `StreamingLogMel` call it. `GpuFrontend.logbands` does the same in torch: replicate pad,
+  `unfold`, `median`, in float64.
+- The noise estimate needs no state between frames, so training, offline scoring and the live stream
+  compute the same thing.
+
+The tooling:
+- `scripts/run_range.py` gets `--bandpass LO HI` and `--wiener`. Both are stored in the run file's `args`.
+- `scripts/drone_war_grid.model_cfg` reads them back, so a filtered model is always scored with its
+  filter in the GUIs.
+- Not done: `dad wav` (`wavio`) still builds its frontend from `--window` only. It would score a filtered
+  model without its filter. No filtered model exists yet.
+
+New script `scripts/it20_gates.py` runs the two CPU gates of iteration 20's box.
+
+**Why.** Entry 172's decision.
+
+**How.**
+
+Tests:
+- `tests/test_filters.py` (new):
+  - off by default is the identity;
+  - the bandpass passes 300-3000 Hz bands within 5% and attenuates both edges;
+  - the Wiener gain keeps the strongest of five 200 Hz harmonic lines in white noise within 0.2 (ln
+    power) and lowers the noise by more than 3 dB;
+  - streaming equals offline with both stages on.
+- `tests/test_gpufront.py::test_bandpass_and_wiener_match_numpy`: torch equals numpy within 2e-4 with
+  both on.
+- `uv run pytest -q -p no:cacheprovider`: all pass.
+
+A first draft of the white-noise test expected 6 dB of noise loss and failed at 4.3 dB. That is the
+filter's property, not a bug, and the test was changed to 3 dB. With N the median of the noise power,
+the gain on a bin of pure noise is 1 - N/P. For exponentially distributed power that removes only about
+half of it: the median sits below the mean.
+
+The gates: `uv run python -I scripts/it20_gates.py` (seed 20, 1 s windows, training sources of pool arm
+`none` through `load_manifest`'s sealed-data guard). Output: `artifacts/it20_gates.json`.
+
+*Departure from the box:* FSD50K is not on this PC (`fsd_train` is empty; it lives on the server). So
+Gate A's 2,000 windows are not drawn by the `simdist` sampler. Instead:
+- half are near drones (the sampler's 0-50 m cells, FPV included) summed into a rig background at the
+  recipe's simulated-distance SNR (-10 to +5 dB);
+- half are rig backgrounds alone.
+
+This drops the FSD50K backgrounds, which are about half of the sampler's negatives. Gate B was specified
+on rig backgrounds already.
+
+**Result.**
+
+Gate A (80 Hz - 6 kHz, order 4, each version standardised per band with its own mean and deviation):
+RMS difference 0.199 sigma, 5.6% of cells move more than 0.25 sigma. Both are above the no-op limits
+(0.05 sigma, 2%). The five bands that move most are 63, 62, 61, 60 and 59. Their upper edges are 7.7,
+7.4, 7.1, 6.8 and 6.5 kHz, with RMS 0.48 to 0.93 sigma. The low edge moves far less. The bandpass
+changes the features mainly by removing 6-8 kHz.
+
+Gate B (300 near-drone windows; "line bins" = drone alone ≥ 6 dB above its own 400 Hz median, 2.5 per
+window on average):
+
+| SNR, drone over rig background | Line bins with mean gain > 0.5 | f0 < 150 Hz (n=161) | 150-250 Hz (n=72) | ≥ 250 Hz (n=67) |
+|---|---|---|---|---|
+| -10 dB | 34.5% | 34% | 38% | 34% |
+| 0 dB (judged) | 66.4% | 61% | 70% | 71% |
+| +5 dB | 78.8% | 74% | 84% | 83% |
+
+The background alone loses 2.3 dB of in-band power on average (median 2.0 dB, 10-90% 0.8-3.5 dB).
+
+f0 is the comb gate's estimate on the drone alone, so the per-f0 split is only as good as that
+estimate. No network was trained or scored. No detection numbers are in this entry.
+
+**Assessment.**
+
+- **Gate B fails on both counts.** At 0 dB a third of the drone's line bins lose more than half their
+  power (66% kept against 80% required). The rig background loses 2.3 dB, against 6 dB required.
+  - The Wiener gain hurts the drone more than it helps against the background, and it gets worse as the
+    drone gets fainter: 34% kept at -10 dB. That is the range the requirements care about (drone 0 to -30
+    dB under the war).
+  - Low fundamentals fare worst (61% at 0 dB), as entry 172 feared.
+  - The background loss is small for a structural reason: a median-based noise estimate removes only
+    about half of steady noise.
+  - **The Wiener filter is dropped. No Wiener arm is trained.**
+  - This settles only the variant entry 172 kept. The two time-based estimates were ruled out by the
+    council, not measured.
+- **Gate A: the bandpass is not a no-op.** But what it changes is the 6-8 kHz end, which entry 172's
+  Devil's Advocate warned holds part of the ESC whine. By the box, a bandpass arm is trained.
+  - The expectation, stated before training: a loss of high-band information, not a noise gain.
+  - The low edge (80 Hz) changes little, because the mel bank already starts at 50 Hz.
+
+**Next.** Train the bandpass arm on the server with the box's protocol: `run_range.py ... --bandpass 80
+6000`, seeds 0-2, against `it16_600k`. This needs the code on the server and a JupyterLab session through
+Mads's browser.

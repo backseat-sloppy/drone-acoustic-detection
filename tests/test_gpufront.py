@@ -116,3 +116,12 @@ def test_pos_weight_raises_the_drone_score():
         net.fit(_RawSampler(cfg), n_windows=256, batch_size=16, workers=1, log=lambda s: None, pos_weight=w)
         scores[w] = net.score(x).mean()
     assert scores[4.0] > scores[1.0]
+
+
+def test_bandpass_and_wiener_match_numpy():
+    # Iteration 20 (entry 172): the torch frontend applies the same filters as the numpy one.
+    cfg = FrontendConfig(bandpass=(80.0, 6000.0), wiener=True)
+    x = _audio(4, 5)[:, :N_OUT]
+    want = np.stack([LogMel(cfg).frames(a) for a in x])
+    got = GpuFrontend(cfg, "cpu").logbands(torch.from_numpy(x)).numpy()
+    np.testing.assert_allclose(got, want, atol=2e-4)

@@ -38,6 +38,15 @@ class FrontendConfig:
     kind: str = "mfe"
     n_mfcc: int = 20
 
+    # Iteration 20 (entry 172), both off by default. `bandpass` (lo, hi) Hz: a Butterworth of order
+    # `bandpass_order`, as |H(f)|^2 on the power spectrum. `wiener`: each STFT bin's power times
+    # max(1 - N/P, wiener_floor), N the median power over `wiener_hz` of bins in the same frame.
+    bandpass: tuple[float, float] | None = None
+    bandpass_order: int = 4
+    wiener: bool = False
+    wiener_hz: float = 400.0
+    wiener_floor: float = 0.1
+
     @property
     def frames_per_window(self) -> int:
         return int(round(self.window_seconds * self.sample_rate / self.hop_length))
@@ -60,6 +69,11 @@ class FrontendConfig:
         return range(int(-(-self.fmin // hz)), min(int(self.fmax // hz), self.n_freq_bins - 1) + 1)
 
     @property
+    def wiener_bins(self) -> int:
+        """Odd width of the Wiener noise median, in STFT bins (11 at the default 40 Hz bins)."""
+        return 2 * int(round(self.wiener_hz / 2 / (self.sample_rate / self.n_fft))) + 1
+
+    @property
     def n_bands(self) -> int:
         """Rows of the feature image the network gets."""
         return {"mfe": self.n_mels, "mfcc": self.n_mfcc, "linear": len(self.linear_bins())}[self.kind]
@@ -67,6 +81,10 @@ class FrontendConfig:
     def describe(self) -> str:
         feat = {"mfe": f"{self.n_mels} log-mel", "mfcc": f"{self.n_mfcc} MFCC of {self.n_mels} log-mel",
                 "linear": f"{self.n_bands} linear log-power bins"}[self.kind]
+        if self.bandpass:
+            feat += f" | bandpass {self.bandpass[0]:g}-{self.bandpass[1]:g} Hz order {self.bandpass_order}"
+        if self.wiener:
+            feat += f" | Wiener (median over {self.wiener_hz:g} Hz, floor {self.wiener_floor:g})"
         return (
             f"{self.sample_rate} Hz mono | {self.window_seconds:g} s window "
             f"({self.frames_per_window} frames) | {self.hop_seconds:g} s hop | "

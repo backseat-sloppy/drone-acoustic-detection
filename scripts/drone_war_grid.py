@@ -272,8 +272,11 @@ def model_cfg(model: str):
     """DEFAULT with the window MODELS[model] was trained on, read from its run file (a checkpoint
     does not record it; a network fed the wrong window length scores nonsense without an error)."""
     run = json.loads(Path(MODELS[model][0]).read_text(encoding="utf-8"))
-    w = run.get("window_s", 1.0) if "models" in run else run["args"].get("window_seconds", 1.0)
-    return dataclasses.replace(DEFAULT, window_seconds=float(w))
+    a = run if "models" in run else run["args"]
+    w = a.get("window_s", 1.0) if "models" in run else a.get("window_seconds", 1.0)
+    bp = a.get("bandpass")   # iteration 20: a filtered model must be fed filtered features
+    return dataclasses.replace(DEFAULT, window_seconds=float(w), bandpass=tuple(bp) if bp else None,
+                               wiener=bool(a.get("wiener", False)))
 
 
 def _detectors(model="it6 CNN", device="cpu"):

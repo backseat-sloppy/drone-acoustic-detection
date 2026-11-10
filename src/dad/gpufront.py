@@ -23,6 +23,7 @@ import math
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from scipy.fft import dct
 
 from .config import FrontendConfig
@@ -83,8 +84,12 @@ class GpuFrontend:
         """(N, samples) -> (N, bands, frames), as features.LogMel.frames."""
         cfg = self.cfg
         fr = (x.float().unfold(1, cfg.n_fft, cfg.hop_length) * self.win).double()   # windowed in float32, FFT in float64, as numpy
-        spec = torch.fft.rfft(fr, dim=-1).abs().square().float()
-        return torch.log(spec @ self.fb.T + _EPS).transpose(1, 2)
+        spec = torch.fft.rfft(fr, dim=-1).abs().square()
+        if cfg.wiener:   # features.wiener; float64 as numpy, edge bins repeated as median_filter's "nearest"
+            k = cfg.wiener_bins
+            noise = F.pad(spec, (k // 2, k // 2), mode="replicate").unfold(-1, k, 1).median(dim=-1).values
+            spec = spec * torch.clamp(1.0 - noise / spec.clamp(min=_EPS), min=cfg.wiener_floor)
+        return torch.log(spec.float() @ self.fb.T + _EPS).transpose(1, 2)
 
     def finish(self, L: torch.Tensor, level_norm: bool = True) -> torch.Tensor:
         """realrun.level_normalise, then realrun.to_model."""
