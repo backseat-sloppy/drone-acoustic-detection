@@ -11401,3 +11401,102 @@ Asked whether a difference of about 1 point on criterion 1 counts as a tie, the 
 **Answer.** With other noises, it16 CRNN 600k s1 separates drone from no drone better. It gives up about 1.5 points of confidence when a drone is there, and is 12 to 25 points less confident when there is none and cars are in the background. Under the strict ranking of entry 182 it9 CRNN still comes first, because criterion 1 is the war soundscape only. This answer is about the "other noises" condition.
 
 **Limits.** As entry 179. ITU ARIS steers a design choice from entry 180 on.
+## 185 - Complete test: the DS-CNNs taken off the setup page; the new colour seeds not added (no threshold)
+
+- Date: 2026-11-10
+- Type: Engineering (GUI model list only; no model, threshold or test changed)
+- Commit: uncommitted, on top of 4856aa3: `scripts/Complete_Test_Gui.py`
+
+**Why.** Nicolai asked to remove every CNN from the GUI and add the new colour model Mads had just pushed.
+
+**Change.** `detector_names()` in `Complete_Test_Gui.py` now offers only the networks whose checkpoint is not a DS-CNN (`*_dscnn.pt`), plus comb: it9 CRNN, It9B, it16 CRNN 600k s0-s2, it19 CRNN colour s1, it17 CRNN 2s 600k s0-s2. The filter is by checkpoint, not by name, so It9B (a CRNN without "CRNN" in its name) stays. `drone_war_grid.MODELS` is unchanged, so detect_gui, live_gui and drone_war_gui still list the CNNs, and older Complete test results that used a CNN still open.
+
+**Colour model.** `it19 CRNN colour s1` was already in the GUI (entry 171). Commit 4856aa3 added the checkpoints `it19_colour_s0/s2_none_simdist_colour_crnn.pt` and the three colour DS-CNNs, but no run files `artifacts/runs/it19_colour_s0.json` / `_s2.json`. A network's deployment threshold and window are read from its run file (`wavio.threshold_from_run`, `drone_war_grid.model_cfg`), and the checkpoints do not record them, so s0 and s2 were not added. Asked whether to fetch the run files from the server or leave it at s1.
+
+**Checks.** `uv run python -c "import Complete_Test_Gui as G; print(G.detector_names())"` (with `scripts` on the path) printed the ten names above. The GUI window was not opened.
+
+**Decision.** Nicolai answered "Kun s1 er nok" (2026-11-10): only `it19 CRNN colour s1` stays in the GUI; colour s0 and s2 are not added and their run files are not fetched.
+
+## 186 - The 9_11 TBITest run stopped on request, unfinished
+
+- Date: 2026-11-10
+- Type: Run stopped (no result)
+- Commit: as entry 176
+
+Asked "Kan du stoppe den?" by the user of this session. At 11:46 CET the run's process group 1565351 on the server, and nothing else, was sent SIGTERM (`kill -TERM -- -1565351`). It held exactly five processes: the `nohup` bash loop, `complete_test_run.py` and its three workers. Five seconds later none were left. The ParameterTest result of entry 178 was finished before and is untouched.
+
+TBITest had run 6760 s. The workers had reached rounds 13,258, 13,770 and 14,160 of 125,114 each, about 11 % of the 375,342 rounds. Nothing was merged. The partial `shard_0..2` folders remain in `~/ct_9_11/artifacts/complete_test/9_11_TBITest/`; whether their contents are usable after an interrupted run was not checked. There is no test 2 result from this run.
+
+Also seen: no `run_range.py` (it19) process was running at that moment, and after the stop all three GPUs read 0 % and 5 MiB, so the server's GPUs are free.
+
+## 187 - The 10_11 TBITest plan started on the server
+
+- Date: 2026-11-10
+- Type: Infrastructure / run started (test 2; no result yet)
+- Commit: server clone `~/ct_9_11` at bd7192a, the same commit as the PC; the PC's only uncommitted script change is `Complete_Test_Gui.py` (GUI), not the engine
+
+**Plan.** `artifacts/complete_test/10_11_TBITest.json`, saved in the GUI by the user (MD5 040c874c9b40a1999b81b443375c1def on PC and server). Modified drone test: Steady_07 at 80 dB SPL, 8 speeds of 100-150 km/h, pitch 1 with "add randomness", Doppler on, impact at 1 m. Backgrounds: war soundscape 30-120 dB (8 levels), wind (Pd, 10 m/s) 25-50 dB (8 levels, also off), cars (30 km/h, 50 m) 1-20 dB (8 levels, also off). Rounds are 20 s with soundscape start 30 s and step 1 s. Models: it9 CRNN, it19 CRNN colour s1, it17 CRNN 2s 600k s1. `plan.count()`: 57,672 rounds x 3 = 173,016 detector runs, no problems. War levels above about 110 dB SPL exceed WAV full scale. The engine does not clip, so those rounds are optimistic (entry 130). No baselines are in the plan.
+
+**Set-up.**
+- `git pull --ff-only` in `~/ct_9_11`, e393b7d to bd7192a. It first refused because untracked files would be overwritten: these were the symlinks to the old clone's `it16_win2s600k_*` and `it19_colour_*` checkpoints, made in entry 176. Only symlinks with those names were removed (`[ -L ]`), the old clone's files are untouched, and the pull then succeeded. `it19_colour_s1_none_simdist_colour_crnn.pt` (2,972,681 bytes), `it16_win2s600k_s1_none_simdist_crnn.pt` (2,972,473) and their run files are now the tracked files. `load_detectors` on the server loads all three models; thresholds 0.483 / 0.612 / 0.555.
+- `data/extracted/test_plans/server_upload_10_11.zip` (MD5 f642a1dc080c512ea3c8dfc32a6fdc64; the plan and `cars_30kmh_50m_20s_a2124aaa.wav`) was uploaded by the user and unpacked with `unzip -n`. It took two uploads, because the first one was the plan file alone. As in entry 176, a symlink with the server's LF-hash name (`cars_30kmh_50m_20s_7b41c86f.wav`) points to the render.
+
+**Run.** Started 2026-11-10 11:56:17 CET, PID 3195752, log `artifacts/complete_test/10_11.log`:
+```
+export PYTHONPATH=$PWD/src
+nohup .venv/bin/python -u scripts/complete_test_run.py artifacts/complete_test/10_11_TBITest.json --out artifacts/complete_test/10_11_TBITest > artifacts/complete_test/10_11.log 2>&1 &
+```
+Three workers, 19,224 rounds each, one TITAN X each, with no other job on the GPUs (85-90 % load). After 61 s the workers estimated 2605-3038 s left, so it should be done at about 12:47 plus the merge. No error in the log.
+
+**Next.** When the log reports the merge: fetch the result and read the test 2 figure (mean confidence 3-7 s before impact, `REQUIREMENTS.md`).
+
+## 188 - Correction to entries 176 and 178: the it19 training ended minutes after the 9_11 runs started
+
+- Date: 2026-11-10
+- Type: Correction (no result changed)
+
+Entry 176 says the 9_11 runs shared the GPUs with the `it19_colour` training, and the next-day estimate assumed that load continued. On the server, the old clone's `artifacts/runs/it19_colour_s0/s1/s2.json` and `it19_s0-2.log` are dated 2026-11-09 15:43-15:44, five minutes after the 9_11 run started at 15:38. Iteration 19's result is entry 171. So the sharing with it19 lasted about five minutes. Afterwards, the `it20_bp_s0-2` runs wrote their files on 2026-11-10 between 11:13 and 11:16. When they started was not checked, so how long they shared the GPUs with the TBITest run of entry 178 is not known. No training process was running at 12:00 on 2026-11-10.
+
+## 189 - The 10_11 TBITest run finished
+
+- Date: 2026-11-10
+- Type: Run status (no result read yet)
+- Commit: as entry 187
+
+`artifacts/complete_test/10_11.log` on the server, read 12:56 CET: `merged 3 shards: 57672 of 57672 rounds -> artifacts/complete_test/10_11_TBITest`. The workers took 3004 s, merged at 12:47-12:48. No error in the log. Files: rounds.csv 56,954,186 bytes, scores.npz 159,231,023, summary.csv 32,048, config.json 2,610. Not yet fetched to the PC; no number read.
+
+## 190 - The 10_11 TBITest result on the PC, opens in Complete_Test_Gui
+
+- Date: 2026-11-10
+- Type: Check (no number read)
+- Commit: as entry 187
+
+The four files were zipped on the server (`~/10_11_TBITest_result.zip`, 146,054,734 bytes, MD5 e88cdf716d649e403be213e130edb645), downloaded by the user through Chrome, and unpacked to `artifacts/complete_test/10_11_TBITest/` after the MD5 matched. Sizes equal the server's (entry 189). `Complete_Test_Gui.load_test` opens the folder: 57,672 rounds, kind `modified`, detectors it9 CRNN, it19 CRNN colour s1 and it17 CRNN 2s 600k s1. The Conclusions window itself was not opened here.
+
+## 191 - Conclusions: a "comparison" choice for the detectors, and the 10_11 TBITest read with it
+
+- Date: 2026-11-10
+- Type: Engineering (GUI) and evaluation (test 2; ITU ARIS Steady_07, scoring)
+- Commit: uncommitted: `scripts/Complete_Test_Gui.py`
+
+**Why.** Asked for a choice called comparison in the Conclusions window's detector list, comparing the models. The user then narrowed it: it should focus on overall confidence before impact and on confidence during distractors.
+
+**Change.** With more than one detector the list ends with "comparison" (`COMPARE`), drawn by `Conclusions._draw_compare` from one pass over the rounds. A first version drew every Conclusions graph with all detectors overlaid. It was replaced before use by this one:
+- **Confidence before impact** (modified tests only). Each detector's mean confidence over time, all speeds pooled (each bin weighted by its rounds), with 3-7 s before impact shaded; the legend gives each detector's mean over that window (every 0.125 s bin counted equally). Beside it, that figure per speed.
+- **Confidence during distractors.** Confidence on no-drone windows, lower is better, against each background layer's level, with a dotted line for the layer off. Also a bar chart by which distractors are on (every layer but the war soundscape).
+- Colours on this page are the validated categorical order by the detector's place in the plan. In `COLORS`, it9 CRNN (#9334e6) and it17 CRNN 2s s1 (#5e35b1) are near-identical purples. The single-detector pages keep `COLORS`.
+
+**Checks.** On `artifacts/complete_test/10_11_TBITest`: the page drew in about 37 s; switching back to a single detector still drew. Preview: `artifacts/complete_test/10_11_TBITest/conclusions_comparison_preview.png`, looked at. The before-impact figures equal those of the first version, computed per speed (for example 100 km/h: 42.3 / 43.5 / 38.0 %). `uv run pytest` not run: no test imports this file.
+
+**Result, 10_11 TBITest** (Steady_07 at 80 dB at 1 m, 100-150 km/h, war soundscape 30-120 dB, wind 25-50 dB or off, cars 1-20 dB or off; entry 187):
+
+| | it9 CRNN | it19 CRNN colour s1 | it17 CRNN 2s 600k s1 |
+|---|---|---|---|
+| mean confidence 3-7 s before impact, all speeds | 37.6 % | 38.4 % | 33.3 % |
+| same, at 100 / 150 km/h | 42.3 / 33.3 % | 43.5 / 33.7 % | 38.0 / 29.0 % |
+| no-drone confidence, no distractor (war only) | 8 % | 4 % | 3 % |
+| with cars only | 29 % | 26 % | 20 % |
+| with wind only | 14 % | 12 % | 11 % |
+| with wind + cars | 15 % | 13 % | 12 % |
+
+it19 CRNN colour s1 is highest before impact by 0.8 points over it9 CRNN, and lower on every no-drone figure. it17 CRNN 2s is 4-5 points lower before impact and lowest without a drone. Cars again raise no-drone confidence most (cars alone at 1-20 dB SPL against war as set). For every model the no-drone confidence is higher with the wind layer off than on (it9 CRNN 27 % off against 14-16 % on); why was not examined. One drone file, one car and one wind setting, war above about 110 dB unclipped (entry 130), no baselines. The war levels in the plan reach 120 dB SPL, so its 3-7 s figure pools rounds where the drone is buried.

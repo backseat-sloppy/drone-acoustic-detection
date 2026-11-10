@@ -192,7 +192,10 @@ def pd_steps(name: str, lo: str, hi: str, n: str) -> list[float]:
 
 
 def detector_names() -> list[str]:
-    return [*E.dwg.MODELS, "comb"]
+    """The detectors offered on the setup page: the recurrent networks (CRNN, It9B) and comb. The DS-CNNs
+    are left out at Nicolai's request (2026-11-10); they stay in dwg.MODELS, so older results that used
+    them still open."""
+    return [m for m, (_, ckpt) in E.dwg.MODELS.items() if not str(ckpt).endswith("_dscnn.pt")] + ["comb"]
 
 
 def model_view(x: np.ndarray, sc, batch: int = 256) -> np.ndarray:
@@ -1060,6 +1063,8 @@ class Results(tk.Toplevel):
 # ------------------------------------------------------------------ conclusions
 
 CURVE_ABOVE = 4                                              # more values than this: a curve, not bars
+COMPARE = "comparison"                                       # the Conclusions choice that draws every detector together
+SPARE_COLORS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948")
 SUMMARY_LAYERS = (("War soundscape summary", ("war soundscape",)), ("Wind summary", ("wind", "wind (Pd)")),
                   ("Car summary", ("cars",)))
 TOP_IN, HEAD_IN, ROW_IN, NOTE_IN = 0.7, 0.55, 3.1, 0.4       # heights on the Conclusions page, inches
@@ -1232,7 +1237,9 @@ class Conclusions(tk.Toplevel):
     CURVE_ABOVE values, a curve above that for numbers. No threshold lines; a fixed dashed 50 % mark on
     every graph instead (Mads, 2026-11-06). Modified drone tests also get, in the speed summary, one
     "mean confidence over time" graph per speed: all rounds at that speed together, the mean confidence
-    at each moment of the drone file (impact at 10 s), see confidence_over_time()."""
+    at each moment of the drone file (impact at 10 s), see confidence_over_time(). With more than one
+    detector, the choice "comparison" draws them all together on two questions: confidence before impact
+    and confidence during distractors (see _draw_compare)."""
 
     def __init__(self, master, test: E.Test):
         super().__init__(master)
@@ -1245,7 +1252,8 @@ class Conclusions(tk.Toplevel):
         ttk.Label(bar, text="Conclusions", style="H2.TLabel").pack(side="left")
         ttk.Label(bar, text="detector").pack(side="left", padx=(20, 4))
         self.v_det = tk.StringVar(value=test.plan.detectors[0])
-        ttk.Combobox(bar, textvariable=self.v_det, values=test.plan.detectors, state="readonly", width=12).pack(side="left")
+        choices = [*test.plan.detectors, *([COMPARE] if len(test.plan.detectors) > 1 else [])]
+        ttk.Combobox(bar, textvariable=self.v_det, values=choices, state="readonly", width=14).pack(side="left")
         self.scores = {}
         if test.plan.kind == "modified":                     # per-hop scores for confidence over time
             p = test.out / "scores.npz"
@@ -1281,6 +1289,8 @@ class Conclusions(tk.Toplevel):
         """Lays the page out in inches from the top: a heading per section, then its graphs two to a
         row (a lone graph takes the whole width). Modified runs add one over-time graph per speed."""
         det = self.v_det.get()
+        if det == COMPARE:
+            return self._draw_compare()
         thr = 0.5 if det == "comb" else self.test.thr[det]
         curves = confidence_over_time(self.test, det, self.scores)
         secs = summary_sections(self.test)
@@ -1413,6 +1423,152 @@ class Conclusions(tk.Toplevel):
                 if i.size:
                     at.append(f"{before} s before impact: {100 * c['mean'][i[0]]:.0f}%")
             lines.append(f"{speed:g} km/h, mean confidence over time ({int(c['n'].max())} rounds): " + ",  ".join(at))
+        return lines
+
+    def _color(self, det: str) -> str:
+        """The comparison page's colour: the validated categorical order by the detector's place in the plan
+        (COLORS has near-identical purples for it9 CRNN and the it17 CRNNs, which cannot be told apart)."""
+        return SPARE_COLORS[self.test.plan.detectors.index(det) % len(SPARE_COLORS)]
+
+    def _draw_compare(self):
+        """The "comparison" page: every detector together, on two questions only.
+        1. Confidence before impact (modified drone tests): each detector's mean confidence over time, all
+           speeds pooled (each speed's rounds weighted by their count), with the 3-7 s before impact shaded;
+           and the test 2 figure (mean over those 4 s, every 0.125 s bin counted equally) per speed.
+        2. Confidence during distractors: confidence on no-drone windows (lower is better), against each
+           background layer's level, and by which distractors are on (every layer but the war soundscape).
+        One pass over the rounds fills every sum."""
+        t, dets = self.test, list(self.test.plan.detectors)
+        layers = [n for n in t.plan.layers if len(values_of(t, n)) > 1]
+        dist = [n for n in t.plan.layers if n != "war soundscape"]
+        sums, groups = {}, {}
+        for rnd, res in t.results.items():
+            r = t.by_round[rnd]
+            on = [n for n in dist if setting(r, n) not in (None, "off")]
+            g = " + ".join(on) if on else "no distractor"
+            for d in dets:
+                if d not in res:
+                    continue
+                for n in layers:
+                    add_conf(sums.setdefault((d, n, setting(r, n)), new_sums()), res[d])
+                add_conf(groups.setdefault((d, g), new_sums()), res[d])
+        gnames = sorted({g for _, g in groups}, key=lambda g: (g != "no distractor", g.count("+"), g))
+        curves = {d: confidence_over_time(t, d, self.scores) for d in dets}
+        has_time = any(curves.values())
+
+        secs = [dict(title="Confidence before impact", cells=2 if has_time else 0,
+                     note="Only a modified drone test has an impact; this test has no confidence over time."),
+                dict(title="Confidence during distractors: no-drone windows (lower is better)", cells=len(layers) + 1, note="")]
+        for s in secs:
+            s["rows"] = (s["cells"] + 1) // 2
+        height = TOP_IN + sum(HEAD_IN + (s["rows"] * ROW_IN if s["cells"] else NOTE_IN) for s in secs)
+        self.fig.clear()
+        self.fig.set_size_inches(self.fig.get_figwidth(), height, forward=False)
+        self.canvas.get_tk_widget().configure(height=int(height * self.fig.dpi))
+        self.fig.text(0.012, 1 - 0.28 / height, "Comparison: " + ", ".join(d if d != "comb" else "DSP (comb)" for d in dets),
+                      fontsize=12, weight="bold", va="center")
+        self.fig.text(0.012, 1 - 0.54 / height, ("THE FINAL EVALUATION, sealed car.  " if t.plan.final_evaluation else "")
+                      + "Each point pools every round at that value, over all the other settings.", fontsize=9, color=MUTED, va="center")
+        lines, y, axes_of = [], TOP_IN, []
+        for s in secs:
+            top = 1 - y / height
+            self.fig.add_artist(Line2D([0.012, 0.988], [top, top], color="#c9ced6", lw=1, transform=self.fig.transFigure))
+            self.fig.text(0.012, 1 - (y + 0.3) / height, s["title"], fontsize=13, weight="bold", va="center")
+            y += HEAD_IN
+            if not s["cells"]:
+                self.fig.text(0.012, 1 - (y + 0.14) / height, s["note"], fontsize=10, color=MUTED, va="center")
+                y += NOTE_IN
+                axes_of.append([])
+                continue
+            axes_of.append([self._axes(i, s["cells"], y, height) for i in range(s["cells"])])
+            y += s["rows"] * ROW_IN
+        if has_time:
+            lines += self._compare_impact(*axes_of[0], curves)
+        lines += self._compare_distractors(axes_of[1], layers, sums, groups, gnames)
+        self.canvas.draw_idle()
+        self.l_text.configure(text="\n".join(lines))
+        self.scroll.yview_moveto(0)
+
+    def _compare_impact(self, ax_t, ax_s, curves: dict) -> list[str]:
+        lo, hi = E.DRONE_S - 7, E.DRONE_S - 3
+        in_win = (lambda x: (x >= lo - 1e-9) & (x <= hi + 1e-9))
+        ax_t.axvspan(lo, hi, color="#888", alpha=0.12, lw=0)
+        ax_t.text((lo + hi) / 2, 102, "3-7 s before impact", ha="center", va="bottom", fontsize=8, color=MUTED)
+        ax_t.axvline(E.DRONE_S, color="#d93025", lw=1.2)
+        ax_t.text(E.DRONE_S, 102, " impact", color="#d93025", fontsize=8, va="bottom")
+        lines = []
+        for d, per in curves.items():
+            if not per:
+                continue
+            pool = {}
+            for c in per.values():
+                for x, m, n in zip(c["x"], c["mean"], c["n"]):
+                    a = pool.setdefault(round(float(x), 4), [0.0, 0])
+                    a[0] += m * n
+                    a[1] += n
+            xs = np.array(sorted(pool))
+            ys = np.array([pool[x][0] / pool[x][1] for x in xs])
+            fig2 = 100 * ys[in_win(xs)].mean()
+            ax_t.plot(xs, 100 * ys, color=self._color(d), lw=2, label=f"{d}: {fig2:.1f}%")
+            speeds = sorted(per)
+            f_sp = [100 * per[s]["mean"][in_win(per[s]["x"])].mean() for s in speeds]
+            ax_s.plot(speeds, f_sp, "-o", color=self._color(d), lw=2, ms=4, label=d)
+            lines.append(f"Before impact · {d}: mean confidence 3-7 s before impact {fig2:.1f}% (all speeds);  per speed "
+                         + ",  ".join(f"{s:g} km/h {v:.1f}%" for s, v in zip(speeds, f_sp)))
+        ax_t.axhline(50, color="#888", ls="--", lw=1)
+        ax_t.set(ylim=(0, 108), xlim=(-2, E.DRONE_S + 1), ylabel="mean confidence (%)")
+        ax_t.set_xticks(range(-2, int(E.DRONE_S) + 2))
+        ax_t.set_xlabel("time in the drone file (s); impact at 10 s", fontsize=8)
+        ax_t.set_title("mean confidence over time, all speeds", fontsize=10, loc="left", weight="bold")
+        ax_t.grid(color="#e8e8e8", lw=0.5)
+        ax_t.legend(loc="upper left", fontsize=8, frameon=False, title="mean 3-7 s before impact", title_fontsize=8)
+        ax_s.axhline(50, color="#888", ls="--", lw=1)
+        ax_s.set(ylim=(0, 105), ylabel="mean confidence 3-7 s before impact (%)")
+        ax_s.set_xlabel("speed (km/h)")
+        ax_s.set_title("test 2 figure per speed", fontsize=10, loc="left", weight="bold")
+        ax_s.grid(color="#e8e8e8", lw=0.5)
+        ax_s.legend(loc="lower left", fontsize=8, frameon=False)
+        return lines
+
+    def _compare_distractors(self, axes, layers: list, sums: dict, groups: dict, gnames: list) -> list[str]:
+        dets = list(self.test.plan.detectors)
+        false = (lambda s: None if s is None or not s["nf"] else 100 * s["false"] / s["nf"])
+        lines = []
+        for ax, n in zip(axes, layers):
+            vals = values_of(self.test, n)
+            nums = [v for v in vals if v != "off"]
+            for d in dets:
+                col = self._color(d)
+                ys = [false(sums.get((d, n, v))) for v in nums]
+                ax.plot(nums, [np.nan if v is None else v for v in ys], "-o", color=col, lw=2, ms=4, label=d)
+                off = false(sums.get((d, n, "off"))) if "off" in vals else None
+                if off is not None:                          # dotted: the same detector with this layer off
+                    ax.axhline(off, color=col, ls=":", lw=1.2)
+                lines.append(f"Distractors · {n} · {d}: no-drone confidence " + ("" if off is None else f"off {off:.0f}%;  ")
+                             + ";  ".join(f"{fmt(v)} dB {y:.0f}%" for v, y in zip(nums, ys) if y is not None))
+            ax.set(ylim=(0, 105), ylabel="no-drone confidence (%)")
+            ax.set_xlabel(f"{n} level (dB SPL)" + ("; dotted = layer off" if "off" in vals else ""))
+            ax.set_title(f"{n}", fontsize=10, loc="left", weight="bold")
+            ax.axhline(50, color="#888", ls="--", lw=1)
+            ax.grid(color="#e8e8e8", lw=0.5)
+        ax = axes[len(layers)]
+        w = 0.8 / max(len(dets), 1)
+        for j, d in enumerate(dets):
+            ys = [false(groups.get((d, g))) for g in gnames]
+            xs = np.arange(len(gnames)) + (j - (len(dets) - 1) / 2) * w
+            ax.bar(xs, [0 if v is None else v for v in ys], w * 0.9, color=self._color(d), label=d)
+            for x, v in zip(xs, ys):
+                if v is not None:
+                    ax.text(x, v + 1.5, f"{v:.0f}", ha="center", fontsize=7)
+            lines.append(f"Distractors · by what is on · {d}: " + ";  ".join(
+                f"{g} {v:.0f}%" for g, v in zip(gnames, ys) if v is not None))
+        ax.set_xticks(range(len(gnames)), gnames, fontsize=8)
+        ax.set(ylim=(0, 105), ylabel="no-drone confidence (%)")
+        ax.set_title("by which distractors are on (war soundscape as set)", fontsize=10, loc="left", weight="bold")
+        ax.axhline(50, color="#888", ls="--", lw=1)
+        ax.grid(axis="y", color="#e8e8e8", lw=0.5)
+        ax.set_axisbelow(True)
+        ax.legend(loc="upper left", fontsize=8, frameon=False)
         return lines
 
     def save(self):
