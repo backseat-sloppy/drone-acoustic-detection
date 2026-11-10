@@ -93,6 +93,7 @@ LEVEL_HINTS = {"war soundscape": "Test 1: 90",
                "war-shaped noise": "Test 1: 90",
                "wind": WIND_LEVELS, "wind (Pd)": WIND_LEVELS,
                "cars": "near (10 m): 57  ·  far (40 m): 45"}
+FINAL_TAG = "  -  THE FINAL EVALUATION (sealed car)"
 PD_LABELS = {"wind_speed_ms": "wind (Pd) speed (m/s, assumed)", "wind_reso": "wind (Pd) resonance (0-127)",
              "car_speed_kmh": "car speed (km/h)", "car_dist_m": "car closest distance (m)"}
 PART_COLORS = {"drone": "#d93025", "war soundscape": "#6b4e16", "war-shaped noise": "#7a7a7a", "wind": "#2a9d8f",
@@ -164,6 +165,11 @@ def speed_steps(lo: str, hi: str, n: str) -> list[float]:
         return E.dwg.steps(lo_, hi_, n_, "speed")
     except ValueError as e:
         raise ValueError(str(e).replace("the count", "#").replace("count 1", "# 1")) from None
+
+
+def car_label(name: str) -> str:
+    """A short name for a car box: car_engine_outside_idle -> outside idle."""
+    return name.replace("car_engine_", "").replace("car_", "").replace("_", " ")
 
 
 def pd_steps(name: str, lo: str, hi: str, n: str) -> list[float]:
@@ -281,17 +287,39 @@ class Page(ttk.Frame):
                     ttk.Entry(sp, textvariable=v, width=w).pack(side="left")
                 self.l_speed_preview = ttk.Label(sp, text="", style="Muted.TLabel", width=26)
                 self.l_speed_preview.pack(side="left", padx=(10, 0))
+                self.v_pitches = (tk.StringVar(value="1"), tk.StringVar(value="1"), tk.StringVar(value="1"))
+                self.v_pitch_random = tk.BooleanVar(value=False)
+                ttk.Label(f, text="Pitch (x, 1 = as recorded):").grid(row=2, column=0, sticky="w", pady=(8, 0))
+                pi = ttk.Frame(f)
+                pi.grid(row=2, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
+                for lbl, v, w in zip(("min", "max", "#"), self.v_pitches, (7, 7, 4)):
+                    ttk.Label(pi, text=lbl, style="Muted.TLabel").pack(side="left", padx=(0 if lbl == "min" else 8, 3))
+                    ttk.Entry(pi, textvariable=v, width=w).pack(side="left")
+                    v.trace_add("write", lambda *_: self.update_count())
+                self.l_pitch_preview = ttk.Label(pi, text="", style="Muted.TLabel", width=26)
+                self.l_pitch_preview.pack(side="left", padx=(10, 0))
+                ttk.Label(pi, text=f"allowed {E.PITCH_LIMITS[0]:g}-{E.PITCH_LIMITS[1]:g}  ·  suggested 0.8-1.25  ·  "
+                                   "light: 0.8  ·  as recorded: 1  ·  heavy: 1.25", style="Muted.TLabel").pack(side="left")
+                rnd = ttk.Frame(f)
+                rnd.grid(row=3, column=1, sticky="w", padx=(8, 0), pady=(2, 0))
+                ttk.Checkbutton(rnd, text="add randomness", variable=self.v_pitch_random, command=self.update_count).pack(side="left")
+                ttk.Checkbutton(rnd, text="Doppler (pitch rises while it approaches)", variable=self.v_doppler,
+                                command=self.update_count).pack(side="left", padx=(16, 0))
+                ttk.Label(rnd, text=f"randomness: the pitch wanders about {100 * E.PITCH_WOBBLE:g} % around its value throughout",
+                          style="Muted.TLabel").pack(side="left", padx=(16, 0))
+                ttk.Label(f, text="Pitch is the speed of the four motors. In hover, pitch = √(drone weight ÷ weight when recorded): "
+                                  "x0.8 = 36 % lighter, x1.1 = 21 % heavier (a load), x1.25 = 1.56 times as heavy, x2 = 4 times. "
+                                  "A propeller-physics rule, not measured on our drones; flying fast also raises the motor speed.",
+                          style="Muted.TLabel", wraplength=760, justify="left").grid(row=4, column=1, sticky="w", padx=(8, 0), pady=(2, 0))
                 sub = ttk.Frame(f)
-                sub.grid(row=2, column=1, sticky="w", padx=(8, 0), pady=(4, 0))
+                sub.grid(row=5, column=1, sticky="w", padx=(8, 0), pady=(4, 0))
                 ttk.Label(sub, text="distance at impact (m)", style="Muted.TLabel").pack(side="left", padx=(0, 4))
                 ttk.Entry(sub, textvariable=self.v_closest, width=6).pack(side="left")
-                ttk.Checkbutton(sub, text="Doppler (pitch rises while it approaches)", variable=self.v_doppler,
-                                command=self.update_count).pack(side="left", padx=(12, 0))
                 self.l_approach = ttk.Label(f, text="", style="Muted.TLabel")
-                self.l_approach.grid(row=3, column=1, sticky="w", padx=(8, 0), pady=(2, 0))
+                self.l_approach.grid(row=6, column=1, sticky="w", padx=(8, 0), pady=(2, 0))
                 for v in (*self.v_speeds, self.v_closest):
                     v.trace_add("write", lambda *_: self.update_count())
-                r = 4
+                r = 7
         else:
             self.v_speeds = tk.StringVar(value="100 150 200")
             self.v_seed, self.v_pscale, self.v_elev = tk.StringVar(value="1"), tk.StringVar(value="0.85"), tk.StringVar(value="40")
@@ -396,11 +424,26 @@ class Page(ttk.Frame):
         ttk.Label(st, text="blank = drawn once per batch (seed 1000); every round uses the same stretch",
                   style="Muted.TLabel").pack(side="left")
         r += 1
+        final = ttk.Frame(g)
+        final.grid(row=r, column=1, columnspan=7, sticky="w", padx=4, pady=(8, 0))
+        self.v_final = tk.BooleanVar(value=False)
+        self.b_final = tk.Checkbutton(final, text="The Final Evaluation: OFF", variable=self.v_final, indicatoron=False, width=26,
+                                      font=("Segoe UI", 10, "bold"), selectcolor="#f4c7c3", command=self._flip_final)
+        self.b_final.pack(side="left")
+        ttk.Label(final, text="on: the cars layer is only the sealed car, which no model has trained on; off: the six development cars",
+                  style="Muted.TLabel").pack(side="left", padx=8)
+        r += 1
         guide = ttk.Frame(g)
         guide.grid(row=r, column=1, columnspan=7, sticky="w", padx=4, pady=(8, 0))
         ttk.Label(guide, text="Guidelines", style="Bold.TLabel").pack(anchor="w")
         for text in LAYER_GUIDELINES:
             ttk.Label(guide, text=f"•  {text}", style="Muted.TLabel", wraplength=980, justify="left").pack(anchor="w")
+
+    def _flip_final(self):
+        self.b_final.configure(text=f"The Final Evaluation: {'ON' if self.v_final.get() else 'OFF'}")
+        for cb in getattr(self, "cb_cars", []):              # the sealed car is then the only car
+            cb.state(["disabled" if self.v_final.get() else "!disabled"])
+        self.update_count()
 
     def _pd_rows(self, g, r: int, name: str) -> int:
         """A row per setting of a Pure Data layer, under the layer, with the same min, max and # boxes
@@ -419,6 +462,18 @@ class Page(ttk.Frame):
             preview.grid(row=r, column=6, sticky="w", padx=4)
             self.pd_preview[name, sec, key] = preview
             ttk.Label(g, text=hint).grid(row=r, column=7, sticky="w", padx=4)
+        if name == "cars":
+            r += 1
+            ttk.Label(g, text="    which cars", style="Muted.TLabel").grid(row=r, column=1, sticky="w", padx=4)
+            box = ttk.Frame(g)
+            box.grid(row=r, column=2, columnspan=6, sticky="w", padx=4)
+            self.v_cars, self.cb_cars = [], []
+            for i, car in enumerate(E.car_names()):
+                v = tk.BooleanVar(value=True)
+                cb = ttk.Checkbutton(box, text=car_label(car), variable=v, command=self.update_count)
+                cb.pack(side="left", padx=(0, 10))
+                self.v_cars.append(v)
+                self.cb_cars.append(cb)
         return r
 
     def _toggle_layers(self):
@@ -495,11 +550,12 @@ class Page(ttk.Frame):
             step = float(self.v_step.get())
         except ValueError:
             raise ValueError("soundscape length and start step must be numbers") from None
-        speeds, approach = None, None
+        speeds, approach, pitches = None, None, None
         if self.kind in ("real", "modified"):
             drones = list(self.files)
             if self.kind == "modified":
                 speeds = speed_steps(*(v.get() for v in self.v_speeds))
+                pitches = pd_steps("pitch", *(v.get() for v in self.v_pitches))
                 try:
                     approach = dict(closest_m=float(self.v_closest.get()), doppler=bool(self.v_doppler.get()))
                 except ValueError:
@@ -529,11 +585,15 @@ class Page(ttk.Frame):
         for name, (sec, _) in PD_CONTROLS.items():
             if name in layers:                               # an unticked layer's boxes do not count
                 pd_settings[sec] = {k: pd_steps(f"{name} {k}", *(v.get() for v in vs)) for k, vs in self.v_pd[sec].items()}
+        cars = getattr(self, "v_cars", [])
+        chosen_cars = None if "cars" not in layers or all(v.get() for v in cars) else [i for i, v in enumerate(cars) if v.get()]
         p = E.Plan(self.kind, length, drones, levels, layers, [d for d, v in self.v_det.items() if v.get()],
                    step_s=step, no_drone_rounds=self.v_nodrone.get(), pd_settings={**E.PD_SETTINGS, **pd_settings},
-                   also_without=[n for n in layers if self.v_layer_off[n].get()],
+                   also_without=[n for n in layers if self.v_layer_off[n].get()], final_evaluation=self.v_final.get(),
+                   car_engines=chosen_cars,
                    soundscape_start_s=float(start) if start else None, **({"synth": synth} if synth else {}),
-                   **({"speeds": speeds, "approach": approach} if self.kind == "modified" else {}))
+                   **({"speeds": speeds, "approach": approach, "pitches": pitches, "pitch_random": self.v_pitch_random.get()}
+                      if self.kind == "modified" else {}))
         return p
 
     def update_count(self, *_):
@@ -555,6 +615,12 @@ class Page(ttk.Frame):
                 self.l_speed_preview.configure(text=(txt if len(txt) <= 22 else txt[:20] + "…") + " km/h", style="Muted.TLabel")
             except ValueError as e:
                 self.l_speed_preview.configure(text=str(e).split(": ", 1)[-1][:26], style="Warn.TLabel")
+            try:
+                txt = ", ".join(f"x{v:g}" for v in pd_steps("pitch", *(v.get() for v in self.v_pitches)))
+                txt = (txt if len(txt) <= 22 else txt[:20] + "…") + (", random" if self.v_pitch_random.get() else "")
+                self.l_pitch_preview.configure(text=txt, style="Muted.TLabel")
+            except ValueError as e:
+                self.l_pitch_preview.configure(text=str(e).split(": ", 1)[-1][:26], style="Warn.TLabel")
         for name, lbl in self.layer_preview.items():         # each layer's values, or what is wrong
             if not (self.v_layer_on[name].get() and self.layers[name].available):
                 lbl.configure(text="", style="Muted.TLabel")
@@ -584,8 +650,9 @@ class Page(ttk.Frame):
             self.l_approach.configure(text=approach_preview(p.speeds, p.approach["closest_m"]))
         c, probs = p.count(), p.check()
         self.l_count.configure(text=f"{c['total']:,} test rounds".replace(",", " "))
-        n_f, n_v = len(p.drones), len(p.speeds or [])
-        drones_txt = (f"{n_f} file{'s' * (n_f != 1)} × {n_v} speed{'s' * (n_v != 1)}" if self.kind == "modified"
+        n_f, n_v, n_p = len(p.drones), len(p.speeds or []), len(p.pitches or [1.0])
+        drones_txt = (f"{n_f} file{'s' * (n_f != 1)} × {n_v} speed{'s' * (n_v != 1)} × {n_p} pitch{'es' * (n_p != 1)}"
+                      if self.kind == "modified"
                       else f"{c['drones']} drone{'s' * (c['drones'] != 1)}")
         parts = [f"{c['starts']} starts", drones_txt,
                  f"{c['drone_levels']} drone level{'s' * (c['drone_levels'] != 1)}" if p.drone_levels is not None
@@ -597,7 +664,11 @@ class Page(ttk.Frame):
         if probs:
             detail = "  ·  ".join(probs)
         self.l_count_detail.configure(text=detail, style="Warn.TLabel" if probs else "Muted.TLabel")
-        bits = [f"{n} {', '.join(f'{v:g}' for v in lv)} dB" + (" + off" if n in p.also_without else "") for n, lv in p.layers.items()]
+        cars_all = E.car_names()
+        bits = [f"{n} {', '.join(f'{v:g}' for v in lv)} dB" + (" + off" if n in p.also_without else "")
+                + (" (sealed)" if n == "cars" and p.final_evaluation else
+                   f" ({len(p.car_engines)} of {len(cars_all)} cars)" if n == "cars" and p.car_engines is not None else "")
+                for n, lv in p.layers.items()]
         self.l_layers_sum.configure(text="  ·  ".join(bits) if bits else "no background layer ticked")
 
     # ---------- run
@@ -686,7 +757,7 @@ class Results(tk.Toplevel):
     def __init__(self, app, test: E.Test):
         super().__init__(app)
         self.app, self.test = app, test
-        self.title(f"{TITLE} results: {test.out.name}")
+        self.title(f"{TITLE} results: {test.out.name}" + (FINAL_TAG if test.plan.final_evaluation else ""))
         self.geometry("1500x940")
         self.configure(bg=BG)
         self.by_round = {r["round"]: r for r in test.rounds}
@@ -997,7 +1068,8 @@ TOP_IN, HEAD_IN, ROW_IN, NOTE_IN = 0.7, 0.55, 3.1, 0.4       # heights on the Co
 def parameter_values(test: E.Test) -> dict[str, list]:
     """Every setting that takes more than one value in the test, with its values in order."""
     modified = test.plan.kind == "modified"
-    names = {**({"speed_kmh": "speed (km/h), all drones", "file": "drone file, all speeds"} if modified  # not per file x speed
+    names = {**({"speed_kmh": "speed (km/h), all drones", "file": "drone file, all speeds",   # not per file x speed
+                 "pitch": "drone pitch (x), all drones"} if modified
                 else {"drone": "drone"}),
              "drone_level_db": "drone level at 1 m (dB SPL)" if modified else "drone level (dB SPL)",
              "start_s": "drone start (s)", **{n: f"{n} (dB SPL)" for n in test.plan.layers}}
@@ -1026,7 +1098,7 @@ def setting(r: dict, key: str):
         return None
     if key == "speed_kmh" and not isinstance(r["drone"], str):   # a synthetic drone is its speed
         return float(r["drone"])
-    return E.drone_setting(r["drone"], key) if key in ("drone", "file", "speed_kmh") else r[key]
+    return E.drone_setting(r["drone"], key) if key in ("drone", "file", "speed_kmh", "pitch") else r[key]
 
 
 def summary_sections(test: E.Test) -> list[dict]:
@@ -1166,7 +1238,7 @@ class Conclusions(tk.Toplevel):
         super().__init__(master)
         self.test = test
         test.by_round = {r["round"]: r for r in test.rounds}
-        self.title(f"{TITLE} conclusions: {test.out.name}")
+        self.title(f"{TITLE} conclusions: {test.out.name}" + (FINAL_TAG if test.plan.final_evaluation else ""))
         self.geometry("1300x900")
         bar = ttk.Frame(self, padding=(12, 8))
         bar.pack(fill="x")
@@ -1223,7 +1295,8 @@ class Conclusions(tk.Toplevel):
         name = det if det != "comb" else "DSP (comb)"
         self.fig.text(0.012, 1 - 0.28 / height, f"{name}: mean confidence on drone windows (true) and no-drone windows (false)",
                       fontsize=12, weight="bold", va="center")
-        self.fig.text(0.012, 1 - 0.54 / height, "Each bar or point pools every round at that value, over all the other settings.",
+        self.fig.text(0.012, 1 - 0.54 / height, ("THE FINAL EVALUATION, sealed car.  " if self.test.plan.final_evaluation else "")
+                      + "Each bar or point pools every round at that value, over all the other settings.",
                       fontsize=9, color=MUTED, va="center")
         lines, y = [], TOP_IN
         for s in secs:
@@ -1397,7 +1470,7 @@ def load_test(folder: Path) -> E.Test:
     p = cfg["plan"]
     plan = E.Plan(**{k: p[k] for k in ("kind", "length_s", "drones", "drone_levels", "layers", "detectors", "step_s",
                                        "no_drone_rounds", "soundscape_start_s", "synth")},
-                  **{k: p[k] for k in ("speeds", "approach", "pd_settings", "also_without") if k in p})   # not in every run's config
+                  **{k: p[k] for k in ("speeds", "approach", "pitches", "pitch_random", "pd_settings", "also_without", "final_evaluation", "car_engines") if k in p})   # not in every run's config
     t = E.Test(plan, folder)
     t.start_s = cfg["soundscape_start_s"]
     t.prepare(progress=lambda s: None)

@@ -1,0 +1,1 @@
+../../data/processed/stems/sealed_car/fsd50k_eval_278188.wav rally_car_idle_loop -12.16 -0.16 39690 110250 200

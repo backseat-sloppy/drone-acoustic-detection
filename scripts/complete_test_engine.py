@@ -47,6 +47,7 @@ import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
@@ -76,6 +77,7 @@ WIND_DIR = dwg.ROOT / "Distrators/Wind"
 WIND_PD = dict(speed=40, reso=40, vol=50, seconds=60.0)      # the patch's own defaults; the round sets the level
 CAR_DIR = dwg.ROOT / "Pure-data+Script/CarDistractor"
 CAR_PD = dict(speed_kmh=50, dist_m=10, dur_s=20)             # the patch's defaults; one pass-by per engine
+SEALED_CAR_TABLE = CAR_DIR / "car_engines_sealed.txt"        # The Final Evaluation's car (scripts/fetch_sealed_car.py)
 WIND_SLIDER_PER_MS = 4.0                                     # ASSUMED, not measured: wind.pd's 0-127 slider for 1 m/s
 PD_SETTINGS = dict(wind=dict(speed_ms=WIND_PD["speed"] / WIND_SLIDER_PER_MS, reso=WIND_PD["reso"]),   # what a test can change, and its limits:
                    cars=dict(speed_kmh=CAR_PD["speed_kmh"], dist_m=CAR_PD["dist_m"]))
@@ -171,27 +173,55 @@ def _wind_pd(cfg: dict):
     return _read_44k(f)
 
 
-def _car_engines() -> list[Path]:
+def _car_table(sealed: bool = False) -> Path:
+    return SEALED_CAR_TABLE if sealed else CAR_DIR / "car_engines.txt"
+
+
+def _car_engines(sealed: bool = False) -> list[Path]:
     """The engine recordings car_distractor.pd reads, one per pass-by."""
-    lines = (CAR_DIR / "car_engines.txt").read_text(encoding="utf-8").split("\n")
+    lines = _car_table(sealed).read_text(encoding="utf-8").split("\n")
     return [(CAR_DIR / ln.split()[0]).resolve() for ln in lines if ln.strip()]
 
 
+def car_names() -> list[str]:
+    """The six development cars' names from car_engines.txt, in the patch's order."""
+    lines = _car_table().read_text(encoding="utf-8").split("\n")
+    return [ln.split()[1] for ln in lines if ln.strip()]
+
+
+def sealed_car_ready() -> bool:
+    return SEALED_CAR_TABLE.exists() and all(p.exists() for p in _car_engines(sealed=True))
+
+
 def _cars_file(cfg: dict) -> Path:
-    return _pd_cached("cars_{speed_kmh:g}kmh_{dist_m:g}m_{dur_s:g}s".format(**cfg), CAR_DIR / "car_distractor.pd",
-                      CAR_DIR / "car_engines.txt")
+    sealed = bool(cfg.get("sealed"))
+    chosen = "_e" + "-".join(map(str, cfg["engines"])) if cfg.get("engines") else ""
+    return _pd_cached("cars_{speed_kmh:g}kmh_{dist_m:g}m_{dur_s:g}s".format(**cfg) + ("_sealed" if sealed else chosen),
+                      CAR_DIR / "car_distractor.pd", _car_table(sealed))
+
+
+def _sealed_patch(work: Path) -> Path:
+    """A copy of the patch folder whose car_engines.txt is the sealed car, beside the patch."""
+    shutil.copytree(CAR_DIR, work, ignore=shutil.ignore_patterns("*.wav", "*.png"))
+    engine = _car_engines(sealed=True)[0]
+    shutil.copy(engine, work / engine.name)
+    rest = SEALED_CAR_TABLE.read_text(encoding="utf-8").strip().split(maxsplit=1)[1]
+    (work / "car_engines.txt").write_text(f"{engine.name} {rest}\n", encoding="utf-8")
+    return work / "car_distractor.pd"
 
 
 def _cars(cfg: dict):
     """One pass-by per engine, one after the other: closest to the microphone halfway through each."""
     f = _cars_file(cfg)
+    sealed = bool(cfg.get("sealed"))
     if not f.exists():
         _need_pd()
         parts = []
         with tempfile.TemporaryDirectory() as tmp:           # Pd takes no spaces or backslashes in a path
-            for e in range(len(_car_engines())):
+            patch = _sealed_patch(Path(tmp) / "patch") if sealed else CAR_DIR / "car_distractor.pd"
+            for e in cfg.get("engines") or range(len(_car_engines(sealed))):
                 wav = Path(tmp) / f"{e}.wav"
-                r = subprocess.run([_pd(), "-nogui", "-nosound", "-batch", "-r", "44100", "-open", str(CAR_DIR / "car_distractor.pd"),
+                r = subprocess.run([_pd(), "-nogui", "-nosound", "-batch", "-r", "44100", "-open", str(patch),
                                     "-send", "car-batch 1", "-send", f"car-clip {e}", "-send", f"car-speed {cfg['speed_kmh']:g}",
                                     "-send", f"car-dist {cfg['dist_m']:g}", "-send", f"car-dur {cfg['dur_s']:g}",
                                     "-send", f"car-rec symbol {wav.as_posix()}", "-send", "car-go bang"],
@@ -266,9 +296,13 @@ class Plan:
     soundscape_start_s: float | None = None                  # None: drawn from seed 1000 per batch
     synth: dict = field(default_factory=lambda: dict(drone_seed=1, pscale=0.85, elev_deg=40.0))
     speeds: list | None = None                               # modified only
+    pitches: list | None = None                              # modified only: playback-rate factors, 1 = as recorded
+    pitch_random: bool = False                               # modified only: the pitch wanders around its value
     approach: dict = field(default_factory=lambda: dict(APPROACH))
     pd_settings: dict = field(default_factory=lambda: {k: dict(v) for k, v in PD_SETTINGS.items()})   # lists after init
     also_without: list = field(default_factory=list)         # layers also tested absent, besides at their levels
+    final_evaluation: bool = False                           # the cars layer is the sealed car only
+    car_engines: list | None = None                          # which development cars (indices of car_engines.txt); None: all
 
     def __post_init__(self):
         """Every Pure Data setting as a list of values (a plan may hold single values); an older plan's
@@ -296,7 +330,7 @@ class Plan:
         """The drones the rounds go through: the files or speeds, or for modified every file at every
         speed as "path|speed" (modified_key)."""
         if self.kind == "modified":
-            return [modified_key(p, v) for p in self.drones for v in (self.speeds or [])]
+            return [modified_key(p, v, f) for p in self.drones for v in (self.speeds or []) for f in (self.pitches or [1.0])]
         return list(self.drones)
 
     def starts(self) -> list[float]:
@@ -354,12 +388,18 @@ class Plan:
                 out.append("give at least one speed in km/h")
             elif any(not 0 < v <= 1000 for v in self.speeds):
                 out.append("speeds must be above 0 and at most 1000 km/h")
+            if any(not PITCH_LIMITS[0] <= f <= PITCH_LIMITS[1] for f in (self.pitches or [1.0])):
+                out.append(f"pitch must be from {PITCH_LIMITS[0]:g} to {PITCH_LIMITS[1]:g} (1 = as recorded)")
             if not self.approach.get("closest_m", 0) > 0:
                 out.append("the distance at impact must be above 0 m")
         if not self.detectors:
             out.append("tick at least one detector")
         if not self.layers and not self.drones:
             out.append("nothing to test")
+        if "cars" in self.layers and not self.final_evaluation and self.car_engines is not None and not self.car_engines:
+            out.append("cars: tick at least one car")
+        if self.final_evaluation and "cars" in self.layers and not sealed_car_ready():
+            out.append("The Final Evaluation needs the sealed car: run scripts/fetch_sealed_car.py")
         for layer, sec in (("wind (Pd)", "wind"), ("cars", "cars")):
             if layer in self.layers:
                 for key, (lo, hi) in PD_LIMITS[sec].items():
@@ -381,14 +421,18 @@ class Drones:
             files = {}
             cl, dop = float(plan.approach.get("closest_m", 1.0)), bool(plan.approach.get("doppler", False))
             for k in plan.drone_keys():
-                p, v = split_key(k)
-                if p not in files:
+                p, v, pitch = split_modified(k)
+                if (p, pitch) not in files:
                     x = read_wav(portable(p), DEFAULT).audio.astype(np.float64)
                     if len(x) < MIN_DRONE_S * SR:
                         raise ValueError(f"{Path(p).name} is {len(x) / SR:.1f} s; drone files must be at least {MIN_DRONE_S:g} s")
+                    x = pitch_shift(x, pitch, plan.pitch_random, seed=Path(p).name)   # the whole file: a higher pitch uses more
+                    if len(x) < MIN_DRONE_S * SR:
+                        raise ValueError(f"{Path(p).name} at pitch {pitch:g} is {len(x) / SR:.1f} s; it must stay at least "
+                                         f"{MIN_DRONE_S:g} s (use a longer file or a lower pitch)")
                     x = x[-int(DRONE_S * SR):]                   # the end of the file is the impact
-                    files[p] = x / (float(np.sqrt(np.mean(x ** 2))) or 1.0)
-                y, heard = approach(files[p], v, cl, dop)
+                    files[p, pitch] = x / (float(np.sqrt(np.mean(x ** 2))) or 1.0)   # pitch does not change the level
+                y, heard = approach(files[p, pitch], v, cl, dop)
                 self.sig[k] = y
                 self.span[k] = (heard, len(y) / SR, len(y) / SR)  # impact at the last sample
                 self.unit.add(k)
@@ -434,32 +478,68 @@ def portable(p: str) -> str:
     return str(dwg.ROOT / s[i + 1:]) if i >= 0 and not Path(p).exists() else p
 
 
-def modified_key(path: str, speed_kmh: float) -> str:
-    return f"{path}|{float(speed_kmh):g}"
+PITCH_LIMITS = (0.5, 2.0)                                    # modified drones: playback-rate factor
+PITCH_WOBBLE = 0.03                                          # "add randomness": SD of the pitch's wander (3 %, about half a semitone)
+PITCH_WOBBLE_S = 0.5                                         # how slowly it wanders (smoothing, s); both chosen, not measured
+
+
+def modified_key(path: str, speed_kmh: float, pitch: float = 1.0) -> str:
+    """"path|speed", and "|p<factor>" after it when the pitch is not as recorded (older runs' keys stay)."""
+    return f"{path}|{float(speed_kmh):g}" + (f"|p{float(pitch):g}" if float(pitch) != 1.0 else "")
+
+
+def split_modified(k: str) -> tuple[str, float, float]:
+    parts = k.rsplit("|", 2)
+    if len(parts) == 3 and parts[2].startswith("p"):
+        return parts[0], float(parts[1]), float(parts[2][1:])
+    p, v = k.rsplit("|", 1)
+    return p, float(v), 1.0
 
 
 def split_key(k: str) -> tuple[str, float]:
-    p, v = k.rsplit("|", 1)
-    return p, float(v)
+    p, v, _ = split_modified(k)
+    return p, v
+
+
+def pitch_shift(x: np.ndarray, factor: float, random: bool = False, seed: str = "") -> np.ndarray:
+    """x played `factor` times faster: every frequency times factor, and the file shorter by it, as if
+    the four motors spun that much faster (a heavier drone needs faster motors). With `random` the rate
+    also wanders slowly around that value (SD PITCH_WOBBLE, smoothed over PITCH_WOBBLE_S), as motors
+    speeding up and slowing down to hold the drone; the wander is fixed by `seed` and the factor, so a
+    rebuilt round sounds the same. All four motors are in one recording, so they wander together."""
+    if factor != 1.0:
+        fr = Fraction(factor).limit_denominator(200)
+        x = resample_poly(x, fr.denominator, fr.numerator)   # band-limited: the base pitch
+    if not random:
+        return x
+    rng = np.random.default_rng(int(hashlib.md5(f"{seed}|{factor:g}".encode()).hexdigest()[:8], 16))
+    step = int(0.1 * SR)                                     # a control point every 0.1 s
+    k = len(x) // step + 3
+    c = np.convolve(rng.standard_normal(k + 10), np.hanning(int(PITCH_WOBBLE_S / 0.1) * 2 + 1), mode="same")[5:5 + k]
+    c = (c - c.mean()) / (c.std() or 1.0)
+    rate = 1.0 + PITCH_WOBBLE * np.interp(np.arange(len(x)), np.arange(k) * step, c)
+    pos = np.cumsum(rate) - rate[0]
+    pos = pos[pos <= len(x) - 1]
+    return np.interp(pos, np.arange(len(x)), x)              # small rate changes: linear reading is enough
 
 
 def drone_label(d) -> str:
-    if isinstance(d, str) and "|" in d:                      # modified: file at speed
-        p, v = split_key(d)
-        return f"{Path(p).name} @ {v:g} km/h"
+    if isinstance(d, str) and "|" in d:                      # modified: file at speed (and pitch)
+        p, v, f = split_modified(d)
+        return f"{Path(p).name} @ {v:g} km/h" + (f", pitch x{f:g}" if f != 1.0 else "")
     return Path(d).name if isinstance(d, str) else f"{float(d):g} km/h"
 
 
 def drone_setting(d, key: str):
-    """A drone round's value of `key`: "drone" (its label), and for modified drones also "file" and
-    "speed_kmh"; None where the key does not apply."""
+    """A drone round's value of `key`: "drone" (its label), and for modified drones also "file",
+    "speed_kmh" and "pitch"; None where the key does not apply."""
     if d is None:
         return None
     if key == "drone":
         return drone_label(d)
     if isinstance(d, str) and "|" in d:
-        p, v = split_key(d)
-        return Path(p).name if key == "file" else v if key == "speed_kmh" else None
+        p, v, f = split_modified(d)
+        return {"file": Path(p).name, "speed_kmh": v, "pitch": f}.get(key)
     return None
 
 
@@ -625,6 +705,10 @@ class Test:
         for name in r["background"]:
             if name in PD_RENDER:
                 cfg = pd_config(name, r["pd"])
+                if name == "cars" and self.plan.final_evaluation:
+                    cfg["sealed"] = True
+                elif name == "cars" and self.plan.car_engines is not None and len(self.plan.car_engines) < len(car_names()):
+                    cfg["engines"] = tuple(sorted(self.plan.car_engines))   # all of them: the kept six-car render
                 key = (name, *sorted(cfg.items()))
                 if key not in self._pd_layers:
                     self._pd_layers[key] = Layer(name, "", True, lambda c=cfg, f=PD_RENDER[name][1]: f(c))
@@ -693,7 +777,7 @@ class Test:
 def write_summary(test: Test) -> Path:
     """summary.csv: per detector, and per detector and each varied setting, the mean of the round numbers."""
     rows = []
-    keys = ["drone", *(["file", "speed_kmh"] if test.plan.kind == "modified" else []), "drone_level_db", "start_s",
+    keys = ["drone", *(["file", "speed_kmh", "pitch"] if test.plan.kind == "modified" else []), "drone_level_db", "start_s",
             *test.plan.layers, *test.plan.pd_combos()[0]]
 
     def setting(r, k):
@@ -703,7 +787,7 @@ def write_summary(test: Test) -> Path:
             return "off"
         if k in r["background"]:
             return r["background"][k]
-        if k in ("drone", "file", "speed_kmh"):
+        if k in ("drone", "file", "speed_kmh", "pitch"):
             return drone_setting(r["drone"], k)
         return r[k]
 

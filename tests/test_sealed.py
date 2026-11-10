@@ -56,6 +56,14 @@ def test_other_sources_pass(name):
     forbid_in_training(name, where="test")
 
 
+@pytest.mark.parametrize("name", [
+    "data/processed/stems/sealed_car/fsd50k_eval_278188.wav", r"stems\sealed_car\x.wav", "fsd50k_eval_278188", "278188",
+])
+def test_the_sealed_car_is_stopped(name):
+    with pytest.raises(SealedDataError, match="sealed car"):
+        forbid_in_training(name, where="test")
+
+
 def test_load_manifest_stops_on_an_aris_row(tmp_path):
     row = dict.fromkeys(FIELDS, "")
     row.update(source="itu_aris", recording_id="r1", file="x.f32", dtype="float32", offset=0,

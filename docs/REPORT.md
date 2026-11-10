@@ -11206,3 +11206,198 @@ estimate. No network was trained or scored. No detection numbers are in this ent
 **Next.** Train the bandpass arm on the server with the box's protocol: `run_range.py ... --bandpass 80
 6000`, seeds 0-2, against `it16_600k`. This needs the code on the server and a JupyterLab session through
 Mads's browser.
+## 174 - Complete test: The Final Evaluation switch and a sealed car
+
+- Date: 2026-11-09
+- Type: Data and engineering (a held-out distractor for the final evaluation; no model, metric or split changed; plans with the switch off unchanged)
+- Commit: uncommitted, on top of 6bf9144: `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`, `scripts/fetch_sealed_car.py`, `src/dad/sealed.py`, `tests/test_sealed.py`, `Pure-data+Script/CarDistractor/car_engines_sealed.txt`, `docs/datasets.md`, `Pure-data+Script/CarDistractor/CREDITS.md`
+
+**Why.** Nicolai asked whether all the cars are used, and for a sealed car behind a switch called The Final Evaluation. All six engines of the cars layer are FSD50K dev (entry 157), the side training draws from, so none could be sealed. Holding one of them back would not have sealed it.
+
+**The car.** FSD50K eval 278188, "Rally Car Idle Loop 14.wav", debsound, CC0 1.0, labels Idling, Car, Motor vehicle (road), Vehicle, Engine; 23.3 s, 2.00 MB read from Zenodo by range request, with Nicolai's approval of that file and size (`uv run python scripts/fetch_sealed_car.py`). It was chosen from the eval metadata and archive index, without audio: of the licence-clean eval clips with an engine label and a car word in title or tags, the first of two whose labels are only idling and car and whose title is a steady idle loop. It is treated as the six are: at most the loudest 10 s, gate skipped by the existing rule (it cost 18.09 dB of content), active RMS -26 dBFS; loop 0.90-3.40 s; engine A-correction -12.16 dB.
+
+**How sealed it is.** The models are trained on dev only (`docs/datasets.md`), so no model has trained on it. It is not a clip the rule of `build_stems.py` picks for idling or car (that rule matches 396463, 406110 and nine car clips). It is not known to be untouched: the FSD50K eval split has been scored as a held-out source in earlier iterations (entry 044 on), and whether this clip was among those windows was not checked. Claude has not listened to it. It is stored in `data/processed/stems/sealed_car/` and not in `stems/manifest.csv`; `forbid_in_training` now stops the folder and the id by name (three test names added, `uv run pytest tests/test_sealed.py`: 29 passed). The check reads names, so a renamed copy gets through.
+
+**Change.** A flip button "The Final Evaluation" under the background layers on all three pages. On: the cars layer is the sealed car only, rendered once from a temporary copy of the patch folder whose `car_engines.txt` is `car_engines_sealed.txt`, so the six-car list and its kept renders are untouched. Off: the six cars. The flag is `Plan.final_evaluation`, saved in config.json and saved plans; the Results and Conclusions windows are marked. With one car the layer is one 21.5 s pass-by looped instead of six different ones, so it holds less variety than the six. It only changes the cars layer; ITU ARIS, the war track and the wind are as before. The council was not convened for this addition to the evaluation: Nicolai asked for this switch directly and had said "not now" to the council on the evaluation protocol (entry 150 era). Every scoring with the switch on is a final-evaluation scoring and must be logged.
+
+**Checks. No detector was run on the sealed car.** A scratch script: the switch off gives the six engines and the kept six-car render; on, the plan carries the flag, rounds get `cars_50kmh_10m_20s_sealed_bdaeb67c.wav`, and the render took 0.9 s, 21.50 s long, 1 s levels with the layer at 50 dB at most 59.3, median 37.5, least 30.0. So the pass-by peaks 9.3 dB above the set level here, against 11 for the six at 50 km/h and 10 m. A missing sealed car is refused with a message. The window marking was checked on an old run with the flag set by hand, which did not contain the sealed car. The window was looked at; the layers frame needs 1014 pixels of 1101.
+
+## 175 - Complete test: choosing which development cars the cars layer uses
+
+- Date: 2026-11-09
+- Type: Engineering (test configuration; no model, metric or split changed; with all six ticked the render is the kept one)
+- Commit: uncommitted, on top of 6bf9144: `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`
+
+**Why.** Nicolai asked to choose the cars, not the sealed car.
+
+**Change.** A "which cars" row under the cars layer has one tick per development car (idle, idle loop, running 4, running 3, idle running, outside idle), all ticked by default. Only the ticked cars' pass-bys are rendered, one after the other, and the choice is kept in `Plan.car_engines` and saved with the run; each choice is its own kept render. The sealed car is not in the list: `car_names` reads only `car_engines.txt`. With The Final Evaluation on, the ticks are locked and ignored. The choice is one setting per test, not a sweep, so Conclusions has no per-car graph.
+
+**Checks (plumbing, not performance: Steady_07, 10 s soundscape, it9 CRNN; development cars only, no detector on the sealed car).** A scratch script used the real boxes: all six ticked gives `car_engines` None and the kept file `cars_50kmh_10m_20s_a2124aaa.wav`; none ticked is refused; cars 1 and 4 give `cars_50kmh_10m_20s_e0-3_a2124aaa.wav`, 1.6 s to render, 43.00 s long, and 2 rounds; `load_test` returned the choice and the same cars signal (difference 0.0). With the switch on the ticks are disabled and the round's settings hold only the sealed flag; off, they are enabled again with the same choice. The window was looked at; the layers frame needs 1014 pixels of 1101. `uv run pytest` not run: no test imports these two scripts.
+
+## 176 - The 9_11 Parameter and TBI plans started on the JupyterLab server, in a separate clone
+
+- Date: 2026-11-09
+- Type: Infrastructure / run started (no result yet; no model, metric or split changed)
+- Commit: server clone `~/ct_9_11` at e393b7d, without the PC's uncommitted changes of entries 174 and 175 (sealed car, choice of cars)
+
+**Why.** The two complete-test plans saved in the GUI today, `artifacts/complete_test/9_11_ParameterTest.json` (test 1) and `9_11_TBITest.json` (test 2), were to run on the server's GPUs. The clone `~/drone-acoustic-detection` is at 00ee4e8 with five modified files, has no `it16` names in `drone_war_grid.MODELS`, and the `it19_colour` training (seeds 0-2, one per GPU) runs from it, so it was left alone.
+
+**Set-up.**
+- `git clone` of `master` to `~/ct_9_11`. `.venv`, `artifacts/models/*.pt`, `artifacts/runs/*.json` and `data/processed` are symlinks to the old clone. `dad` imports from the new clone; torch 2.14.1+cu126 sees 3 GPUs.
+- `data/extracted/test_plans/server_upload_9_11.zip` (MD5 658e03cd724ab7acf3bfdb54065419d6, uploaded by Mads through JupyterLab, unpacked with `unzip -n`): the two plans, three Pure Data layers, the 10 `steady_peek` files and `picks.json`. `steady_peek` is ITU ARIS: it is only scored here, and `forbid_in_training` is not involved because nothing trains.
+- `war_track.wav` on the server has the PC's MD5 (776b4b27499eb2ad38bf991b7698e3af).
+
+**Two adaptations, both without effect on the mixes.**
+1. The clone's `Plan` has no `final_evaluation` or `car_engines`. `9_11_*_server.json` are copies without these two fields. The plans hold `false` and `null`, and `git diff` of `complete_test_engine.py` shows every change of entries 174-175 is inactive with those values.
+2. Pure Data is not on the server, and `_pd_cached` hashes the patch files as stored: CRLF on the PC, LF in the Linux clone, so the kept renders' names differ. Hashing the server's patch files with CRLF gives the PC's tags (`884e1418`, `a2124aaa`), so the renders belong to these patches. Symlinks with the server's expected names point to them. **This is a bug on any second machine:** the tag should not depend on line endings. Not fixed here.
+
+**Correction.** The session start reported the PC's git status as clean; it was not (`git` is not on PATH in that shell). The PC's working tree is ahead of e393b7d by the changes named above.
+
+**Run.** Started 2026-11-09 15:38:32 CET, PID 1565351, log `artifacts/complete_test/9_11.log`:
+```
+export PYTHONPATH=$PWD/src
+nohup bash -c 'for n in 9_11_ParameterTest 9_11_TBITest; do .venv/bin/python -u scripts/complete_test_run.py artifacts/complete_test/${n}_server.json --out artifacts/complete_test/$n; done' > artifacts/complete_test/9_11.log 2>&1 &
+```
+Three workers, one TITAN X each, shared with the `it19_colour` training. `plan.count()`: ParameterTest 413,941 rounds x 7 detectors (2,897,587 detector runs), TBITest 375,342 rounds x 7 (2,627,394). After 46 s the workers were at rounds 64-67 of about 137,980 each and estimated 95,700-99,900 s left, about 27 hours for ParameterTest alone. The estimate for both, about two days, is an extrapolation.
+
+**Conditions and limits of what this will show.** Compared with `REQUIREMENTS.md`, test 1 here is 10 steady excerpts, drone fixed at 60 dB SPL and war soundscape 30-90 dB, not the 35 drones with war fixed at 90 dB and drone 60-100 dB. Neither plan has the baselines `comb` or `lgbm` (CLAUDE.md section 5). Results on ITU ARIS may only score these finished models, not choose among them. Models: it9 CRNN and the six it16 600k models.
+
+**Next.** When the log reports both merges: fetch the two run folders, open them on the PC, and report the numbers with these conditions.
+
+## 177 - Modified drone test: drone pitch, and "add randomness"
+
+- Date: 2026-11-10
+- Type: Engineering (test configuration; no model, metric or split changed; pitch 1 without randomness gives the same drones and keys as before)
+- Commit: uncommitted, on top of e393b7d: `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`
+
+**Why.** Nicolai wants the modified drone to have three parameters: amplitude (the drone level at 1 m, existing), speed (existing) and pitch (missing). He then asked for an "add randomness" button under pitch that varies the pitch throughout. In his words the pitch stands for the speed of the drone's four motors, and so for how heavy the drone is.
+
+**Change.** A "Pitch (x, 1 = as recorded)" row with min, max and # (0.5 to 2), under the speeds. Every file is tested at every speed and every pitch (`Plan.pitches`). Pitch is a playback-rate change of the whole file before its last 10 s are taken (`pitch_shift`, band-limited `resample_poly`): every frequency and the rhythm of the sound scale together, as if the motors spun that much faster. The level at 1 m is set after the shift, so pitch does not change loudness. A higher pitch uses more of the file: at x1.25 a 10 s file gives 8 s, so the drone is heard for a shorter time before impact; below 5 s it is refused. "add randomness" (`Plan.pitch_random`) lets the rate wander around its value: standard deviation 3 % (about half a semitone), smoothed over 0.5 s, seeded by the file name and pitch so a rebuilt round is the same. The four motors are in one recording, so they wander together. The 3 % and 0.5 s are chosen, not measured. Drone keys get "|p<factor>" only when the pitch is not 1, so older runs load as before. Pitch is in the drone label, rounds.csv's drone column, summary.csv and, when it varies, a Conclusions graph under Other settings.
+
+**Checks (plumbing, not performance: Steady_07, 10 s file, it9 CRNN).** A scratch script: x0.8 gives a 12.50 s file and a median spectral peak 0.800 times the original; x1.25 gives 8.00 s and 1.244 times. With randomness, the 0.5 s peak track moved between 0.956 and 1.033 of the plain one, and two calls gave the identical signal. Through the real boxes on the modified page (speed 100, level 100, war 90, pitch 0.8 to 1.25 in 3 steps, randomness on, 12 s, step 2 s): pitch 3 was refused; 7 rounds as counted, 7 results; Conclusions had the pitch graph; the Results row read "Steady_07.wav @ 100 km/h, pitch x0.8"; `load_test` returned the settings and the same drone signal (difference 0.0). The window was looked at. `uv run pytest` not run: no test imports these files.
+
+## 178 - The 9_11 ParameterTest run finished on the server; TBITest running
+
+- Date: 2026-11-10
+- Type: Run status (no result read yet)
+- Commit: as entry 176
+
+`artifacts/complete_test/9_11.log` on the server, read 2026-11-10 10:23 CET: `merged 3 shards: 413941 of 413941 rounds -> artifacts/complete_test/9_11_ParameterTest`, merged at 09:53 after about 18 hours (entry 176's first estimate was 27). Files: rounds.csv 838,240,048 bytes, scores.npz 4,685,803,558, summary.csv 101,712, config.json 3,607. The shard folders are kept. No error in the log.
+
+TBITest started at 09:53: 375,342 rounds x 7 detectors, 125,114 rounds per worker. After 1757 s the workers estimated 50,860-53,092 s left, so it should finish at about 01:00 on 2026-11-11 if the GPU load stays as it is.
+
+Not done: the ParameterTest folder has not been fetched to the PC or opened, and no number from it is reported. Mads chose not to fetch it yet.
+
+**Next.** As entry 176.
+
+## 179 - Test 1 (9_11 ParameterTest): the drone holds against the war soundscape; cars are taken for drones
+
+- Date: 2026-11-10
+- Type: Evaluation (test 1 of `REQUIREMENTS.md`; ITU ARIS, scoring only)
+- Commit: run as entry 176; analysis by scratch scripts (stdlib `csv`, the venv has no pandas), not in the repo
+
+**Data.** `rounds.csv` of the run, downloaded by Mads to `C:\Users\egson\Downloads\rounds.csv` (838,240,048 bytes, the server's size). 2,897,587 rows = 413,941 rounds x 7 detectors. Drone rounds: 10 `steady_peek` excerpts x 31 starts x 1331 backgrounds, drone at 60 dB SPL. No-drone rounds: 1331, one per background. Backgrounds: war soundscape 30-90 dB SPL, wind (Pd, 10 m/s) 25-50 dB, cars (50 km/h, 30 m, six development engines) 20-50 dB, 10 levels each plus off. 40 s rounds, 1 s windows, hop as the engine. Confidence = mean network score over drone windows (`mean_conf_drone`) or over all windows of a no-drone round (`mean_conf_no_drone`). Baselines `comb` and `lgbm` were not in the plan.
+
+**War soundscape only (wind and cars off), mean confidence %, drone rounds (310 per cell) / the no-drone round (1 per cell):**
+
+| war dB SPL | 30 | 50 | 70 | 83 | 90 |
+|---|---|---|---|---|---|
+| measured SNR, median (it9 CRNN rows) | +46.1 | +26.1 | +6.1 | -7.2 | -13.9 |
+| it9 CRNN | 84.8 / 7.3 | 84.3 / 7.1 | 82.4 / 6.7 | 76.1 / 6.9 | 69.2 / 6.9 |
+| it16 CNN 600k s0 | 69.3 / 1.8 | 69.6 / 1.2 | 67.5 / 0.7 | 62.7 / 0.6 | 58.3 / 0.5 |
+| it16 CNN 600k s1 | 72.4 / 0.3 | 72.6 / 0.3 | 69.6 / 0.2 | 60.6 / 0.2 | 53.8 / 0.2 |
+| it16 CNN 600k s2 | 72.5 / 0.6 | 72.7 / 0.4 | 70.4 / 0.1 | 63.3 / 0.1 | 56.9 / 0.1 |
+| it16 CRNN 600k s0 | 83.4 / 4.9 | 83.2 / 3.3 | 81.5 / 2.6 | 75.4 / 2.5 | 68.2 / 2.5 |
+| it16 CRNN 600k s1 | 83.8 / 4.2 | 83.6 / 2.5 | 81.9 / 1.8 | 75.5 / 1.7 | 68.5 / 1.7 |
+| it16 CRNN 600k s2 | 81.6 / 4.2 | 81.3 / 2.6 | 79.3 / 2.7 | 72.9 / 2.9 | 66.0 / 3.0 |
+
+The set war level is not the SNR over the drone: at 90 dB the measured SNR is -13.9 dB median (p10 -20.2, p90 +9.3), not -30. Per file at war 90 dB, Steady_05 is lowest for every model (it9 CRNN 30.4 %, it16 CNN s1 7.6 %); Steady_01 and Steady_07 stay above 91 %.
+
+**Distractors, no drone (no-drone rounds), mean confidence %:**
+- Wind alone, 25-50 dB: 0.2-5.1 % for every model. Wind is not a problem.
+- Cars alone, 20 to 50 dB: it9 CRNN 59.4 to 80.7, it16 CNN 39.5-57.3 to 65.7-74.9, it16 CRNN 28.0-38.5 to 59.3-66.0. In drone rounds with cars alone the median SNR of the drone over the cars is +39.7 dB at 20 dB and +9.7 dB at 50 dB, so the cars score this high while far quieter than the drone does. For it9 CRNN the cars-only no-drone confidence (76.7 % pooled) is close to its drone confidence with cars (80.2 %).
+- Pooled by combination (drone conf / no-drone conf), it9 CRNN: war 81.4 / 6.9, war+wind 78.9 / 12.2, war+cars 77.3 / 54.3, war+wind+cars 74.3 / 34.0. it16 CRNN s1: 80.7 / 2.5, 80.5 / 9.4, 73.3 / 38.5, 72.8 / 22.2.
+- The no-drone windows inside drone rounds give the same no-drone confidence as the no-drone rounds (within 1 point in every combination), so the 1-round cells of the war table are not a fluke of one round.
+
+**All 1331 backgrounds, drone conf / no-drone conf / difference:** it9 CRNN 75.2 / 33.7 / 41.5; it16 CNN s0-s2 72.8-75.8 / 26.8-29.3 / 43.5-47.6; it16 CRNN s0-s2 71.7-74.3 / 22.1-24.3 / 47.4-51.7.
+
+**Against `REQUIREMENTS.md`.** First priority (drone against the war soundscape): confidence with a drone stays at 66-85 % for the CRNNs down to -14 dB measured SNR, and without a drone at 0.1-7 %; it holds. Second (with distractors): wind holds, cars do not. Cars at 50 km/h and 30 m make every model about as confident as a drone does. This is the main failure of test 1.
+
+**Limits.** Ten steady excerpts, not the 35 drones; drone fixed at 60 dB, not 60-100 dB with war at 90 dB; one wind and one car setting; no baselines. ITU ARIS may only score these finished models: the per-model figures may not be used to choose among them (CLAUDE.md section 5). `REQUIREMENTS.md` asks to rank models on these tests, which conflicts with that rule; this is put to Mads. The car layer is synthetic (Pure Data, six FSD50K dev engines, entry 157), and those engines are FSD50K dev clips, the side training draws from (entry 174).
+
+**Next.** Mads to decide on the ranking conflict. The obvious line of work is car rejection, which would be trained on development data only.
+
+## 180 - Test 1: the seven models ranked on ITU ARIS, by decision in chat
+
+- Date: 2026-11-10
+- Type: Evaluation / decision (no model changed)
+- Commit: as entry 179; scratch script on the same `rounds.csv`
+
+**Decision.** Asked whether the test 1 figures (ITU ARIS) may rank the models, the user of this session answered "Ja ranger gerne" (2026-11-10). `REQUIREMENTS.md` asks for the ranking; `CLAUDE.md` section 5 says ITU ARIS is never used for model selection. That section was not edited. **From here, test results on ITU ARIS steer a design choice.** A model chosen by this ranking has no independent test 1 figure left: its numbers on ITU ARIS are selection numbers, and are optimistic.
+
+**Criteria, as `REQUIREMENTS.md` states them.** (1) Confidence with a drone, against the main background, the war soundscape: drone rounds with war on and wind and cars off (3100 rounds per model: 10 levels x 310). (2) Confidence without a drone, with distractors: no-drone rounds where wind or cars is on (1320 rounds per model).
+
+| Rank by (1) | Model | (1) drone, war % | (2) no drone, distractors % | rank by (2) | no drone, war only % (10 rounds) |
+|---|---|---|---|---|---|
+| 1 | it9 CRNN | 81.4 | 33.9 | 7 | 6.9 |
+| 2 | it16 CRNN 600k s1 | 80.7 | 22.2 | 1 | 2.5 |
+| 3 | it16 CRNN 600k s0 | 80.3 | 24.3 | 2 | 3.2 |
+| 4 | it16 CRNN 600k s2 | 78.3 | 24.5 | 3 | 3.0 |
+| 5 | it16 CNN 600k s2 | 69.3 | 27.0 | 4 | 0.3 |
+| 6 | it16 CNN 600k s1 | 68.4 | 29.5 | 5-6 | 0.2 |
+| 7 | it16 CNN 600k s0 | 67.0 | 29.5 | 5-6 | 1.1 |
+
+**Reading.** Read strictly (criterion 2 only breaks ties), it9 CRNN is first. But the top three are within 1.1 points on criterion 1, from 10 drone excerpts, and no uncertainty was computed, so that order may not hold on other drones. On criterion 2 they are clearly apart: it9 CRNN is last, 11.7 points above it16 CRNN s1. If the near tie on (1) is treated as a tie, it16 CRNN 600k s1 is first. The CRNNs beat the CNNs on (1) by 9-14 points. Which reading applies is for Mads and Nicolai; `REQUIREMENTS.md` does not say how close counts as a tie.
+
+**Limits.** As entry 179: 10 steady excerpts, drone fixed at 60 dB, one wind and one car setting, no baselines.
+
+## 181 - Modified drone test: pitch range and guideline in the GUI
+
+- Date: 2026-11-10
+- Type: Engineering (GUI text only; no model, metric, mix or split changed)
+- Commit: uncommitted, on top of e393b7d: `scripts/Complete_Test_Gui.py`
+
+**Why.** Nicolai asked for the pitch's range and a guideline for its use in the GUI.
+
+**Change.** Beside the pitch boxes: "allowed 0.5-2, suggested 0.8-1.25, light: 0.8, as recorded: 1, heavy: 1.25". Under them: pitch is the speed of the four motors; in hover pitch = √(drone weight ÷ weight when recorded), so x0.8 = 36 % lighter, x1.1 = 21 % heavier, x1.25 = 1.56 times, x2 = 4 times; a propeller-physics rule, not measured on our drones, and flying fast also raises motor speed.
+
+**Basis.** The rule is the static-thrust relation of a propeller (thrust grows with the square of its rotation rate; in hover thrust equals weight), from Claude's knowledge, not checked against a source in this step and not measured on any drone here. The 0.5-2 limits (entry 177) and the suggested 0.8-1.25 are Claude's choices.
+
+**Checks.** The modified page was opened maximised and looked at; the text wraps under the pitch row. `uv run pytest` not run: no test imports this file.
+
+## 182 - Test 1 ranking: strict order, it9 CRNN first
+
+- Date: 2026-11-10
+- Type: Decision (no model changed)
+
+Asked whether a difference of about 1 point on criterion 1 counts as a tie, the user of this session answered "Nej, streng rækkefølge" (2026-11-10). The ranking of entry 180 is therefore read strictly: criterion 2 only breaks exact ties. Order: it9 CRNN, it16 CRNN 600k s1, s0, s2, it16 CNN 600k s2, s1, s0. it9 CRNN stays the default model (`REQUIREMENTS.md`, entry 150). The cost, from entry 179: it has the highest no-drone confidence with distractors (33.9 %, against 22.2 % for it16 CRNN s1), mostly from cars.
+
+## 183 - Modified drone test: the Doppler tick moved beside "add randomness"
+
+- Date: 2026-11-10
+- Type: Engineering (GUI layout only; nothing else changed)
+- Commit: uncommitted, on top of e393b7d: `scripts/Complete_Test_Gui.py`
+
+**Why.** Nicolai asked for Doppler next to "add randomness".
+
+**Change.** The Doppler tick left the "distance at impact" row and now stands right after "add randomness" under the pitch boxes; the randomness note follows them. Same variable, same effect.
+
+**Checks.** The modified page was opened maximised and looked at. `uv run pytest` not run: no test imports this file.
+
+## 184 - Test 1: confidence against measured SNR, it9 CRNN and it16 CRNN 600k s1
+
+- Date: 2026-11-10
+- Type: Evaluation (test 1; ITU ARIS, scoring; same run as entry 179)
+- Commit: uncommitted: new `scripts/conf_vs_snr.py`
+
+**Why.** Asked for a graph of confidence over every SNR in the run for the two CRNNs, on as much data as possible, and which is better with other noises.
+
+**How.** `.venv/Scripts/python scripts/conf_vs_snr.py C:\Users\egson\Downloads\rounds.csv artifacts/complete_test/9_11_ParameterTest_analysis`, giving `conf_vs_snr.png` and `conf_vs_snr.csv` (the table view, 320 rows). Every drone round with a background is used: 409,200 per model with wind or cars on ("other noises"), 3,100 with the war soundscape only. They are binned by measured `snr_db` (drone over the whole background in its stretch) in 2 dB bins; bins under 100 rounds (other noises) or 30 (war only) are not drawn. Because both models scored the same mixes, the difference is also taken round by round (paired). No-drone rounds give the confidence without a drone for each background combination. The bands are 1.96 standard errors over rounds. Rounds share the 10 files and 31 starts, so the bands are too narrow. The jagged curve below 0 dB comes from which files and backgrounds fall in each bin, not from noise; it is the same for both models.
+
+**Result, drone present, other noises (paired, it16 CRNN s1 minus it9 CRNN):** -1.5 points pooled over 409,200 rounds. In 2 dB bins from -22 to +44 dB it lies between -2.8 (bin +16) and +0.6 (bin -14), mostly -1 to -2.5. The two curves overlap within 3 points everywhere, from about 42 % at -21 dB to 82-84 % above +30 dB. With the war soundscape only the curves overlap as well (it9 CRNN 81.4 %, it16 CRNN s1 80.7 %, entry 180).
+
+**Result, no drone (lower is better), it9 CRNN / it16 CRNN s1:** war 7 / 2, wind 4 / 2, cars 77 / 52, war+wind 12 / 9, war+cars 54 / 38, wind+cars 33 / 18, war+wind+cars 34 / 22 (10, 10, 10, 100, 100, 100, 1000 rounds).
+
+**Answer.** With other noises, it16 CRNN 600k s1 separates drone from no drone better. It gives up about 1.5 points of confidence when a drone is there, and is 12 to 25 points less confident when there is none and cars are in the background. Under the strict ranking of entry 182 it9 CRNN still comes first, because criterion 1 is the war soundscape only. This answer is about the "other noises" condition.
+
+**Limits.** As entry 179. ITU ARIS steers a design choice from entry 180 on.

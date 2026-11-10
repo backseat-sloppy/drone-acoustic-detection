@@ -292,3 +292,10 @@ Fingerprint", ACSAC 2022).
 source, licence and uploader. The FSD50K eval clips in it are read by range
 request, like the stress-test clips above, and the same held-out rule
 applies to them.
+
+## Added on 2026-11-09: the sealed car for The Final Evaluation
+
+`scripts/fetch_sealed_car.py` reads FSD50K eval clip 278188 ("Rally Car Idle Loop 14.wav", debsound, CC0 1.0) by range
+request and writes `data/processed/stems/sealed_car/fsd50k_eval_278188.wav` with a `source.json` beside it. It is kept out
+of `stems/manifest.csv`, is only for The Final Evaluation in `scripts/Complete_Test_Gui.py`, and is never for training or
+tuning (`src/dad/sealed.py`). See report entry 174.

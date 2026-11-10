@@ -40,3 +40,9 @@ next to Pd renders:
 | 425649 | renault kangoo 1.6 16v exterior passby slow 40kmph mono NTG3.wav | Soundholder | CC BY 3.0 |
 | 425381 | audi a4 allroad 20TFSI exterior passby 70kmph following mono NTG3.wav | Soundholder | CC BY 3.0 |
 | 425505 | BMW F12 640D Gran Coupe exterior wet asphalt passby 120kmph static mono 8040.wav | Soundholder | CC BY 3.0 |
+
+Sealed engine recording (`car_engines_sealed.txt`, FSD50K eval split, only for The Final Evaluation):
+
+| FSD50K id | Title | Uploader | Licence |
+|---|---|---|---|
+| 278188 | Rally Car Idle Loop 14.wav | debsound | CC0 1.0 |

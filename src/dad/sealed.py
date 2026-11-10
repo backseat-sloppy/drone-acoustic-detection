@@ -21,6 +21,10 @@ _ITU_ARIS = re.compile(
 )
 
 
+# The sealed car of The Final Evaluation (FSD50K eval 278188, scripts/fetch_sealed_car.py).
+_SEALED_CAR = re.compile(r"sealed[\W_]*car|(?<!\d)278188(?!\d)", re.IGNORECASE)
+
+
 class SealedDataError(RuntimeError):
     """Something on its way into training is ITU ARIS."""
 
@@ -28,6 +32,10 @@ class SealedDataError(RuntimeError):
 def forbid_in_training(*names: object, where: str) -> None:
     """Stop the run if any of `names` (paths, source names, label text) points at ITU ARIS."""
     for name in names:
+        if _SEALED_CAR.search(str(name)):
+            raise SealedDataError(
+                f"{where}: {name!s:.200} is the sealed car, kept for The Final Evaluation; never for training or tuning."
+            )
         if _ITU_ARIS.search(str(name)):
             raise SealedDataError(
                 f"{where}: {name!s:.200} is ITU ARIS or derived from it. ITU ARIS is only for "
