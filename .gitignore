@@ -14,5 +14,7 @@ data/*
 
 # generated audio (Pure Data renders, scenes, drone_only/)
 *.wav
+# recorded drone clips are versioned
+!data/recordedDroneClipped/**/*.wav
 # drone_only/ sidecars, ignored for now
 Pure-data+Script/EnviromentTest/drone_only/*.json
