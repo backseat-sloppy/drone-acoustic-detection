@@ -12576,3 +12576,25 @@ until it has run through the war and cars plan of `scripts/it21_test1.py`. Two t
 there: the DS-CNNs gave 9-14 points less confidence with a drone than the CRNNs in test 1 (entry
 180), and a 2 s window reacts later (entry 191).
 
+
+## 211 - The iteration 23 `2s_colour` networks and the run files of iterations 21-23 put in git
+
+- Date: 2026-11-11
+- Iteration: 23
+- Type: Engineering (no model, metric or split changed)
+- Commit: this entry's commit, on top of bcd91a8 (branch `iteration-21-uav16`)
+
+**What changed.** Marius asked for the models on GitHub. Added:
+- `artifacts/models/it23_2s_colour_s{0,1,2}_none_simdist_colour_{dscnn,crnn}.pt`, from the server as
+  `it23_models.zip` (8,553,723 bytes, MD5 8cf32460e38a92eee216539539c14338 on both sides);
+- their run files `artifacts/runs/it23_2s_colour_s{0,1,2}.json` (threshold and window);
+- `artifacts/runs/it21_uav16_s{0,1,2}.json` for the `it21_uav16` CRNNs that commit 52b8b42 tracks
+  without them, and `it22_ref_s{0,1,2}.json`, which `scripts/it21_test1.py` reads for
+  `it19_colour`'s thresholds. `artifacts/runs/` is git-ignored, so these were added with `-f`, as
+  `it19_colour_s1.json` was.
+
+**Not in git.** The `it22_plain` and `it23_2s_uav16` networks (both failed) and the DS-CNNs of
+iteration 21 are on the server only (`~/dad21/artifacts/models/`). None of the new networks is in
+`drone_war_grid.MODELS` or a GUI: the DS-CNN that passed entry 210 has not yet been through the
+war and cars plan. That run was started on the Mac (seven processes) and had not finished when
+this was written; moving it to the server was dropped.
