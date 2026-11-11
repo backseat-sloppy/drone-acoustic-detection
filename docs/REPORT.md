@@ -12209,3 +12209,64 @@ Three things follow.
 **Verdict.** Iteration 22 fails. `it19 CRNN colour s1` stays. The UAV16 line has now failed twice
 on Lund; before a third attempt the question is whether Lund recall or false alarms on real
 confusers matters more for the tests in REQUIREMENTS.md, which is Mads's and Nicolai's call.
+
+## 208 - Test 1's shape on the Mac: iteration 21's CRNNs are no better than `it19_colour` against war and cars
+
+- Date: 2026-11-11
+- Iteration: 21 (scoring after the verdict; ITU ARIS, scoring only)
+- Type: Evaluation
+- Commit: uncommitted, on top of 06d2b8f: `scripts/it21_test1.py`
+
+**What changed.** The three `it21_uav16` CRNNs and the three `it19_colour` CRNNs were run through
+`complete_test_engine` in the shape of test 1 of `REQUIREMENTS.md`. Marius asked for it
+(2026-11-11): entries 204 and 207 judge on Lund, the requirements judge confidence against the war
+soundscape and distractors, and iteration 21's networks had learned UAV16's traffic and fans.
+
+**How.** The checkpoints and run files came from the server as `it21_models.zip` (8,279,812 bytes,
+MD5 1978293a3397fb46c882ea03c67c1848 on both sides), downloaded by Marius. The six networks are
+registered inside the script only, not in `drone_war_grid.MODELS`; the reference's thresholds are
+read from `it22_ref_sS.json`. On the Mac (CPU, six processes, 37 min):
+```
+for k in 0 1 2 3 4 5; do OMP_NUM_THREADS=1 .venv/bin/python scripts/it21_test1.py --shard $k 6 & done; wait
+.venv/bin/python scripts/it21_test1.py --table
+```
+Plan: the ten excerpts `data/extracted/sealed_peek/Drone_01-10.wav` (ITU ARIS; first 10 s each) at
+60, 70, 80, 90 and 100 dB SPL; 20 s rounds, drone starting at 0, 5 and 10 s; war soundscape at
+90 dB SPL or off; cars (Pure Data, the six development engines looped, 50 km/h, 30 m, as entry 179)
+at 20, 35, 50 dB SPL or off; one no-drone round per background. 1,208 rounds x 6 networks = 7,248
+rows. 1 s window, 0.125 s hop.
+
+**Result.** Mean confidence in %, the three seeds pooled. Drone: mean score over drone windows, 90
+rounds per cell. No drone: mean score over the no-drone windows of the drone rounds (450 rounds per
+cell); the no-drone rounds (3 per cell) agree within 7 points.
+
+| Background | Model | 60 dB | 70 dB | 80 dB | 90 dB | 100 dB | No drone |
+|---|---|---|---|---|---|---|---|
+| war 90 | `it19_colour` | 17.0 | 26.1 | 36.5 | 50.1 | 62.9 | 1.9 |
+| war 90 | `it21_uav16` | 19.1 | 26.9 | 36.9 | 48.3 | 58.7 | 3.5 |
+| war 90 + cars 50 | `it19_colour` | 15.3 | 23.3 | 35.7 | 50.2 | 62.9 | 24.4 |
+| war 90 + cars 50 | `it21_uav16` | 17.8 | 25.4 | 36.5 | 48.2 | 58.6 | 24.4 |
+| cars 20, no war | `it19_colour` | 74.7 | 74.8 | 74.7 | 74.6 | 74.6 | 81.2 |
+| cars 20, no war | `it21_uav16` | 72.2 | 72.5 | 72.7 | 72.7 | 72.7 | 83.5 |
+| cars 50, no war | `it19_colour` | 63.5 | 68.0 | 74.0 | 75.2 | 74.8 | 91.9 |
+| cars 50, no war | `it21_uav16` | 63.5 | 69.0 | 72.4 | 72.8 | 72.6 | 78.9 |
+| nothing | `it19_colour` | 74.3 | 74.6 | 74.6 | 74.6 | 74.6 | 0.5 |
+| nothing | `it21_uav16` | 72.2 | 72.7 | 72.7 | 72.7 | 72.7 | 1.7 |
+
+With war 90 and cars at 20 and 35 dB the no-drone confidence is 17.3 and 23.1 (`it19_colour`)
+against 19.6 and 22.2 (`it21_uav16`); cars at 35 dB alone, 91.9 against 84.0.
+
+**Assessment.** The two are within a few points of each other everywhere, and neither is better
+overall. Against the war soundscape `it21_uav16` is about 2 points higher for the quietest drone
+and 2-4 points lower for the loudest, with slightly higher no-drone confidence (3.5 against 1.9).
+With cars both fail as entry 179 found: cars alone, far quieter than the drone, give 79-92%
+confidence without a drone. `it21_uav16` is lower there only at 35 and 50 dB (84.0 and 78.9
+against 91.9), still far above its confidence with nothing playing. What it learned from UAV16's
+traffic and fan recordings does not carry over to this car layer.
+
+**Limits.** Ten excerpts, not the 35 drones; the car and war layers are synthetic mixes, so these
+are not detection figures; the six engines are FSD50K dev clips, which training draws from; three
+seeds pooled, no per-seed spread taken; no baselines. ITU ARIS scored finished networks only.
+
+**Verdict.** Nothing here changes entry 204: `it19 CRNN colour s1` stays. The car failure remains
+the open problem of test 1, and UAV16 as training data does not address it.
