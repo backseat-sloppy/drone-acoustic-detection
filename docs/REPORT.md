@@ -11691,3 +11691,90 @@ them without the bandpass (entry 173).
 
 **Next.** Mads runs the virtual tests. Expect more mower and steady-noise alarms than the `600k` models
 (entry 192).
+
+## 194 - On a second PC, the pushed iteration 20 commit lacks the run files and Complete_Test_Gui's colours
+
+- Date: 2026-11-10
+- Iteration: 20 (follow-up)
+- Type: Infrastructure / correction to entry 193
+- Commit: on top of 7242462 ("IT 20 BP"); uncommitted `scripts/Complete_Test_Gui.py` and four untracked run files
+
+**What happened.** On this PC (`egson`) the user pulled 48d560c and 7242462 after stashing local changes. 7242462 carries the six it20 checkpoints and the `MODELS`, `detect_gui` and `live.py` changes of entry 193. It does not carry two things entry 193 describes:
+- **The run files.** `artifacts/runs/it20_bp_s{0,1,2}.json` and `it20_bp_colour_check.json` are git-ignored (`.gitignore`: `artifacts/*`). They were not force-added, as it19's and it17's were. Without them every it20 entry fails to load, because the threshold and the bandpass are read from the run file. On any other clone they must be added with `git add -f` or fetched.
+- **`Complete_Test_Gui.COLORS` for it20.** The commit's file list has no `Complete_Test_Gui.py`.
+
+**The stash** (`stash@{0}`, "!!GitHub_Desktop<master>", based on 48d560c) held only this session's three small edits from before the pull: it20 CRNN entries in `drone_war_grid.MODELS`, three colours in `detect_gui` and in `Complete_Test_Gui.COLORS`. The first two do the same as 7242462 under the same names, and applying them would conflict, so they were not restored. The third was redone by hand with the six colours `detect_gui` now uses for it20, so both GUIs agree. The stash itself was left in place.
+
+**Run files.** `~/it20_bp_models.zip` from the server (8,545,847 bytes, MD5 b9cfe8cb4779e50c8c012ded31cffbe8, packed in this session from the old clone, downloaded by the user) matched. Its six checkpoints are byte-identical (MD5) to those pulled from GitHub. Its four JSON files were written to `artifacts/runs/`; no file of those names existed. Each run file has `args.bandpass = [80, 6000]`.
+
+**Checks.** `Complete_Test_Gui.detector_names()` lists `it20 CRNN bp s0`, `s1` and `s2`. `complete_test_engine.load_detectors` loads all three with `cfg.bandpass = (80.0, 6000.0)`, a 1 s window and thresholds 0.560 / 0.562 / 0.536, the same as entry 193. Each scores 3 s of white noise (17 hops). The GUI window itself was not opened.
+
+**Iteration 20 verdict, read on the server in this session** with `scripts/it20_judge.py`: the same as entry 192. It fails, with Lund +0.058 (DS-CNN) and +0.028 (CRNN) against +0.07 required, and the mower and colour guards broken (mower +0.245 / +0.187).
+
+## 195 - Complete test GUI: distant cars as the suggestion, and the choice of cars removed
+
+- Date: 2026-11-10
+- Type: Engineering (GUI defaults and text; no model, metric, mix or split changed)
+- Commit: uncommitted: `scripts/Complete_Test_Gui.py`
+
+**Why.** The user asked for two GUI updates. The car suggestions should be much smaller, because these are distant cars: like the settings of 10_11_TBITest (cars 1-20 dB SPL at 50 m), around 1-10 rather than around 50. And the choice of cars should simply be removed.
+
+**Change.**
+- Cars layer default level 50 to 5 dB SPL (min 5, max 5, # 1). Its about text "near (10 m): 57 · far (40 m): 45" becomes "distant cars: 1-10". The distance setting's text "near: 10 · far: 40" becomes "distant: 50 · near: 10".
+- The guideline that car levels come from the EU pass-by limits, as an upper limit, now reads: cars are distant cars, about 1-10 dB SPL (10_11_TBITest used 1-20 at 50 m), and the EU limits would be a near car.
+- The "which cars" row of entry 175, one tick per development car, is gone from the GUI, along with its code (`car_label`, the ticks' locking under The Final Evaluation, the "n of 6 cars" summary). New plans always use all six development cars (`car_engines` None), or the sealed car with The Final Evaluation on. `Plan.car_engines` and its engine support stay, so plans and runs saved with a choice still load and rebuild.
+- Not changed: the engine's own car defaults (`E.PD_SETTINGS`: 50 km/h, 10 m), so the distance box still starts at 10 m. Changing them would change the render key of every default car.
+
+**Checks.** The GUI was built (Tk, modified page, cars ticked) and the layers section captured and looked at. The cars row reads 5 / 5 / 1 with "distant cars: 1-10", and the page has no car ticks. `plan()` gives cars [5.0] and `car_engines` None. `load_test` still opens `artifacts/complete_test/10_11_TBITest`, whose config has `car_engines: null` (57,672 rounds). `uv run pytest` not run: no test imports this file.
+
+## 196 - Complete test GUI: the cars distance box starts at 50 m
+
+- Date: 2026-11-10
+- Type: Engineering (GUI default only)
+- Commit: uncommitted: `scripts/Complete_Test_Gui.py`
+
+On the user's answer "Ja, start på 50 m" to entry 195's open point, the cars layer's "closest distance (m)" box now starts at 50 m (`PD_GUI_START`). The engine's default stays 50 km/h and 10 m (`E.PD_SETTINGS`), so plans and runs that rely on it, and their kept renders, are unchanged. Checked on the built GUI (modified page, cars ticked): the distance boxes read 50 / 50 / 1 and the speed boxes 50 / 50 / 1. `plan()` gives cars `dist_m` [50.0]. Its render `cars_50kmh_50m_20s_a2124aaa.wav` already exists on this PC. On the server it does not: a plan with it needs that render uploaded, as in entries 176 and 187.
+
+## 197 - Complete test GUI: the detector ticks wrap onto several lines
+
+- Date: 2026-11-10
+- Type: Engineering (GUI layout only)
+- Commit: uncommitted: `scripts/Complete_Test_Gui.py`
+
+The user could not see every model: the setup page's detector ticks stood on one line and ran past the window's edge after the it20 models were added (13 ticks). They are now laid out five to a line (`DET_PER_ROW`). On the built GUI at the default 1180 px width, the 13 ticks fill rows 0-2 and the rightmost one ends at x = 863 px, against the window's right edge at 1188. This was measured from the widgets. A screen capture of that part of the page was tried twice and did not reach it (it lies below the screen's bottom edge in the test window), so the layout was not looked at.
+
+## 198 - Complete test results window: the sound buttons were pushed out of sight
+
+- Date: 2026-11-10
+- Type: Bug fix (GUI layout only)
+- Commit: uncommitted: `scripts/Complete_Test_Gui.py`
+
+**Bug.** The user could no longer play sound in the Results window. The buttons (Play background, Play drone, Play mix, Stop sound) were still there, packed to the right of the selected round's text on one line. With three detectors, that text ("Round 1: it20 CRNN bp s0: recall 67%, FPR 5%  it20 CRNN bp s1: ... s2: ...") is wider than the pane, and Tk's pack gave it all the width, so the buttons got none and were not drawn. Playback itself was never broken.
+
+**Fix.** The sound buttons have their own line above the round text, in the order Play mix, Play drone, Play background, Stop sound. The round text wraps to the pane's width.
+
+**Checks.** The Results window was opened on `artifacts/complete_test/10_11_TBITest` (three detectors) with round 1 selected. All four buttons are mapped and lie at x = 789-1199 px inside the window's 1508 px. Measured from the widgets only: a screen capture was covered by another window, so the layout was not looked at, and sound was not played.
+
+## 199 - Complete test: the cars layer is one car, played once, not looped
+
+- Date: 2026-11-10
+- Type: Engineering (test configuration; no model, metric or split changed; older plans and runs unchanged)
+- Commit: uncommitted: `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`
+
+**Why.** The user asked: only one car noise, and do not loop it. Until now the cars layer was the six development engines' pass-bys one after another (about 129 s), looped over the round from the batch's soundscape start.
+
+**The car.** The user wanted to listen first. Four candidates were rendered with Pure Data, each as one pass-by at 50 km/h and 50 m, set to the same RMS (-20 dBFS) and written as 16-bit WAV to `artifacts/complete_test/car_choices/`. The four were car_engine_running_4, car_engine_running_3, car_engine_idle_running and car_idle. After listening the user picked **car_idle** (FSD50K dev 369049; `ONE_CAR = 0`). Like the other five it is FSD50K dev, which training draws from (entry 157).
+
+**Change.**
+- `Plan.car_once` (new, default False). With it, the cars layer renders only `ONE_CAR` (the existing `engines` path, so the six-car render and older choices are untouched), or the sealed car under The Final Evaluation. The new `Layer.once` makes `window` play the render once from the round's start, with zeros after. The soundscape start does not move it.
+- The level is still the RMS of the render, i.e. the average over the pass-by. Over a round longer than the pass-by the car's average is lower: 5 dB set gave 5.0 dB over the pass-by and 2.3 dB over a 40 s round.
+- New GUI plans always set `car_once`. `load_test` reads it. Older plans and runs lack it, so they load and rebuild with the six cars looped, as they were run.
+- GUI text: The Final Evaluation's note ("off: the development car (idle)") and a guideline saying one car passes once, that the round has no car after about 21.5 s, and that the level is the average over the pass-by.
+
+**Checks.**
+- A plan with `car_once`: the cars part is non-zero from 0 to 21.5 s of a 40 s round and zero after; it is the same for soundscape starts 0 and 17 s; its render key holds `engines (0,)` and `once True`.
+- A 3-round run through `Test.run` (Steady_07 at 60 dB, war 60, cars 5 dB at 50 km/h and 50 m, it9 CRNN): `config.json` has `car_once: true`, `load_test` returns it, and a rebuilt round's car ends at 21.5 s.
+- `artifacts/complete_test/10_11_TBITest` (no `car_once`) still gets the six-car looped layer.
+- Not checked: the GUI window itself. `uv run pytest` not run: no test imports these files.
+
+**Server.** The server clone (`~/ct_9_11`, bd7192a) does not have this change. A plan with `car_once` needs the updated engine there and the render `cars_<speed>kmh_<dist>m_20s_e0_<hash>.wav` uploaded (no Pure Data on the server), as in entries 176 and 187.

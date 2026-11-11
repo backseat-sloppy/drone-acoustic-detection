@@ -77,6 +77,7 @@ WIND_DIR = dwg.ROOT / "Distrators/Wind"
 WIND_PD = dict(speed=40, reso=40, vol=50, seconds=60.0)      # the patch's own defaults; the round sets the level
 CAR_DIR = dwg.ROOT / "Pure-data+Script/CarDistractor"
 CAR_PD = dict(speed_kmh=50, dist_m=10, dur_s=20)             # the patch's defaults; one pass-by per engine
+ONE_CAR = 0                                                  # Plan.car_once: car_idle (FSD50K dev 369049), Mads's pick by ear (entry 199)
 SEALED_CAR_TABLE = CAR_DIR / "car_engines_sealed.txt"        # The Final Evaluation's car (scripts/fetch_sealed_car.py)
 WIND_SLIDER_PER_MS = 4.0                                     # ASSUMED, not measured: wind.pd's 0-127 slider for 1 m/s
 PD_SETTINGS = dict(wind=dict(speed_ms=WIND_PD["speed"] / WIND_SLIDER_PER_MS, reso=WIND_PD["reso"]),   # what a test can change, and its limits:
@@ -106,6 +107,7 @@ class Layer:
     note: str
     available: bool
     load: object = None                                      # () -> np.ndarray, called once
+    once: bool = False                                       # played once from the round's start, silence after (no loop)
     _x: np.ndarray | None = None
     _rms: float = 0.0
 
@@ -117,6 +119,11 @@ class Layer:
 
     def window(self, n: int, start_s: float, level_db: float) -> np.ndarray:
         x, r = self.signal()
+        if self.once:                                        # the level is still the RMS of the whole signal (the pass-by)
+            y = np.zeros(n)
+            m = min(n, len(x))
+            y[:m] = x[:m]
+            return y * (rms_for(level_db) / r)
         i = int(round(start_s * SR)) % len(x)
         return np.take(x, np.arange(i, i + n), mode="wrap") * (rms_for(level_db) / r)
 
@@ -303,6 +310,8 @@ class Plan:
     also_without: list = field(default_factory=list)         # layers also tested absent, besides at their levels
     final_evaluation: bool = False                           # the cars layer is the sealed car only
     car_engines: list | None = None                          # which development cars (indices of car_engines.txt); None: all
+    car_once: bool = False                                   # cars layer: one car (ONE_CAR, or the sealed car), one pass-by
+                                                             # from the round's start, not looped; False in older plans
 
     def __post_init__(self):
         """Every Pure Data setting as a list of values (a plan may hold single values); an older plan's
@@ -705,13 +714,16 @@ class Test:
         for name in r["background"]:
             if name in PD_RENDER:
                 cfg = pd_config(name, r["pd"])
+                once = name == "cars" and self.plan.car_once
                 if name == "cars" and self.plan.final_evaluation:
                     cfg["sealed"] = True
+                elif once:
+                    cfg["engines"] = (ONE_CAR,)
                 elif name == "cars" and self.plan.car_engines is not None and len(self.plan.car_engines) < len(car_names()):
                     cfg["engines"] = tuple(sorted(self.plan.car_engines))   # all of them: the kept six-car render
-                key = (name, *sorted(cfg.items()))
+                key = (name, *sorted(cfg.items()), ("once", once))
                 if key not in self._pd_layers:
-                    self._pd_layers[key] = Layer(name, "", True, lambda c=cfg, f=PD_RENDER[name][1]: f(c))
+                    self._pd_layers[key] = Layer(name, "", True, lambda c=cfg, f=PD_RENDER[name][1]: f(c), once=once)
                 out[name] = self._pd_layers[key]
         return out
 

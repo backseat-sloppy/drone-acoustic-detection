@@ -77,22 +77,26 @@ SUBTITLES = {"real": "Real drone recordings mixed into chosen background layers 
              "modified": "Real drone recordings flown at the microphone: the end of each file is the impact, and the "
                          "level follows the distance at each moment for the chosen speed."}
 DEFAULT_LEVELS = {"war soundscape": ("60", "60", "1"), "war-shaped noise": ("50", "50", "1"), "wind": ("50", "50", "1"),
-                  "wind (Pd)": ("50", "50", "1"), "cars": ("50", "50", "1"), "helicopter": ("", "", ""), "insects": ("", "", "")}
+                  "wind (Pd)": ("50", "50", "1"), "cars": ("5", "5", "1"), "helicopter": ("", "", ""), "insects": ("", "", "")}
 COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it10 CNN": "#d93025",
           "It9B": "#0b8a8a", "it16 CNN 600k s0": "#b8860b", "it16 CNN 600k s1": "#d4a72c",
           "it16 CNN 600k s2": "#8a6d0b", "it16 CRNN 600k s0": "#c2185b", "it16 CRNN 600k s1": "#e5609a",
           "it16 CRNN 600k s2": "#880e4f", "it19 CRNN colour s1": "#ff6f00", "it17 CNN 2s 600k s0": "#1b5e20", "it17 CNN 2s 600k s1": "#43a047",
           "it17 CNN 2s 600k s2": "#81c784", "it17 CRNN 2s 600k s0": "#311b92", "it17 CRNN 2s 600k s1": "#5e35b1",
-          "it17 CRNN 2s 600k s2": "#9575cd", "comb": "#1baf7a"}
+          "it17 CRNN 2s 600k s2": "#9575cd", "it20 CNN bp s0": "#006064", "it20 CNN bp s1": "#0097a7",
+          "it20 CNN bp s2": "#4dd0e1", "it20 CRNN bp s0": "#3e2723", "it20 CRNN bp s1": "#6d4c41",
+          "it20 CRNN bp s2": "#a1887f", "comb": "#1baf7a"}   # it20: the same colours as detect_gui
 PD_CONTROLS = {"wind (Pd)": ("wind", (("speed_ms", "speed (m/s, assumed)", "quiet: 1  ·  storm: 25"),
                                       ("reso", "resonance (0-127)", "open field: 10  ·  city: 90"))),
                "cars": ("cars", (("speed_kmh", "speed (km/h)", "town: 50  ·  motorway: 130"),
-                                 ("dist_m", "closest distance (m)", "near: 10  ·  far: 40")))}
+                                 ("dist_m", "closest distance (m)", "distant: 50  ·  near: 10")))}
+DET_PER_ROW = 5                                              # detector ticks per line on the setup page (they wrap)
+PD_GUI_START = {("cars", "dist_m"): 50.0}                    # distant cars; the engine's own default stays 10 m
 WIND_LEVELS = "quiet: 25  ·  storm: 50"
 LEVEL_HINTS = {"war soundscape": "Test 1: 90",
                "war-shaped noise": "Test 1: 90",
                "wind": WIND_LEVELS, "wind (Pd)": WIND_LEVELS,
-               "cars": "near (10 m): 57  ·  far (40 m): 45"}
+               "cars": "distant cars: 1-10"}
 FINAL_TAG = "  -  THE FINAL EVALUATION (sealed car)"
 PD_LABELS = {"wind_speed_ms": "wind (Pd) speed (m/s, assumed)", "wind_reso": "wind (Pd) resonance (0-127)",
              "car_speed_kmh": "car speed (km/h)", "car_dist_m": "car closest distance (m)"}
@@ -108,15 +112,17 @@ FS_DB = float(10 / np.log(10) * LOGMEL.frames(np.sin(2 * np.pi * 1000 * np.arang
 LAYER_GUIDELINES = (
     "About column: wind speed in m/s is an assumed scale, not measured (10 m/s is the sound's default), so do not report "
     "results per m/s. Resonance for city and open field is a guess. The wind levels rest on one study, the storm "
-    "level extrapolated. Car levels come from the EU pass-by limits (68-72 dB(A) at 7.5 m) and are an upper limit.",
+    "level extrapolated. Cars are distant cars: about 1-10 dB SPL (10_11_TBITest used 1-20 at 50 m). The EU pass-by "
+    "limits (68-72 dB(A) at 7.5 m) would be a near car, far louder than intended here.",
     "Confidence follows the dB difference between drone and background, not the absolute level. Keep levels between "
     "about 60 and 100 dB SPL: below that the frontend's floor changes the scores, above that a real microphone would "
     "clip and this test does not.",
     "wind (Pd) and cars: their settings change the character of the sound, not its loudness. The level you set is "
     "still the average over the whole render, whatever the speed or distance. Each new combination is rendered once, "
     "at the start of the test (about a minute per wind combination, seconds for cars), then kept.",
-    "cars: at 50 km/h and 10 m a pass-by peaks about 11 dB above the level you set (1 s windows), and the typical "
-    "level is about 11 dB below it.",
+    "cars: one car (car_idle) passes once, starting with the round; it is not looped, so after its pass-by (about "
+    "21.5 s) the round has no car. The level you set is the average over the pass-by. At 50 km/h and 10 m a pass-by "
+    "peaks about 11 dB above that level (1 s windows).",
     "cars: the engine recordings are from FSD50K dev, which training draws from. Low confidence on cars may partly be "
     "memory of the engines: say so when reporting results.")
 MODEL_LIM = (-3, 3)                                         # colour scale of the network's input, z-scores
@@ -165,11 +171,6 @@ def speed_steps(lo: str, hi: str, n: str) -> list[float]:
         return E.dwg.steps(lo_, hi_, n_, "speed")
     except ValueError as e:
         raise ValueError(str(e).replace("the count", "#").replace("count 1", "# 1")) from None
-
-
-def car_label(name: str) -> str:
-    """A short name for a car box: car_engine_outside_idle -> outside idle."""
-    return name.replace("car_engine_", "").replace("car_", "").replace("_", " ")
 
 
 def pd_steps(name: str, lo: str, hi: str, n: str) -> list[float]:
@@ -433,7 +434,7 @@ class Page(ttk.Frame):
         self.b_final = tk.Checkbutton(final, text="The Final Evaluation: OFF", variable=self.v_final, indicatoron=False, width=26,
                                       font=("Segoe UI", 10, "bold"), selectcolor="#f4c7c3", command=self._flip_final)
         self.b_final.pack(side="left")
-        ttk.Label(final, text="on: the cars layer is only the sealed car, which no model has trained on; off: the six development cars",
+        ttk.Label(final, text="on: the car is the sealed car, which no model has trained on; off: the development car (idle)",
                   style="Muted.TLabel").pack(side="left", padx=8)
         r += 1
         guide = ttk.Frame(g)
@@ -444,8 +445,6 @@ class Page(ttk.Frame):
 
     def _flip_final(self):
         self.b_final.configure(text=f"The Final Evaluation: {'ON' if self.v_final.get() else 'OFF'}")
-        for cb in getattr(self, "cb_cars", []):              # the sealed car is then the only car
-            cb.state(["disabled" if self.v_final.get() else "!disabled"])
         self.update_count()
 
     def _pd_rows(self, g, r: int, name: str) -> int:
@@ -454,7 +453,7 @@ class Page(ttk.Frame):
         sec, settings = PD_CONTROLS[name]
         for key, label, hint in settings:
             r += 1
-            start = f"{E.PD_SETTINGS[sec][key]:g}"
+            start = f"{PD_GUI_START.get((sec, key), E.PD_SETTINGS[sec][key]):g}"
             vs = (tk.StringVar(value=start), tk.StringVar(value=start), tk.StringVar(value="1"))
             self.v_pd.setdefault(sec, {})[key] = vs
             ttk.Label(g, text=f"    {label}", style="Muted.TLabel").grid(row=r, column=1, sticky="w", padx=4)
@@ -465,18 +464,6 @@ class Page(ttk.Frame):
             preview.grid(row=r, column=6, sticky="w", padx=4)
             self.pd_preview[name, sec, key] = preview
             ttk.Label(g, text=hint).grid(row=r, column=7, sticky="w", padx=4)
-        if name == "cars":
-            r += 1
-            ttk.Label(g, text="    which cars", style="Muted.TLabel").grid(row=r, column=1, sticky="w", padx=4)
-            box = ttk.Frame(g)
-            box.grid(row=r, column=2, columnspan=6, sticky="w", padx=4)
-            self.v_cars, self.cb_cars = [], []
-            for i, car in enumerate(E.car_names()):
-                v = tk.BooleanVar(value=True)
-                cb = ttk.Checkbutton(box, text=car_label(car), variable=v, command=self.update_count)
-                cb.pack(side="left", padx=(0, 10))
-                self.v_cars.append(v)
-                self.cb_cars.append(cb)
         return r
 
     def _toggle_layers(self):
@@ -505,7 +492,8 @@ class Page(ttk.Frame):
             self.v_det[d] = v
             tk.Checkbutton(f, text="DSP (comb)" if d == "comb" else d, variable=v, command=self.update_count,
                            fg=COLORS.get(d, "#333"), bg=PANEL, activebackground=PANEL, selectcolor=PANEL,
-                           font=("Segoe UI", 10, "bold")).grid(row=0, column=i, padx=(0, 14), sticky="w")
+                           font=("Segoe UI", 10, "bold")).grid(row=i // DET_PER_ROW, column=i % DET_PER_ROW,
+                                                               padx=(0, 14), pady=1, sticky="w")
 
     def _build_run(self, f):
         f.columnconfigure(0, weight=1)
@@ -588,12 +576,10 @@ class Page(ttk.Frame):
         for name, (sec, _) in PD_CONTROLS.items():
             if name in layers:                               # an unticked layer's boxes do not count
                 pd_settings[sec] = {k: pd_steps(f"{name} {k}", *(v.get() for v in vs)) for k, vs in self.v_pd[sec].items()}
-        cars = getattr(self, "v_cars", [])
-        chosen_cars = None if "cars" not in layers or all(v.get() for v in cars) else [i for i, v in enumerate(cars) if v.get()]
         p = E.Plan(self.kind, length, drones, levels, layers, [d for d, v in self.v_det.items() if v.get()],
                    step_s=step, no_drone_rounds=self.v_nodrone.get(), pd_settings={**E.PD_SETTINGS, **pd_settings},
                    also_without=[n for n in layers if self.v_layer_off[n].get()], final_evaluation=self.v_final.get(),
-                   car_engines=chosen_cars,
+                   car_once=True,                            # one car, one pass-by from the round's start (entry 199)
                    soundscape_start_s=float(start) if start else None, **({"synth": synth} if synth else {}),
                    **({"speeds": speeds, "approach": approach, "pitches": pitches, "pitch_random": self.v_pitch_random.get()}
                       if self.kind == "modified" else {}))
@@ -667,10 +653,8 @@ class Page(ttk.Frame):
         if probs:
             detail = "  ·  ".join(probs)
         self.l_count_detail.configure(text=detail, style="Warn.TLabel" if probs else "Muted.TLabel")
-        cars_all = E.car_names()
         bits = [f"{n} {', '.join(f'{v:g}' for v in lv)} dB" + (" + off" if n in p.also_without else "")
-                + (" (sealed)" if n == "cars" and p.final_evaluation else
-                   f" ({len(p.car_engines)} of {len(cars_all)} cars)" if n == "cars" and p.car_engines is not None else "")
+                + (" (sealed)" if n == "cars" and p.final_evaluation else "")
                 for n, lv in p.layers.items()]
         self.l_layers_sum.configure(text="  ·  ".join(bits) if bits else "no background layer ticked")
 
@@ -843,13 +827,14 @@ class Results(tk.Toplevel):
         self._fill()
 
         # round view
-        ctl = ttk.Frame(right)
-        ctl.pack(fill="x")
-        self.l_round = ttk.Label(ctl, text="Select a round in the table.", style="Bold.TLabel")
-        self.l_round.pack(side="left")
-        for txt, what in (("Play background", "background"), ("Play drone", "drone"), ("Play mix", "mix")):
-            ttk.Button(ctl, text=txt, command=lambda w=what: self._play(w)).pack(side="right", padx=2)
-        ttk.Button(ctl, text="Stop sound", command=self._stop_play).pack(side="right", padx=(2, 8))
+        ctl = ttk.Frame(right)                               # the sound buttons on their own line: a long round text
+        ctl.pack(fill="x")                                   # (several detectors) used to push them out of sight
+        for txt, what in (("Play mix", "mix"), ("Play drone", "drone"), ("Play background", "background")):
+            ttk.Button(ctl, text=txt, command=lambda w=what: self._play(w)).pack(side="left", padx=2)
+        ttk.Button(ctl, text="Stop sound", command=self._stop_play).pack(side="left", padx=(8, 2))
+        self.l_round = ttk.Label(right, text="Select a round in the table.", style="Bold.TLabel", justify="left")
+        self.l_round.pack(fill="x", pady=(4, 0))
+        self.l_round.bind("<Configure>", lambda e: self.l_round.configure(wraplength=max(e.width - 10, 200)))
         nav = ttk.Frame(right)                               # the log-mel's slide show: for us, or per network
         nav.pack(fill="x", pady=(4, 0))
         self.spec_slides = ["ui", *(d for d in self.test.plan.detectors if d != "comb"
@@ -1626,7 +1611,7 @@ def load_test(folder: Path) -> E.Test:
     p = cfg["plan"]
     plan = E.Plan(**{k: p[k] for k in ("kind", "length_s", "drones", "drone_levels", "layers", "detectors", "step_s",
                                        "no_drone_rounds", "soundscape_start_s", "synth")},
-                  **{k: p[k] for k in ("speeds", "approach", "pitches", "pitch_random", "pd_settings", "also_without", "final_evaluation", "car_engines") if k in p})   # not in every run's config
+                  **{k: p[k] for k in ("speeds", "approach", "pitches", "pitch_random", "pd_settings", "also_without", "final_evaluation", "car_engines", "car_once") if k in p})   # not in every run's config
     t = E.Test(plan, folder)
     t.start_s = cfg["soundscape_start_s"]
     t.prepare(progress=lambda s: None)
