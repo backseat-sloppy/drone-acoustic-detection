@@ -37,7 +37,8 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 18 | 159 to 161 | It9B: the it9 CRNN with drone windows weighted 2 in the loss, threshold at 10% false alarms | Mads wants higher confidence with a drone in the virtual tests, accepting worse separation; the requirements are now judged in confidence (entry 159) | **Hypothesis holds.** Mean score up on every window: drone +0.05 to +0.13, no drone +0.10 to +0.17 (mower alone 0.44 to 0.60); recall at matched false alarms unchanged (0.789 against 0.790). Added to the GUIs as "It9B"; war soundscape not measured yet. |
 | Iteration 19 | 169 to 171 | Pink (-3 dB/oct) and brown (-6 dB/oct) noise as 15% of the no-drone training windows, on the `600k` arm of iteration 16 | Mads's request; the networks alarm on pink and brown noise, which no planned test contains; iteration 11's broader steady noise fixed it but halved Lund recall | **Fails narrowly on Lund recall.** Pink and brown alarms to 0% for both networks (DS-CNN was 74% on pink), mower false alarms down (CRNN 0.171 to 0.112, DS-CNN 0.149 to 0.053), validation unchanged, but Lund recall -0.04 (limit -0.03). `it19 CRNN colour s1` pushed for the virtual tests. 2 s models now usable in Complete_Test_Gui (entry 170). |
 | Iteration 20 | 172 to 173, 192 to 193 | Optional bandpass (Butterworth 80 Hz - 6 kHz) and Wiener gain (noise median across frequency) on the power spectrum before the mel bank; CPU gates before any training | Mads asked for a bandpass and a Wiener filter; the frontend has no noise suppression, and steady noise reads as drone | **Both fail; the frozen frontend stays.** Council (entry 172): Wiener against best practice, tried only as a gated ablation. Wiener fails its CPU gate (entry 173): 66% of drone line bins kept at 0 dB SNR (80% required), 34% at -10 dB; rig background only 2.3 dB lower. The bandpass mainly removes 6-8 kHz; trained on the `600k` arm, three seeds (entry 192): Lund recall DS-CNN +0.058, CRNN +0.028 (bar +0.07), but mower false alarms 0.149 to 0.395 and 0.171 to 0.357, brown noise alarms up. The 6-8 kHz band seems to trade range against confuser rejection (untested). PCEN is the next frontend candidate. The six bandpass models are in the test GUIs for the virtual tests (entry 193). |
-| Iteration 21 | 200 to 204 | A fifth rig in the training pool: UAV16 (Zenodo 23613504; DJI Flip hovering at 5-70 m over a 16-microphone ground array, with 28 background recordings from the same array), on iteration 19's `simdist_colour` recipe | Marius's request (2026-11-11) to retrain the colour model with the new dataset; `docs/datasets.md` names same-rig drone and no-drone audio as the most valuable addition | **Failed.** Recall on the held UAV16 batches fell instead of rising (DS-CNN 0.912 to 0.887, CRNN 0.857 to 0.829) and Lund recall fell by 0.076 for both networks (limit 0.03), on all three seeds. Validation, mower and pink/brown guards held. `it19_colour` stays. |
+| Iteration 21 | 200 to 205 | A fifth rig in the training pool: UAV16 (Zenodo 23613504; DJI Flip hovering at 5-70 m over a 16-microphone ground array, with 28 background recordings from the same array), on iteration 19's `simdist_colour` recipe | Marius's request (2026-11-11) to retrain the colour model with the new dataset; `docs/datasets.md` names same-rig drone and no-drone audio as the most valuable addition | **Failed.** Recall on the held UAV16 batches fell instead of rising (DS-CNN 0.912 to 0.887, CRNN 0.857 to 0.829) and Lund recall fell by 0.076 for both networks (limit 0.03), on all three seeds. Validation, mower and pink/brown guards held. `it19_colour` stays. |
+| Iteration 22 | 206 (open) | Iteration 21 with only UAV16's four plain-environment recordings as that rig's negatives; its other 24 backgrounds (fans, exhaust pipes, a car, other places) never train and are scored for false alarms | Entry 205: most of UAV16's backgrounds are drone-like sources or other places, and in iteration 21 they were a quarter of the rig negatives; Marius's request | **Not run yet.** |
 
 ## Templates
 
@@ -12050,4 +12051,95 @@ the server only (`~/dad21/artifacts/models/`) and are not proposed for `Complete
 **Next.** Not decided. Two single changes would separate the cause, if Marius or Mads wants the
 dataset pursued: `uav16` drones without its backgrounds as rig negatives, or its backgrounds
 without its drones.
+
+
+## 205 - What UAV16's 28 backgrounds are: mostly confusers and other places, not the drone site's ambience
+
+- Date: 2026-11-11
+- Iteration: 21
+- Type: Data (inspection after the verdict; no run)
+- Commit: uncommitted, on top of d7fe174
+
+**Why.** Marius objected to entry 204: the drone and no-drone recordings are from the same place,
+so the model should have improved. Entries 200 and 204 only said the backgrounds were from other
+days. The folder names had not been read.
+
+**How.** `metadata/sessions.csv` (`original_relative_directory`) joined to `recordings.csv`, read
+through the JupyterLab contents API. Durations are the rounded `duration_seconds`.
+
+**Result.** The 28 field backgrounds, by the authors' own folder names:
+
+| Group | Recordings | Seconds | Folder name (translated) |
+|---|---|---|---|
+| Plain environment | 4 | 822 | "pure environment without target" 1-4 (faint voices; birdsong and some e-bike sound) |
+| Car | 1 | 46 | "car starting slowly" |
+| Air-conditioner exhaust fan | 4 | 674 | "A0 5 m" to "A3 5 m": at the drone's four array positions |
+| Exhaust pipe | 3 | 646 | "drone-like sound, exhaust pipe" 1-3 |
+| Crossroad, campus gate, roundabout | 11 | 2,940 | "negatives 12 October": other places, traffic |
+| Indoor, wind in trees | 5 | 865 | "negatives 13 October" |
+
+The drone folders are dated 25 April to 2 July (five "quiet", three "urban noise"). Whether the
+four plain-environment recordings were made at a drone site is not stated; they are undated.
+
+**Assessment.** Marius is right that rig and city are shared, but at most 822 s of the 5,993 s can
+be the drone sites' own ambience. 1,320 s are sources the authors chose because they sound like a
+drone, and 3,805 s are other places. In training these were a quarter of the rig negatives and of
+the backgrounds under the simulated-distance drones (80% of positives), so a drone was often
+buried under a fan or an exhaust pipe, and such tonal sources were taught as "no drone". That
+fits the lower recall of entry 204. It is a reading of the folder names, not a tested cause.
+
+**Next.** If pursued, one change at a time: `uav16` with only the four plain-environment
+recordings as rig negatives, or `uav16` drones with no rig negatives of their own.
+
+# Iteration 22 - UAV16 with only its plain-environment recordings as negatives
+
+> **Changed from iteration 21 (`it21_uav16`):** of UAV16's 28 backgrounds only the four "pure
+> environment" recordings (`rec-undated-0001` to `-0004`, 822 s) are that rig's negatives. The
+> other 24 never train. They are scored for false alarms in two sets: `uav16_confusers` (the car,
+> the four exhaust-fan and the three exhaust-pipe recordings, 1,366 s) and `uav16_elsewhere` (the
+> 16 recordings of 12 and 13 October, 3,805 s).
+> **Why:** entry 205, and Marius's request (2026-11-11) to retrain this way. In iteration 21 those
+> 24 recordings were most of a quarter of the rig negatives and of the backgrounds under the
+> simulated-distance drones, and recall fell on Lund and on UAV16's own held batches (entry 204).
+> **Kept the same:** everything else of iteration 21: the UAV16 drones in the pool, the two held
+> batches, `simdist_colour`, pool arm `none`, speed 0.8-1.25, MFE 64 mel, 1 s window, 600,000
+> windows, DS-CNN and CRNN, seeds 0-2, threshold at 5% false alarms on the unchanged validation.
+> **Hypothesis:** with ambience as the rig's only negatives, the UAV16 drones add recall on the
+> held batches without the loss on Lund.
+> **Judged by** (seed means, per network, against `it19_colour_s0-2` re-scored with this code):
+> 1. Recall on the two held UAV16 batches at the frozen threshold: higher than `it19_colour`.
+> 2. Lund recall: no lower than `it19_colour` minus 0.03.
+> 3. Validation recall: no lower than minus 0.02.
+> 4. Mower-only false alarms: no higher than plus 0.05.
+> 5. Pink and brown alarms: at most 5%.
+> 6. False alarms on `uav16_confusers` and on `uav16_elsewhere` at the frozen threshold: no higher
+>    than `it19_colour` plus 0.05. Neither model trains on these recordings.
+> Passing all six: the model is proposed for `Complete_Test_Gui`. The four training negatives are
+> few (822 s); if the result turns on them, say so.
+
+## 206 - The pool keeps only UAV16's plain-environment negatives; two false-alarm sets
+
+- Date: 2026-11-11
+- Iteration: 22
+- Type: Data
+- Commit: this entry's commit, on top of d7fe174 (branch `iteration-21-uav16`)
+
+**What changed.** `src/dad/rangerun.py`: `_uav16_out` replaces `_uav16_held`. A UAV16 background
+trains only if its id is in `U16_PLAIN`; the others go to `unseen["uav16_confusers"]` (ids starting
+`rec-undated`) or `unseen["uav16_elsewhere"]`. `evaluate_chain` already reports `deploy_fa` for a
+set with background windows, so `scripts/run_range.py` is unchanged. The manifest is unchanged: no
+re-preparation. With this commit `make_pool_arm` no longer builds iteration 21's arm; that arm is
+at cd20af0.
+
+**Why.** Iteration 22's box.
+
+**How.** `tests/test_rangerun.py`: the pool test now covers the three left-out sets, and a new test
+checks `evaluate_chain` on a set without drones (`deploy_fa` 0.25 for 10 of 40 windows above the
+threshold). `.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_rangerun.py`: 10 passed
+(macOS).
+
+**Result.** No training yet.
+
+**Next.** On the server: `it22_plain_s0-2` with entry 203's command, `it22_ref_s0-2` with
+`--load-from it19_colour_sS`, and `scripts/it19_colour_check.py` on the new runs.
 

@@ -94,13 +94,23 @@ def _rec(source, rid, label, subset="", session="s"):
                      attributes={"session": session})
 
 
-def test_uav16_trains_in_the_pool_except_its_held_batches():
-    m = [_rec("nightjar", "n1", 1), _rec("uav16", "u1", 1, "train"), _rec("uav16", "u2", 0, "train"),
-         _rec("uav16", "u3", 1, "held"), _rec("lund", "l1", 1)]
+def test_uav16_trains_in_the_pool_except_held_batches_and_all_but_the_plain_backgrounds():
+    m = [_rec("nightjar", "n1", 1), _rec("uav16", "u1", 1, "train"), _rec("uav16", "rec-undated-0002", 0, "train"),
+         _rec("uav16", "u3", 1, "held"), _rec("lund", "l1", 1), _rec("uav16", "rec-undated-0007", 0, "train"),
+         _rec("uav16", "rec-20261012-0001", 0, "train")]
     arm = rg.make_pool_arm(m, "none")
-    assert {r.recording_id for r in arm.train} == {"n1", "u1", "u2"}
-    assert [r.recording_id for r in arm.unseen["uav16"]] == ["u3"]
-    assert "uav16" not in rg.make_pool_arm(m[:1] + m[4:], "none").unseen   # a manifest without it is unchanged
+    assert {r.recording_id for r in arm.train} == {"n1", "u1", "rec-undated-0002"}
+    assert {k: [r.recording_id for r in v] for k, v in arm.unseen.items() if k != "lund"} == {
+        "uav16": ["u3"], "uav16_confusers": ["rec-undated-0007"], "uav16_elsewhere": ["rec-20261012-0001"]}
+    assert set(rg.make_pool_arm([m[0], m[4]], "none").unseen) == {"lund"}   # a manifest without it is unchanged
+
+
+def test_evaluate_chain_reports_false_alarms_for_a_set_without_drones():
+    recs = [_rec("uav16", "rec-undated-0007", 0)]
+    cw = ch.ChainWindows(recs, np.zeros(40, int), np.arange(40) * 8000, np.zeros(40, int), np.full(40, np.nan),
+                         np.full(40, "s", dtype=object))
+    out = rg.evaluate_chain(rg.Scored(cw, np.r_[np.full(10, 0.9), np.full(30, 0.1)]), 0.5, 1.0)
+    assert out["deploy_fa"] == 0.25
 
 
 def test_prepare_uav16_keeps_one_channel_and_skips_the_replays(tmp_path, monkeypatch):

@@ -82,9 +82,21 @@ def make_arm(manifest: list[Recording], test_chain: str) -> Arm:
     )
 
 
-def _uav16_held(r: Recording) -> bool:
-    """Iteration 21: two UAV16 acquisition batches never train; they are scored for recall."""
-    return r.source == "uav16" and r.subset == "held"
+# Iteration 22: of UAV16's 28 backgrounds only the four "pure environment" recordings are rig
+# negatives. The rest are drone-like sources (fans, exhaust pipes, a car) and other places
+# (entry 205); they never train and are scored for false alarms.
+U16_PLAIN = frozenset(f"rec-undated-000{i}" for i in (1, 2, 3, 4))
+
+
+def _uav16_out(r: Recording) -> str:
+    """'' if the recording may train, else the name of the set it is scored in."""
+    if r.source != "uav16":
+        return ""
+    if r.label == 1:
+        return "uav16" if r.subset == "held" else ""
+    if r.recording_id in U16_PLAIN:
+        return ""
+    return "uav16_confusers" if r.recording_id.startswith("rec-undated") else "uav16_elsewhere"
 
 
 UNITS = ("nightjar", "d3set", "fpv:ariel_25.02", "fpv:palmahim_10.02", "fpv:palmahim_27.05")
@@ -100,7 +112,8 @@ def make_pool_arm(manifest: list[Recording], held: str) -> Arm:
     Units are Nightjar, d3set and the three FPV campaigns (the phones of one
     campaign recorded the same flights, entry 033, so a campaign is one unit).
     Glasgow always trains, and so does UAV16 when the manifest has it (iteration
-    21), except its two held batches, which are scored for recall. Validation (the deployment threshold) comes from
+    21), except its two held batches, which are scored for recall, and all but four
+    of its backgrounds, which are scored for false alarms (iteration 22). Validation (the deployment threshold) comes from
     the Nightjar and d3set validation sessions that are in training. Lund is
     scored for recall only.
 
@@ -110,18 +123,20 @@ def make_pool_arm(manifest: list[Recording], held: str) -> Arm:
     if held != "none" and held not in UNITS:
         raise ValueError(f"unknown unit {held!r}; expected one of {UNITS} or 'none'")
     pool = [r for r in manifest if r.source in ("nightjar", "d3set", "fpv", "glasgow", "uav16")
-            and ch.session(r) not in CONFUSER and not _uav16_held(r)]
+            and ch.session(r) not in CONFUSER and not _uav16_out(r)]
     train = [r for r in pool if _unit(r) != held]
     by = collections.defaultdict(list)
+    out16: dict[str, list[Recording]] = collections.defaultdict(list)
     for r in manifest:
         by[r.source].append(r)
+        if _uav16_out(r):
+            out16[_uav16_out(r)].append(r)
     return Arm(
         name=f"hold out {held}", train_chain="pool", test_chain=held,
         train=[r for r in train if not _is_val(r)], val=[r for r in train if _is_val(r)],
         test=[r for r in pool if _unit(r) == held],
         confuser=[r for r in by["nightjar"] if ch.session(r) in CONFUSER],
-        unseen={"lund": [r for r in by["lund"] if ch.session(r) not in LUND_SUSPECT]}
-        | ({"uav16": held16} if (held16 := [r for r in by["uav16"] if _uav16_held(r)]) else {}),
+        unseen={"lund": [r for r in by["lund"] if ch.session(r) not in LUND_SUSPECT]} | out16,
     )
 
 
