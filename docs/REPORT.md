@@ -37,6 +37,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 18 | 159 to 161 | It9B: the it9 CRNN with drone windows weighted 2 in the loss, threshold at 10% false alarms | Mads wants higher confidence with a drone in the virtual tests, accepting worse separation; the requirements are now judged in confidence (entry 159) | **Hypothesis holds.** Mean score up on every window: drone +0.05 to +0.13, no drone +0.10 to +0.17 (mower alone 0.44 to 0.60); recall at matched false alarms unchanged (0.789 against 0.790). Added to the GUIs as "It9B"; war soundscape not measured yet. |
 | Iteration 19 | 169 to 171 | Pink (-3 dB/oct) and brown (-6 dB/oct) noise as 15% of the no-drone training windows, on the `600k` arm of iteration 16 | Mads's request; the networks alarm on pink and brown noise, which no planned test contains; iteration 11's broader steady noise fixed it but halved Lund recall | **Fails narrowly on Lund recall.** Pink and brown alarms to 0% for both networks (DS-CNN was 74% on pink), mower false alarms down (CRNN 0.171 to 0.112, DS-CNN 0.149 to 0.053), validation unchanged, but Lund recall -0.04 (limit -0.03). `it19 CRNN colour s1` pushed for the virtual tests. 2 s models now usable in Complete_Test_Gui (entry 170). |
 | Iteration 20 | 172 to 173, 192 to 193 | Optional bandpass (Butterworth 80 Hz - 6 kHz) and Wiener gain (noise median across frequency) on the power spectrum before the mel bank; CPU gates before any training | Mads asked for a bandpass and a Wiener filter; the frontend has no noise suppression, and steady noise reads as drone | **Both fail; the frozen frontend stays.** Council (entry 172): Wiener against best practice, tried only as a gated ablation. Wiener fails its CPU gate (entry 173): 66% of drone line bins kept at 0 dB SNR (80% required), 34% at -10 dB; rig background only 2.3 dB lower. The bandpass mainly removes 6-8 kHz; trained on the `600k` arm, three seeds (entry 192): Lund recall DS-CNN +0.058, CRNN +0.028 (bar +0.07), but mower false alarms 0.149 to 0.395 and 0.171 to 0.357, brown noise alarms up. The 6-8 kHz band seems to trade range against confuser rejection (untested). PCEN is the next frontend candidate. The six bandpass models are in the test GUIs for the virtual tests (entry 193). |
+| Iteration 21 | 200 to 201 (open) | A fifth rig in the training pool: UAV16 (Zenodo 23613504; DJI Flip hovering at 5-70 m over a 16-microphone ground array, with 28 background recordings from the same array), on iteration 19's `simdist_colour` recipe | Marius's request (2026-11-11) to retrain the colour model with the new dataset; `docs/datasets.md` names same-rig drone and no-drone audio as the most valuable addition | **Not run yet.** Preparation step and pool change written and unit-tested on this Mac; nothing prepared or trained on the server. |
 
 ## Templates
 
@@ -11778,3 +11779,152 @@ The user could not see every model: the setup page's detector ticks stood on one
 - Not checked: the GUI window itself. `uv run pytest` not run: no test imports these files.
 
 **Server.** The server clone (`~/ct_9_11`, bd7192a) does not have this change. A plan with `car_once` needs the updated engine there and the render `cars_<speed>kmh_<dist>m_20s_e0_<hash>.wav` uploaded (no Pure Data on the server), as in entries 176 and 187.
+
+# Iteration 21 - A fifth rig in the pool: the 16-channel DJI Flip dataset (UAV16)
+
+> **Changed from iteration 19 (`it19_colour`):** the training pool gains one source, `uav16`
+> (Zenodo 10.5281/zenodo.23613504): its DJI Flip hover recordings as positives and its 28 field
+> background recordings as that rig's negatives. One channel of the 16 is used. Two acquisition
+> batches (`batch-20260522`, quiet; `batch-20260701`, urban; 24 recordings each) never train and
+> are scored for recall. The 45 loudspeaker replays of FSD50K clips are not used at all.
+> **Why:** Marius's request (2026-11-11): retrain the colour model with the new dataset.
+> `docs/datasets.md` ("Known gap") names drone and no-drone audio from one recording setup as the
+> most valuable addition. The pool has that from Nightjar, d3set and the FPV campaigns only.
+> **Kept the same:** iteration 19's `600k` colour arm: recipe `simdist_colour`, pool arm `none`,
+> speed 0.8-1.25, MFE 64 mel, 1 s window, 600,000 training windows, DS-CNN and CRNN, seeds 0-2,
+> threshold frozen at 5% false alarms on validation. Validation is unchanged (the Nightjar and d3set
+> validation sessions), so thresholds stay comparable. Under `simdist_colour` only positives nearer
+> than 50 m slant range train, so the 50 m and 70 m recordings are not drawn.
+> **Hypothesis:** a fifth rig with its own negatives raises recall on recordings of that rig the
+> model never trained on, without costing the readouts iteration 19 was judged on.
+> **Judged by** (seed means, per network, against `it19_colour_s0-2` re-scored with the same code
+> through `--load-from`):
+> 1. Recall on the two held UAV16 batches at the frozen threshold: higher than `it19_colour`.
+> 2. Lund recall at the frozen threshold: no lower than `it19_colour` minus 0.03.
+> 3. Validation recall at the frozen threshold: no lower than `it19_colour` minus 0.02.
+> 4. Mower-only false alarms at the frozen threshold: no higher than `it19_colour` plus 0.05.
+> 5. Pink and brown alarms (`scripts/it19_colour_check.py`): at most 5%.
+> Passing all five: the model is proposed for `Complete_Test_Gui`. Readout 1 is the same rig on
+> other days, not an unseen rig; Lund is the unseen-rig readout. ITU ARIS is not scored in this
+> iteration unless Mads, Nicolai or Marius asks for it on the finished model.
+
+## 200 - A new dataset: UAV16 (Zenodo 23613504), found, downloaded and extracted on the server
+
+- Date: 2026-11-09 to 2026-11-11
+- Iteration: 21
+- Type: Data
+- Commit: uncommitted, on top of 73afe12
+
+**What changed.** A web search (2026-11-09) for drone audio the project does not have turned up
+"A 16-Channel Acoustic Dataset for Passive Ground-Based Monitoring of Small Drones" (Wang, Chen,
+Chen, Liu; Southeast University and Shanghai Dianji University; published 2026-10-24, v1.1.0, CC BY
+4.0). Marius downloaded the base archive and the maintenance patch on the JupyterLab server
+(account `mariusq`) to `~/data/UAV16_Zenodo23613504/` and extracted both, base first, to
+`~/data/extracted/UAV16/`. Provenance is in `docs/datasets.md`.
+
+**Why.** Marius asked for further drone datasets. This one has drone and no-drone recordings from
+one array, which `docs/datasets.md` lists as the known gap.
+
+**How.** Download with `wget -c`, then `md5sum -c` against Zenodo's checksums; extraction with
+`python3 -m zipfile -e`. Both were run by Marius in a server terminal. The facts below were read
+from `dataset/metadata/recordings.csv`, `dataset/README.md` and three recording JSON files through
+the JupyterLab contents API on 2026-11-11.
+
+**Result.** From `recordings.csv` (273 rows, all `is_duplicate_file` false, 272 `pass` and 1
+`pass_with_warning`):
+
+| Part | Recordings | Seconds | Notes |
+|---|---|---|---|
+| DJI Flip, hover, `quiet_outdoor` | 120 | 11,900 | 5 batches (2026-04-25 to 05-22), 24 each: 6 distances (5-70 m) x 4 heights (5-30 m) |
+| DJI Flip, hover, `urban_outdoor` | 80 | 7,312 | 3 batches (2026-05-25, 07-01, 07-02): 5 distances (5-50 m) x 4 heights |
+| Field background | 28 | 5,993 | 12 undated; 16 from 2026-10-12/13: crossroad, campus gate, roundabout, wind in trees, 2 `quiet_indoor` |
+| Loudspeaker replays of FSD50K (CC0) clips | 45 | 792 | 10 categories; the FSD50K id is in each JSON |
+
+48 kHz, 16-bit, 16 mono WAV files per recording, array 0.25 m above ground, Nanjing.
+
+**Assessment.**
+- The backgrounds are from the same array but not from the drone sessions: the drone batches are
+  April to July 2026, the dated backgrounds October 2026. Same rig, other days.
+- One drone type, hover only. Nothing here resembles test 2's approaching drone.
+- The replays are FSD50K clips. Whether any is from FSD50K eval (a held-out test source) was not
+  checked, so none is used.
+- Not verified by Claude: the `md5sum -c` result (Marius reported the download as done), the WAV
+  count (4,368 expected), `scripts/audit_release.py`, and the levels. Marius found the audio very
+  quiet by ear; the level was not measured.
+
+**Next.** Entry 201.
+
+## 201 - UAV16 preparation step and pool membership
+
+- Date: 2026-11-11
+- Iteration: 21
+- Type: Data
+- Commit: uncommitted, on top of 73afe12: `scripts/prepare_new_data.py`, `src/dad/rangerun.py`,
+  `tests/test_rangerun.py`
+
+**What changed.**
+- `scripts/prepare_new_data.py`: step `uav16` reads `data/extracted/UAV16/dataset`. One manifest row
+  per self-collected recording (channel 0, polyphase resampling to 16 kHz, int16 store `uav16.i16`;
+  no gain, filtering or mixing). Drone rows carry `range_m` = the slant range from the nominal
+  horizontal distance and height (7.1 to 76.2 m), so `chains.range_at` treats them like Glasgow.
+  `session` is the acquisition batch. `subset` is `held` for `batch-20260522` and
+  `batch-20260701`, else `train`. Rows with `data_origin` other than `self_collected` are skipped.
+- `src/dad/rangerun.py`: `make_pool_arm` adds `uav16` to the pool, keeps its `held` rows out of
+  training and scores them as `unseen["uav16"]`. A manifest without `uav16` gives the same arm as
+  before.
+
+**Why.** Iteration 21's box.
+
+**How.** Two tests in `tests/test_rangerun.py`: pool membership with and without `uav16` rows, and
+the step on three made-up recordings (one drone, one background, one replay).
+`.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_rangerun.py tests/test_sealed.py tests/test_steady.py`:
+45 passed (macOS).
+
+**Result.** No data prepared and nothing trained. The step has not read the real files.
+
+**Assessment.** Two things stand between this and the training run, both on the server account
+`mariusq`:
+- its clone `~/drone-acoustic-detection` dates from 2026-11-04 to 11-06: no `simdist_colour`, no
+  `src/dad/sealed.py`;
+- its `data/processed/` holds `nightjar.i16`, `d3set.i16`, `fsd50k.i16` and `ddl.f32` only. The
+  manifest lists `fpv.i16`, `lund.f32`, `dronenoise.f32` and `halmstad.i16`, which are not there,
+  and has no Glasgow rows. `it19_colour` was trained from another clone that has them (entry 171).
+Marius chose the full pool (2026-11-11), so the stores must come from that clone.
+
+**Next.** On the server, with current code and the full store:
+```
+.venv/bin/python -I scripts/prepare_new_data.py uav16
+CUDA_VISIBLE_DEVICES=S .venv/bin/python -u scripts/run_range.py --name it21_uav16_sS --pool --arms none \
+    --recipes simdist_colour --models dscnn crnn --device cuda --windows 600000 --speed 0.8 1.25 \
+    --deploy-fa 0.05 --seed S --frontend mfe                                  # S = 0, 1, 2
+CUDA_VISIBLE_DEVICES=S .venv/bin/python -u scripts/run_range.py --name it21_ref_sS --load-from it19_colour_sS \
+    (same arguments)                                                          # the reference, re-scored
+```
+
+## 202 - The training stores copied from Mads's server account; correction to entry 201 on Glasgow
+
+- Date: 2026-11-11
+- Iteration: 21
+- Type: Data
+- Commit: uncommitted, on top of 73afe12
+
+**What changed.** From the account `jupyter-mads`, every `*.i16`, `*.f32`, `*.csv` and `*.json` in
+`~/drone-acoustic-detection/data/processed/` was copied to `/tmp/dad_store_mads/` and made
+world-readable, so the account `jupyter-mariusq` can read it. `cp` and `chmod`, run in a server
+terminal by the users.
+
+**Result.** `ls -la /tmp/dad_store_mads` (2026-11-11 09:35): `d3set.i16` 264,420,040 bytes,
+`ddl.f32` 380,672,896, `dronenoise.f32` 227,200,000, `fpv.i16` 465,596,704, `fsd50k.i16`
+10,289,517,900, `halmstad.i16` 28,480,178, `lund.f32` 347,549,236, `nightjar.i16` 305,484,000,
+`manifest.csv` 7,758,851, `manifest_before_sealed_car_removed.csv` 7,759,023, `range_track.csv`
+9,208,678, `ddl_clips.csv`, `summary.json`. The four stores `mariusq` already had are the same
+size as these; their contents were not compared yet.
+
+**Correction to entry 201.** Entry 201 says the clone that trained `it19_colour` has the Glasgow
+store. Mads's `data/processed/` has no `glasgow.i16`. Whether its manifest has Glasgow rows was not
+read, but without the store they could not have trained. So the pool of `it19_colour` was Nightjar,
+d3set and the FPV campaigns, and iteration 21 trains on those plus `uav16`. The box's "kept the
+same" holds as written: the same store is used.
+
+**Next.** Put the four missing stores and Mads's `manifest.csv` into the `mariusq` clone, compare
+the four shared stores byte for byte, and bring the clone's code to the current commit.

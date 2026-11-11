@@ -299,3 +299,31 @@ applies to them.
 request and writes `data/processed/stems/sealed_car/fsd50k_eval_278188.wav` with a `source.json` beside it. It is kept out
 of `stems/manifest.csv`, is only for The Final Evaluation in `scripts/Complete_Test_Gui.py`, and is never for training or
 tuning (`src/dad/sealed.py`). See report entry 174.
+
+## Added on 2026-11-11: UAV16, a 16-channel ground array with a DJI Flip
+
+- **Title:** A 16-Channel Acoustic Dataset for Passive Ground-Based Monitoring of Small Drones, v1.1.0
+- **Authors:** Huilong Wang, Peng Chen, Zhimin Chen, Yuye Liu (Southeast University; Shanghai Dianji University)
+- **Source:** https://zenodo.org/records/23613504
+- **DOI:** 10.5281/zenodo.23613504 (published 2026-10-24; maintenance patch 2026-11-09)
+- **Licence:** CC BY 4.0
+- **Files and MD5s** (as published by Zenodo):
+
+  | File | Bytes | MD5 |
+  |---|---|---|
+  | `UAV_Acoustic_Dataset_v1.1.0_Data_and_Experiments_compressed.zip` | 20,351,796,153 | `851a040d0eecb98c984a09555938f9a3` |
+  | `UAV_Acoustic_Dataset_v1.1.0_Maintenance_Patch_20261109.zip` | 55,563,006 | `b48e88e5066366d338fc001fa679f7ff` |
+
+- **Where:** only on the JupyterLab server, account `mariusq`: raw in
+  `~/data/UAV16_Zenodo23613504/`, extracted (base, then the patch over it) in
+  `~/data/extracted/UAV16/`. `scripts/prepare_new_data.py uav16` expects
+  `data/extracted/UAV16/dataset` inside the repo; link it there.
+- **Content, from `metadata/recordings.csv`** (report entry 200): 273 recordings of 16 mono WAVs,
+  48 kHz, 16-bit. 200 DJI Flip hovers (120 quiet outdoor, 80 urban outdoor; 5-70 m horizontal,
+  5-30 m height; 8 acquisition batches from 2026-04-25 to 2026-07-02), 28 field backgrounds
+  (12 undated, 16 from 2026-10-12/13), 45 loudspeaker replays of CC0 FSD50K clips.
+- **Use:** one channel per recording (the microphones are 42.5 mm apart). Split by acquisition
+  batch. The backgrounds are from the same array on other days than the drones. The replays are
+  not used: they are FSD50K clips, and FSD50K eval is a held-out test source.
+- **Not verified here:** the WAV count, the dataset's own audit script and the levels.
+

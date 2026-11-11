@@ -85,3 +85,56 @@ def test_background_wait_is_the_chance_of_an_alarm_without_a_drone():
     lat = rg.ring_latency(rg.Scored(cw, np.array([0, 0, 0, 1, 0, 0.0])), thr=0.5, window_s=1.0, label=0)
     # From 0..4 s: waits 4, 3, 2, 1, then none before the recording ends.
     assert lat["starts"] == 5 and math.isclose(lat["within_2s"], 2 / 5) and math.isclose(lat["never"], 1 / 5)
+
+
+def _rec(source, rid, label, subset="", session="s"):
+    from dad.realdata import Recording
+    return Recording(source=source, recording_id=rid, label=label, kind="drone" if label else "background",
+                     group=f"{source}:{session}", subset=subset, n_samples=16_000, labels="",
+                     attributes={"session": session})
+
+
+def test_uav16_trains_in_the_pool_except_its_held_batches():
+    m = [_rec("nightjar", "n1", 1), _rec("uav16", "u1", 1, "train"), _rec("uav16", "u2", 0, "train"),
+         _rec("uav16", "u3", 1, "held"), _rec("lund", "l1", 1)]
+    arm = rg.make_pool_arm(m, "none")
+    assert {r.recording_id for r in arm.train} == {"n1", "u1", "u2"}
+    assert [r.recording_id for r in arm.unseen["uav16"]] == ["u3"]
+    assert "uav16" not in rg.make_pool_arm(m[:1] + m[4:], "none").unseen   # a manifest without it is unchanged
+
+
+def test_prepare_uav16_keeps_one_channel_and_skips_the_replays(tmp_path, monkeypatch):
+    import csv
+    import json
+    import sys
+    from pathlib import Path
+
+    import soundfile as sf
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    import prepare_data as pd_
+    import prepare_new_data as pn
+
+    root = tmp_path / "dataset"
+    rows = [("rec-a", "ses-1", "self_collected", "true", "30.0", "40.0", "batch-20260522", "real_uav"),
+            ("rec-b", "ses-2", "self_collected", "false", "", "", "batch-undated", "real_background"),
+            ("rec-c", "ses-3", "controlled_replay", "false", "", "", "batch-20261013", "replayed_non_uav")]
+    (root / "metadata").mkdir(parents=True)
+    with open(root / "metadata" / "recordings.csv", "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f)
+        w.writerow(["recording_id", "session_id", "data_origin", "has_uav", "horizontal_distance_m", "height_m",
+                    "acquisition_batch_id", "scene_type", "qc_status", "channel_count", "azimuth_deg",
+                    "nominal_condition_id"])
+        for rid, ses, origin, uav, d, h, batch, folder in rows:
+            w.writerow([rid, ses, origin, uav, d, h, batch, "scene", "pass", 16, "0.0" if d else "", "c"])
+            p = root / "data" / folder / ses / rid
+            p.mkdir(parents=True)
+            sf.write(str(p / f"{rid}__ch-00.wav"), np.full(48_000, 0.01), 48_000, subtype="PCM_16")
+    monkeypatch.setattr(pn, "U16_ROOT", root)
+    monkeypatch.setattr(pd_, "OUT", tmp_path)
+    manifest, summary = [], {}
+    pn.prepare_uav16(manifest, [], summary)
+    assert [(r["recording_id"], r["label"], r["subset"], r["n_samples"]) for r in manifest] == [
+        ("rec-a", 1, "held", 16_000), ("rec-b", 0, "train", 16_000)]
+    assert json.loads(manifest[0]["attributes"])["range_m"] == 50.0      # hypot(30, 40)
+    assert summary["uav16"]["replay_skipped"] == 1
+    assert (tmp_path / "uav16.i16").stat().st_size == 2 * 16_000 * 2

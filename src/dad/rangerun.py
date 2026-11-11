@@ -82,6 +82,11 @@ def make_arm(manifest: list[Recording], test_chain: str) -> Arm:
     )
 
 
+def _uav16_held(r: Recording) -> bool:
+    """Iteration 21: two UAV16 acquisition batches never train; they are scored for recall."""
+    return r.source == "uav16" and r.subset == "held"
+
+
 UNITS = ("nightjar", "d3set", "fpv:ariel_25.02", "fpv:palmahim_10.02", "fpv:palmahim_27.05")
 
 
@@ -94,7 +99,8 @@ def make_pool_arm(manifest: list[Recording], held: str) -> Arm:
 
     Units are Nightjar, d3set and the three FPV campaigns (the phones of one
     campaign recorded the same flights, entry 033, so a campaign is one unit).
-    Glasgow always trains. Validation (the deployment threshold) comes from
+    Glasgow always trains, and so does UAV16 when the manifest has it (iteration
+    21), except its two held batches, which are scored for recall. Validation (the deployment threshold) comes from
     the Nightjar and d3set validation sessions that are in training. Lund is
     scored for recall only.
 
@@ -103,8 +109,8 @@ def make_pool_arm(manifest: list[Recording], held: str) -> Arm:
     """
     if held != "none" and held not in UNITS:
         raise ValueError(f"unknown unit {held!r}; expected one of {UNITS} or 'none'")
-    pool = [r for r in manifest if r.source in ("nightjar", "d3set", "fpv", "glasgow")
-            and ch.session(r) not in CONFUSER]
+    pool = [r for r in manifest if r.source in ("nightjar", "d3set", "fpv", "glasgow", "uav16")
+            and ch.session(r) not in CONFUSER and not _uav16_held(r)]
     train = [r for r in pool if _unit(r) != held]
     by = collections.defaultdict(list)
     for r in manifest:
@@ -114,7 +120,8 @@ def make_pool_arm(manifest: list[Recording], held: str) -> Arm:
         train=[r for r in train if not _is_val(r)], val=[r for r in train if _is_val(r)],
         test=[r for r in pool if _unit(r) == held],
         confuser=[r for r in by["nightjar"] if ch.session(r) in CONFUSER],
-        unseen={"lund": [r for r in by["lund"] if ch.session(r) not in LUND_SUSPECT]},
+        unseen={"lund": [r for r in by["lund"] if ch.session(r) not in LUND_SUSPECT]}
+        | ({"uav16": held16} if (held16 := [r for r in by["uav16"] if _uav16_held(r)]) else {}),
     )
 
 
