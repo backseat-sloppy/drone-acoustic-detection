@@ -29,6 +29,7 @@ import collections
 import functools
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 
@@ -131,6 +132,25 @@ class Recipe:
     steady_neg: float = 0.0                      # share of negatives that are steady noise alone (iteration 11)
     steady_mask: float = 0.0                     # share of positives with steady noise under the drone
     steady_slopes: tuple | None = None           # only slope noise at these dB/octave, no phase copies (iteration 19)
+    veh_neg: float = 0.0                         # share of negatives that are a road vehicle over a rig background (iteration 21)
+    veh_mask: float = 0.0                        # share of positives with a road vehicle under the drone
+
+
+# Iteration 21: FSD50K labels of road vehicles and their engines.
+VEHICLE = frozenset({"Vehicle", "Motor_vehicle_(road)", "Car", "Car_passing_by", "Engine", "Engine_starting", "Idling",
+                     "Accelerating_and_revving_and_vroom", "Truck", "Bus", "Motorcycle", "Race_car_and_auto_racing"})
+# FSD50K dev clips the tests play: the six engines of the cars layer (scripts/fetch_car_engines.py) and the 36
+# dev clips behind data/processed/stems (war track, distracters). A vehicle recipe never trains on them.
+TEST_CLIPS = frozenset("""369049 369053 387676 387677 387679 401552
+    101961 130974 156223 156499 156500 157611 160773 161886 164306 166717 171475 181071 184275 187294 187676 187767
+    188708 233783 262278 267973 273214 3185 345994 362665 367175 369482 387829 403316 417688 426161 426165 431473
+    431739 55035 97595 98648""".split())
+
+
+def vehicle_pools(fsd: list[Recording]) -> tuple[list[Recording], list[Recording]]:
+    """(FSD50K training clips without the ones a test plays, the road vehicles among them)."""
+    fsd = [r for r in fsd if Path(r.recording_id).stem not in TEST_CLIPS]
+    return fsd, [r for r in fsd if VEHICLE.intersection(r.labels.split(","))]
 
 
 RECIPES = {
@@ -141,6 +161,8 @@ RECIPES = {
     # Iteration 19: pink (-3 dB/oct) and brown (-6 dB/oct) noise as 15% of the negatives, never under a drone.
     "simdist_colour": Recipe("simdist_colour", {(0, 50): 1.0}, sim_share=0.80, steady_neg=0.15,
                              steady_slopes=(-3.0, -6.0)),
+    # Iteration 21: road vehicles as 25% of the negatives and under 30% of the drones; no clip a test plays.
+    "simdist_veh": Recipe("simdist_veh", {(0, 50): 1.0}, sim_share=0.80, veh_neg=0.25, veh_mask=0.30),
 }
 
 
@@ -221,6 +243,9 @@ class RangeSampler:
         self.variant = rr.VARIANTS["buried"]
         long_cfg = FrontendConfig(window_seconds=n / cfg.sample_rate)
         fsd = [r for r in splits.fsd_train if r.n_samples >= n]   # long enough for the drawn length
+        if recipe.veh_neg or recipe.veh_mask:
+            fsd, veh = vehicle_pools(fsd)
+            self.veh = rr.WindowSampler([rr.ddl_pool(splits.ddl_train, n, 50.0)], veh, long_cfg, self.variant, seed)
         self.fsd = rr.WindowSampler([rr.ddl_pool(splits.ddl_train, n, 50.0)], fsd, long_cfg,
                                     self.variant, seed)
 
@@ -286,6 +311,9 @@ class RangeSampler:
         if self.recipe.steady_neg or self.recipe.steady_mask:
             parts.append(f"steady noise: {self.recipe.steady_neg:.0%} of negatives, "
                          f"under {self.recipe.steady_mask:.0%} of positives")
+        if self.recipe.veh_neg or self.recipe.veh_mask:
+            parts.append(f"road vehicles ({len(self.veh.neg)} clips): {self.recipe.veh_neg:.0%} of negatives, "
+                         f"under {self.recipe.veh_mask:.0%} of positives")
         return "; ".join(parts)
 
     def _norm(self) -> float:
@@ -346,11 +374,21 @@ class RangeSampler:
             m, pm = self.steady(rng)
             snr = rng.uniform(*self.variant.snr_db)
             x = x + m * math.sqrt(pd / (max(pm, 1e-20) * 10.0 ** (snr / 10.0)))
+        if self.recipe.veh_mask and rng.random() < self.recipe.veh_mask:
+            # A road vehicle under the drone, drone over vehicle at the buried range of in-band SNR.
+            m, pm = self.veh._background(rng)
+            snr = rng.uniform(*self.variant.snr_db)
+            x = x + m * math.sqrt(pd / (pm * 10.0 ** (snr / 10.0)))
         return x
 
     def negative(self, rng: np.random.Generator) -> np.ndarray:
         if self.recipe.steady_neg and rng.random() < self.recipe.steady_neg:
             return self.steady(rng)[0]
+        if self.recipe.veh_neg and rng.random() < self.recipe.veh_neg:
+            # A road vehicle over a rig background, vehicle over background at the same range.
+            a, pa = self._rig_background(rng)
+            v, pv = self.veh._background(rng)
+            return a + v * math.sqrt(pa * 10.0 ** (rng.uniform(*self.variant.snr_db) / 10.0) / pv)
         u = rng.random()
         if u < self.rig_neg_share:
             k = min(int(np.searchsorted(np.cumsum(self._rig_share), u, side="right")), len(self._rig_names) - 1)

@@ -37,6 +37,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 18 | 159 to 161 | It9B: the it9 CRNN with drone windows weighted 2 in the loss, threshold at 10% false alarms | Mads wants higher confidence with a drone in the virtual tests, accepting worse separation; the requirements are now judged in confidence (entry 159) | **Hypothesis holds.** Mean score up on every window: drone +0.05 to +0.13, no drone +0.10 to +0.17 (mower alone 0.44 to 0.60); recall at matched false alarms unchanged (0.789 against 0.790). Added to the GUIs as "It9B"; war soundscape not measured yet. |
 | Iteration 19 | 169 to 171 | Pink (-3 dB/oct) and brown (-6 dB/oct) noise as 15% of the no-drone training windows, on the `600k` arm of iteration 16 | Mads's request; the networks alarm on pink and brown noise, which no planned test contains; iteration 11's broader steady noise fixed it but halved Lund recall | **Fails narrowly on Lund recall.** Pink and brown alarms to 0% for both networks (DS-CNN was 74% on pink), mower false alarms down (CRNN 0.171 to 0.112, DS-CNN 0.149 to 0.053), validation unchanged, but Lund recall -0.04 (limit -0.03). `it19 CRNN colour s1` pushed for the virtual tests. 2 s models now usable in Complete_Test_Gui (entry 170). |
 | Iteration 20 | 172 to 173, 192 to 193 | Optional bandpass (Butterworth 80 Hz - 6 kHz) and Wiener gain (noise median across frequency) on the power spectrum before the mel bank; CPU gates before any training | Mads asked for a bandpass and a Wiener filter; the frontend has no noise suppression, and steady noise reads as drone | **Both fail; the frozen frontend stays.** Council (entry 172): Wiener against best practice, tried only as a gated ablation. Wiener fails its CPU gate (entry 173): 66% of drone line bins kept at 0 dB SNR (80% required), 34% at -10 dB; rig background only 2.3 dB lower. The bandpass mainly removes 6-8 kHz; trained on the `600k` arm, three seeds (entry 192): Lund recall DS-CNN +0.058, CRNN +0.028 (bar +0.07), but mower false alarms 0.149 to 0.395 and 0.171 to 0.357, brown noise alarms up. The 6-8 kHz band seems to trade range against confuser rejection (untested). PCEN is the next frontend candidate. The six bandpass models are in the test GUIs for the virtual tests (entry 193). |
+| Iteration 21 | 206 to 208 | A development copy of test 1 from Lund and Halmstad drones (`scripts/dev_test.py`), with a pinned comparison and an AUC; then road vehicles from FSD50K dev as 25% of the negatives and under 30% of the drones, on the `600k` arm | Test 1 fails on cars (entry 179), iterations 16-20 were judged on proxies of deleted requirements, and ITU ARIS may not steer design | **Fails its box.** Council (entry 206). The copy reproduces the car failure (it9 CRNN 76.6 % on cars alone) but not the CRNN's lead over the DS-CNN on ITU ARIS (entry 207). Vehicle negatives cut confidence on cars alone from 64 to 36 % (CRNN, pinned), but "with cars" only by 6.9 points (10 required), and the CRNN's AUC in war falls 0.930 to 0.916 (entry 208). Found on the way: the car layer renders without its engines silently, and the sealed car's manifest row stopped every run on the server. |
 
 ## Templates
 
@@ -11968,3 +11969,328 @@ The percentage may go over 100, which puts the threshold above the highest peak.
 - Why the onset peak is higher with wind was not examined.
 
 **Assessment.** "Wind on is better" is an artefact. It comes from the clip's abrupt onset combined with the first-alarm rule, not from the wind helping detection. The onset of a cut clip is not something a real approaching drone has. Reading the time before impact needs the stays-above rule beside the first-alarm one, or a fade-in on the clips.
+# Iteration 21 - Car rejection, judged on a development copy of test 1
+
+> **Changed from iteration 20:** two things, in order. First the yardstick: candidates are judged in
+> confidence on a development copy of test 1 (`REQUIREMENTS.md`), built with the complete-test engine from
+> drones that no model trained on and that are not ITU ARIS (Lund, Halmstad). Then one training change on
+> iteration 16's `600k` arm: FSD50K dev vehicle and engine clips as negatives and under drones.
+> **Why:** the one test 1 run that exists (entry 179) holds against the war soundscape (drone 66-85 %, no
+> drone 0.1-7 %) and fails on cars: 59-81 % confidence with no drone for the it9 CRNN. Iterations 16-20 were
+> judged on Lund recall, mower false alarms and validation recall at a frozen threshold, which say nothing
+> about confidence in the three tests (entry 159). The only figures in the requirements' own unit come from
+> ITU ARIS, which may not steer design (`CLAUDE.md` section 5), and entry 180 already let it rank models.
+> **Kept the same:** MFE frontend, 1 s window, CRNN and DS-CNN, `simdist`, speed 0.8-1.25, 600,000 windows,
+> seeds 0-2, `it16_600k` as the reference. ITU ARIS is not scored in this iteration.
+> **Hypothesis:** (1) the development test reproduces what is already known: CRNNs above DS-CNNs on drone
+> confidence in war, and `600k` CRNNs below the it9 CRNN on no-drone confidence with cars. (2) With vehicle
+> clips in training, no-drone confidence with cars falls without the drone's confidence in war falling, at
+> a matched operating point.
+> **Judged by**, fixed before any number (entry 206 gives the reasons):
+> - Gate for the test itself, on existing checkpoints (it9 CRNN, `it16_600k` CRNN and DS-CNN s0-s2), tune
+>   half: CRNN mean above DS-CNN mean on drone confidence in war; `600k` CRNN mean at least 5 points below
+>   the it9 CRNN on no-drone confidence with cars; seed spread of both figures reported as the noise floor.
+>   If drone confidence on Lund is under 30 % at every level, Lund becomes a side readout and Halmstad
+>   carries the drone figure.
+> - The training arm against `it16_600k`, seed means, tune half. Reported unpinned and pinned (one constant
+>   added to each model's logit so its drone confidence in war on the tune half equals the reference's),
+>   with a figure a constant cannot move beside them: AUC of drone-in-war hops against no-drone hops.
+>   **Pass:** pinned no-drone confidence with cars at least 10 points lower on all three seeds; war-only and
+>   wind no-drone confidence at most 2 points higher; Halmstad helicopter no higher; AUC not lower than the
+>   reference's by more than its seed spread; pinned drone confidence at the two lowest drone levels at
+>   most 3 points lower. **Fail:** otherwise; a gain that disappears when pinned is the operating point
+>   moving again (entry 127).
+> - The confirm half is scored once, for the arm that passes, and that scoring is logged. `comb` is in
+>   every plan; `lgbm` where a saved model exists.
+
+## 206 - Council: a development copy of test 1, a pinned comparison and vehicle negatives
+
+- Date: 2026-11-10
+- Iteration: 21
+- Type: Council
+- Commit: uncommitted, on top of 7242462
+
+**Question.** Should iteration 21 (A) judge candidates on a development copy of test 1 and train a
+vehicle-negative recipe, (B) keep the proxies (Lund recall at the frozen threshold, mower false alarms,
+validation recall), (C) judge on ITU ARIS test 1 directly, or (D) keep the it9 CRNN and change nothing?
+Mads asked for the next best step and said to start it (2026-11-10). This is also the council on the
+evaluation protocol that entry 150 called for.
+
+**Devil's Advocate.** Decisive:
+1. *A works on a tie-breaker, and the pin rewrites the ranking.* Entry 182 ranks strictly on drone
+   confidence in war; no-drone confidence only breaks exact ties. A pin that equalises drone confidence
+   makes criterion 2 the decider. *Partly answered, partly standing.* Every figure is reported unpinned
+   first, in the requirements' order. The pin and the AUC are added readouts, used to tell a better
+   network from a shifted one (entry 161: It9B raises every score with the same separation). Which model
+   ranks first under `REQUIREMENTS.md` stays Mads's and Nicolai's decision; this goes to them.
+2. *The no-drone rounds are the same audio as test 1's, and are built from FSD50K dev clips the arm would
+   train on.* The war track is 18 of 23 FSD50K dev clips (entry 105), the six car engines are FSD50K dev
+   (entry 174). *Answered in the design, with a limit.* The arm's training excludes, by FSD50K id, the six
+   car engines, the sealed car and every clip the war track and the stems were cut from; the exclusion is
+   tested. The development test uses a stretch of the war track that no logged test run used. The cars
+   are still six clips and synthetic pass-bys: a result on them says "these six engines, never trained
+   on", not "cars". The sealed car of The Final Evaluation is the check on another engine. Real car
+   recordings would need Mads.
+
+Serious:
+3. *Halmstad was sealed* (`realrun.Splits.halmstad`), and using it leaves no untouched real source.
+   *Accepted as a cost.* It was scored at frozen thresholds in iteration 7; from this entry on it is
+   development data, split by file into a tune half and a confirm half.
+4. *Five minutes of Halmstad and an often-read Lund against a seed spread of 0.03-0.07 is a noise lottery.*
+   *Built in.* The gate reports the seed spread first; the pass marks sit above it and must hold on all
+   three seeds; nothing is chosen between single seeds.
+5. *The arm repeats iteration 12's logged negative result.* *Stands.* What differs is 600,000 windows and a
+   readout that a shifted operating point cannot pass. The prior that it only shifts is real.
+6. *Test 1 as specified (35 drones, war at 90 dB SPL, drone 60-100 dB SPL) has never been run, and test 2
+   has one result.* *Stands, for Mads and Nicolai.* Those are ITU ARIS scorings of finished models.
+
+Weak: compute cost; helicopter in both training negatives and the Halmstad distractor; a mean of
+sigmoids matched by a constant does not match the distribution.
+
+**Scholar** (context-free). Standard practice is to select on a development set that mirrors the final
+test's protocol and metric and is source-disjoint from it, then score the sealed set once. Over-fitting the
+selection criterion can be as large as the differences between methods, and a noisy criterion is itself a
+risk (Cawley and Talbot, JMLR 2010, checked). Placement: A standard; B defensible but mismatched, to keep as
+a secondary check; C against practice; D against practice if the proxies do not track the metric. A mean
+raw score mixes discrimination with bias: report a bias-invariant statistic beside it, or calibrate on
+development data with a monotone map and never on the sealed set (Brümmer and du Preez 2006; Ebbers et al.,
+ICASSP 2022; Guo et al., ICML 2017; checked from search summaries, not full texts). Hard negatives of the
+confusable class, also under positives, are the standard remedy; the pitfalls are learning the few
+recordings instead of the class, a prior shift that looks like a gain on a mean score, and lost recall on
+unseen targets with similar harmonics. Sharing background and distractor files between the twin and the
+final test is a real leak, milder than sharing targets: use other files, or disjoint time segments, never
+train on either, and say so.
+
+*Departure from best practice and why:* the twin shares the war track and the six car engines with test 1,
+because no other war soundscape or car layer exists in the project. It is mitigated as in point 2 and
+stated with every result.
+
+**Problem Solver.** Verdict: *try a modified version.* Validate the copy on existing checkpoints before
+trusting it; split it by file into a tune half and a confirm half; keep the car-layer engines out of
+training; fit the pin on the tune half, because validation operating points do not transfer (entries
+125-127); log Halmstad's change of status; `comb` and `lgbm` in every plan. Size: about 600 rounds of 20 s
+(24 drone files x 5 levels x 4 backgrounds, helicopter rounds, no-drone rounds), about 45 CPU minutes for 18
+checkpoints by its estimate, not measured. Confidence: medium; low to medium that vehicle negatives
+improve separation.
+
+**Where they disagree, and the fact it turns on.** The Devil's Advocate says the copy cannot be honest on
+its no-drone half; the Scholar and the Problem Solver say it is the standard move if the files are kept
+apart. It turns on whether the arm trains on the clips the test plays. That is a property of the sampler,
+so it is enforced and tested there.
+
+One check against the repo: the gate compares the copy with the order entry 180 found on ITU ARIS. That
+uses an ITU ARIS result to validate a development tool. It reads no new ITU ARIS figure and chooses no
+model, and it is stated here.
+
+**Decision.** A, modified as the box of iteration 21 states. B's figures stay in the run files as a
+secondary check. C and D are rejected.
+
+## 207 - The development copy of test 1, and its gate on existing models: cars reproduced, the CRNN lead not
+
+- Date: 2026-11-10
+- Iteration: 21
+- Type: Evaluation, Infrastructure
+- Commit: uncommitted, on top of 7242462: new `scripts/dev_test.py`. Run on the server in `~/ct_9_11`, pulled to
+  7242462, with this entry's files uploaded (MD5 of `dev_test.py`, `rangerun.py` and `test_steady.py` equal this
+  PC's).
+
+**What changed.** `scripts/dev_test.py`, the development copy of test 1 of entry 206.
+- Drones (tune half): the 10 s nearest the array in each of 12 Lund recordings (9 to 96 m; `10_flower3` left
+  out, entry 024) and 15 Halmstad drone clips (every second one). The confirm half holds each Lund recording's
+  second nearest 10 s, at least 20 s away, and the other 15 Halmstad clips. It was not scored.
+- Backgrounds from `complete_test_engine`'s own layers: the war soundscape at 90 dB SPL, alone and with wind
+  (Pd, 10 m/s, 50 dB SPL) and cars (Pd, 50 km/h, 30 m, 50 dB SPL), and wind alone and cars alone without a drone.
+  Six 10 s stretches: war track starts 60, 180, 250, 320, 360 and 450 s, which no logged run used, each with
+  one of the six cars' pass-bys.
+- Every drone lies over a whole 10 s stretch at 100, 90, 80, 70 and 60 dB SPL, in two stretches and the four
+  war backgrounds: 1,080 drone rounds. The same stretches without a drone are the 36 no-drone rounds. Fifteen
+  Halmstad helicopters at 80 dB SPL, alone and in war, are 30 more no-drone rounds. 1,146 rounds, 83,658
+  decisions per 1 s model at the 0.125 s hop.
+- `judge` prints mean confidence per condition (each round counted equally), the AUC of drone-in-war hops
+  against war-only hops, the AUC of all drone hops against all no-drone hops, and the same after the pin.
+- Measured drone-over-background SNR in war alone, median per drone level: +16.6, +6.6, -3.4, -13.4 and
+  -23.4 dB. The six war stretches are 79.5 to 91.6 dB SPL, because the level sets the whole track.
+
+**Two faults found on the way.**
+1. *The car layer renders without its engines, silently.* The six engine recordings (entry 157) are not on
+   Mads's PC. `complete_test_engine._cars` then renders six identical pass-bys of tyre noise (correlation 1.0
+   between them) and keeps the file under the usual name. The GUI checks for the engines before offering the
+   layer; a direct call does not. `dev_test.py` refuses to run without the engines or a kept render. A first
+   local run with the tyre-only cars was stopped and its scores are not used. The server holds the render
+   made where the engines were (`cars_50kmh_30m_20s_a2124aaa.wav`, entry 176), and every figure here uses it.
+2. *Since bd7192a nothing that reads the manifest ran on the server.* Its FSD50K store holds the whole eval
+   split, the sealed car (clip 278188) included, and `load_manifest` stops on that row (entry 174's guard).
+   The guard was not changed. The row was removed from the server's derived `data/processed/manifest.csv`
+   (43,938 to 43,937 rows; the old file is kept beside it as `manifest_before_sealed_car_removed.csv`), so
+   the sealed car is no longer in the training store at all. Its audio is still in `fsd50k.i16`, unreferenced.
+   Earlier models were trained from clones older than the guard; whether clip 278188 was ever drawn as an
+   FSD50K eval scoring window was not checked (entry 174 says the same).
+
+**How.** On the server, GPU 0, about 30 s per 1 s model:
+```
+PYTHONPATH=$PWD/src .venv/bin/python -u scripts/dev_test.py run gate --half tune --device cuda --models "it9 CRNN" ...
+PYTHONPATH=$PWD/src .venv/bin/python scripts/dev_test.py judge gate --ref "it16 CRNN 600k"
+```
+Scores per hop: `artifacts/dev_test/gate/<model>.npz`; table: `gate/judge.json`, on the server.
+
+**Result.** Tune half, mean confidence in %, unpinned. "War" columns are the war soundscape alone as
+background. "With cars" is the mean of the three no-drone backgrounds that hold cars.
+
+| Model | Drone in war | same, 60-70 dB SPL | Lund | Halmstad | No drone: war | wind | cars alone | with cars | helicopter | AUC war | AUC all |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| it9 CRNN | 57.3 | 39.2 | 41.4 | 70.0 | 6.0 | 4.4 | 76.6 | 42.0 | 24.3 | 0.902 | 0.777 |
+| It9B | 64.6 | 46.9 | 49.2 | 77.0 | 10.5 | 10.9 | 85.4 | 51.1 | 36.8 | 0.906 | 0.767 |
+| it16 CRNN 600k s0 | 58.4 | 39.9 | 45.1 | 69.0 | 3.1 | 4.8 | 60.0 | 33.0 | 23.8 | 0.932 | 0.798 |
+| it16 CRNN 600k s1 | 60.0 | 41.2 | 47.3 | 70.1 | 2.2 | 2.0 | 62.1 | 32.9 | 23.3 | 0.931 | 0.810 |
+| it16 CRNN 600k s2 | 58.5 | 40.0 | 46.4 | 68.3 | 3.4 | 3.3 | 69.8 | 36.8 | 24.4 | 0.926 | 0.788 |
+| it16 CNN 600k s0 | 60.4 | 40.7 | 48.2 | 70.2 | 1.2 | 1.2 | 66.4 | 31.3 | 26.8 | 0.943 | 0.796 |
+| it16 CNN 600k s1 | 60.7 | 40.7 | 47.8 | 71.1 | 1.0 | 1.4 | 70.3 | 31.7 | 24.8 | 0.943 | 0.797 |
+| it16 CNN 600k s2 | 61.0 | 41.2 | 48.7 | 70.8 | 0.8 | 0.6 | 59.1 | 28.7 | 28.4 | 0.946 | 0.800 |
+| it17 CRNN 2s 600k s0 | 58.1 | 38.3 | 45.5 | 68.1 | 1.1 | 2.5 | 56.4 | 27.0 | 22.0 | 0.936 | 0.796 |
+| it17 CRNN 2s 600k s1 | 58.6 | 38.8 | 46.4 | 68.4 | 2.0 | 0.9 | 65.0 | 33.9 | 18.2 | 0.924 | 0.815 |
+| it17 CRNN 2s 600k s2 | 61.2 | 42.1 | 50.0 | 70.0 | 1.1 | 2.1 | 67.1 | 31.6 | 21.7 | 0.940 | 0.804 |
+| it19 CRNN colour s1 | 60.8 | 42.2 | 48.1 | 70.9 | 4.2 | 5.3 | 74.1 | 39.4 | 26.6 | 0.920 | 0.792 |
+| it20 CRNN bp s0 | 56.9 | 39.1 | 43.1 | 68.0 | 3.3 | 5.2 | 62.5 | 34.2 | 30.0 | 0.932 | 0.770 |
+| it20 CRNN bp s1 | 61.2 | 41.8 | 46.2 | 73.1 | 2.8 | 2.5 | 72.0 | 37.0 | 30.1 | 0.924 | 0.784 |
+| it20 CRNN bp s2 | 59.2 | 40.7 | 46.1 | 69.6 | 3.2 | 2.2 | 77.3 | 38.2 | 29.1 | 0.927 | 0.773 |
+| comb | 6.9 | 2.9 | 3.3 | 9.8 | 1.9 | 31.8 | 15.2 | 6.0 | 12.3 | 0.093 | 0.087 |
+
+comb's AUC under 0.5 means its score is lower with a drone in the war than on the war alone; it is no baseline to
+lean on here. `lgbm` has no saved model in the GUI lists (dropped 2026-10-30) and was not scored.
+
+Pinned to the `600k` CRNNs' mean drone confidence in war (59.0), no drone with cars / cars alone: it9 CRNN
+43.9 / 78.4 (constant +0.1), It9B 44.6 / 80.3 (-0.5), `600k` CRNN 33.8, 31.7, 37.3 / 60.9, 60.6, 70.4,
+`600k` DS-CNN 29.6, 29.6, 26.2 / 63.9, 67.1, 55.5 (-0.2).
+
+**Assessment.** Against the gate of the box:
+- *`600k` CRNN at least 5 points below the it9 CRNN on no-drone confidence with cars:* **met**, 34.2 against
+  42.0 (-7.8), on every seed. Cars alone give the it9 CRNN 76.6 %, the figure entry 179 found (77 %). The
+  no-drone half is the same audio as test 1's, so this agreement shows the copy is built right, not more.
+- *CRNN above DS-CNN on drone confidence in war:* **not met.** `600k` CRNN 59.0, DS-CNN 60.7. On ITU ARIS the
+  CRNNs led by 9 to 14 points (entry 180). On Lund and Halmstad they do not lead at all.
+- *Lund floor:* not reached (41 to 50 % in war), so Lund stays in the drone figure.
+- *Noise floor (range over the three `600k` CRNN seeds):* drone in war 1.6 points, no drone with cars 3.9,
+  cars alone 9.8, AUC war 0.006, AUC all 0.022.
+
+**The gate fails on one of its two orderings.** The copy does not predict the order of network families on
+ITU ARIS drones, so its drone figure is a measure on Lund and Halmstad drones and nothing more. Two readings
+are open and were not separated: the CRNN's lead on ITU ARIS is particular to those ten steady excerpts, or
+Lund and Halmstad miss what makes ITU ARIS hard for the DS-CNN.
+
+Other things the table shows, none of them chosen on:
+- It9B is the it9 CRNN moved up: pinned, the two are within 2 points everywhere, and its AUC is the same
+  (0.906 against 0.902). On the unpinned figures it would rank first under entry 182's strict order.
+- More training is what separates better here: AUC war 0.902 at 200,000 windows against 0.926 to 0.932 at
+  600,000, with no-drone confidence down on war, wind and cars.
+- No model is good on cars: 56 to 85 % confidence on cars alone.
+- Halmstad helicopters draw 18 to 37 %.
+
+**Next.** The vehicle arm (entry 208) is judged as boxed, with this limit on what the drone figure means.
+
+## 208 - Iteration 21 result: vehicle negatives halve the confidence on cars alone, and fail the box
+
+- Date: 2026-11-10
+- Iteration: 21
+- Type: Data, Evaluation
+- Commit: uncommitted, on top of 7242462: `src/dad/rangerun.py`, `tests/test_steady.py`. Server as entry 207.
+
+**What changed.** Recipe `simdist_veh` = `simdist` plus `veh_neg=0.25` and `veh_mask=0.30`.
+- 25% of the negatives are a road vehicle over a rig background, vehicle over background at -5 to +15 dB
+  in-band; 30% of the positives get one under the drone, drone over vehicle at -5 to +15 dB.
+- Vehicles are the FSD50K dev `train` clips labelled Vehicle, Motor vehicle (road), Car, Car passing by,
+  Engine, Engine starting, Idling, Accelerating and revving, Truck, Bus, Motorcycle or Race car: 2,001 clips
+  on the server after the exclusion.
+- `rangerun.TEST_CLIPS`: the six engines of the cars layer and the 36 FSD50K dev clips behind the stems (war
+  track, distracters). With this recipe they are removed from every FSD50K draw, not only the vehicle ones.
+  Other recipes draw as before, so `it16_600k` is unchanged as the reference, and it may have trained on them.
+- Test `test_vehicle_recipe_shares_snr_and_no_test_clip`: the shares, the SNR range, the exclusion, and that
+  `simdist` draws no vehicle. `pytest`: 167 pass on this PC; `test_steady.py` and `test_rangerun.py` pass on
+  the server.
+
+**How.** On the server, one seed per GPU, 1,193 to 1,404 s each, no error in the logs:
+```
+CUDA_VISIBLE_DEVICES=S .venv/bin/python -u scripts/run_range.py --name it21_veh_sS --pool --arms none \
+    --recipes simdist_veh --models dscnn crnn --device cuda --windows 600000 --speed 0.8 1.25 \
+    --deploy-fa 0.05 --seed S --frontend mfe            # S = 0, 1, 2
+.venv/bin/python -u artifacts/dev_test/score_it21.py    # the six checkpoints through dev_test.run, tag gate
+.venv/bin/python scripts/dev_test.py judge gate --ref "it16 CRNN 600k"
+```
+Checkpoints, run files and scores are on the server only (`~/ct_9_11/artifacts`).
+
+**Result.** Development test, tune half (entry 207), mean confidence in %. Pinned: one constant on the logit
+so drone confidence in war is 59.0, the `600k` CRNNs' mean. Seeds s0 / s1 / s2, then the mean.
+
+| | `600k` CRNN | `veh` CRNN | `600k` DS-CNN | `veh` DS-CNN |
+|---|---|---|---|---|
+| Drone in war, unpinned | 59.0 | 52.3 (53.5 / 51.8 / 51.5) | 60.7 | 55.7 (57.0 / 56.4 / 53.7) |
+| No drone with cars, unpinned | 34.2 | 19.3 | 30.6 | 18.2 |
+| Cars alone, unpinned | 64.0 | 26.3 | 65.3 | 35.6 |
+| The pin's constant on the logit | 0.0 | +0.45 / +0.61 / +0.64 | -0.2 | +0.20 / +0.29 / +0.53 |
+| **No drone with cars, pinned** | 34.3 (33.8 / 31.7 / 37.3) | **27.4** (26.2 / 26.5 / 29.4) | 28.5 (29.6 / 29.6 / 26.2) | **21.9** (18.7 / 24.9 / 22.2) |
+| Cars alone, pinned | 64.0 | 36.2 (35.4 / 35.4 / 37.8) | 62.2 | 41.5 (35.5 / 48.6 / 40.4) |
+| War alone, pinned | 2.9 | 5.2 | 0.8 | 1.3 |
+| Wind alone, pinned | 3.5 | 3.8 | 0.9 | 1.7 |
+| Helicopter, pinned | 23.9 | 27.0 | 24.2 | 24.9 |
+| Drone in war at 60-70 dB SPL, pinned | 40.4 | 41.5 | 39.2 | 39.1 |
+| AUC, drone in war against war alone | 0.930 (0.926-0.932) | 0.916 (0.915-0.918) | 0.944 (0.943-0.946) | 0.941 (0.932-0.947) |
+| AUC, all drone hops against all no-drone hops | 0.799 | 0.810 | 0.798 | 0.807 |
+
+From the run files (threshold frozen at 5% false alarms on validation; the old proxies, as a secondary check):
+
+| | Validation recall | Lund recall | Mower false alarms | Last training loss |
+|---|---|---|---|---|
+| `600k` CRNN | 0.788 | 0.397 (0.383 / 0.424 / 0.384) | 0.171 (0.176 / 0.200 / 0.136) | 0.364 |
+| `veh` CRNN | 0.788 | 0.382 (0.384 / 0.366 / 0.394) | 0.251 (0.264 / 0.296 / 0.192) | 0.396 |
+| `600k` DS-CNN | 0.785 | 0.437 (0.460 / 0.393 / 0.458) | 0.149 (0.232 / 0.080 / 0.136) | 0.403 |
+| `veh` DS-CNN | 0.757 | 0.393 (0.391 / 0.363 / 0.426) | 0.080 (0.080 / 0.040 / 0.120) | 0.431 |
+
+Baseline: comb is in entry 207's table and is not changed by a training recipe. ITU ARIS was not scored.
+
+**Assessment.** Against the box, pinned, seed by seed against the reference mean:
+
+| Rule | CRNN | DS-CNN |
+|---|---|---|
+| No drone with cars at least 10 points lower, all seeds | **no**: -8.1 / -7.8 / -4.9 | **no**: -9.8 / -3.6 / -6.3 |
+| War alone and wind alone at most 2 points higher | **no**: war +2.3, wind +0.3 | yes: +0.5, +0.8 |
+| Helicopter no higher | **no**: +3.1 | **no**: +0.7 |
+| AUC in war within the reference's seed spread | **no**: -0.014, spread 0.006 | yes: -0.003, spread 0.003 |
+| Drone in war at 60-70 dB SPL at most 3 points lower | yes: +1.1 | yes: -0.1 |
+
+**Verdict: the hypothesis fails for both networks.** No model replaces the `600k` models.
+- **Part of the gain is real and part is the operating point.** Unpinned, confidence with cars falls by 15
+  and 12 points; the drone falls by 6.7 and 5.0 with it, which is entry 127 again. Pinned, 6.9 and 6.6 points
+  of the gain remain, under the 10 the box asked for.
+- **On cars alone the gain is large and survives the pin:** 64 to 36 % (CRNN) and 62 to 42 % (DS-CNN), on six
+  engines the arm never trained on, on every seed. The "with cars" figure is the mean of three backgrounds,
+  two of them under a 90 dB SPL war that hides the cars, so it moves less. The box fixed that figure in
+  advance and it decides.
+- **For the CRNN it costs separation in the war:** AUC 0.930 to 0.916, outside the seed spread, and war-alone
+  confidence nearly doubles when pinned. The DS-CNN keeps its AUC.
+- The CRNN's mower false alarms rise (0.171 to 0.251) while its car confidence falls: the mower session and
+  the cars layer do not measure the same thing. The DS-CNN's mower alarms fall and it loses 0.03 validation
+  recall and 0.04 Lund recall.
+- Cars alone are still at 26 to 49 % for every model. A drone in the war at 60-70 dB SPL is at about 40 %.
+
+**Limits.** The drone figure is on Lund and Halmstad and did not reproduce the order of network families found
+on ITU ARIS (entry 207). The cars are six synthetic pass-bys and share the war track with test 1 (entry 206).
+The reference may have trained on clips the test plays; the arm did not, which counts against the arm. The
+confirm half was not scored, because no arm passed. The pin was fitted on the half it is reported on.
+
+**Next.** For Mads, since two things here are his: (1) entry 182's strict order ranks It9B, a shifted it9
+CRNN, first on this test; whether models are compared at a matched operating point is a requirements
+question. (2) The next arm. The evidence points at two, both on `600k`: vehicle negatives without the masker
+under the drones (the masker is the part that makes positives harder, and the drone's fall is what the pin
+takes back), and the war-like impulsive maskers of entry 133 for the drone's side. The DS-CNN, off the GUI
+list since entry 185, separates at least as well as the CRNN on this test.
+
+## 209 - Iteration 21's entries renumbered from 194-196 to 206-208
+
+- Date: 2026-11-11
+- Type: Infrastructure (report bookkeeping; no number changed)
+- Commit: the merge of local iteration 21 work onto 797c0dd
+
+Iteration 21 was written on one PC as entries 194-196 while the other PC pushed its own entries 194-205
+(797c0dd). After the pull, iteration 21's entries were renumbered to 206-208, along with every reference to
+them inside iteration 21, the "Iterations at a glance" row, and the comments in `tests/test_steady.py` and
+`scripts/dev_test.py`. Entries 194-196 elsewhere in the report mean the other PC's entries. Text is otherwise
+unchanged.
