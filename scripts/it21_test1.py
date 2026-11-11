@@ -3,7 +3,10 @@
     for k in 0 1 2 3 4 5; do OMP_NUM_THREADS=1 .venv/bin/python scripts/it21_test1.py --shard $k 6 & done; wait
     .venv/bin/python scripts/it21_test1.py --table        # the comparison, from every shard
 
-Without --shard the whole plan runs in one process; --quick is a 16-round trial.
+Without --shard the whole plan runs in one process; --quick is a 16-round trial. With --it23 (on every
+call) the candidates are iteration 23's 2 s colour DS-CNN and CRNN, and the output is it23_test1/.
+On the server: `CUDA_VISIBLE_DEVICES=$k ... --shard $k 3 --device cuda`, with the Mac's car render in
+artifacts/complete_test/layers/ (no Pure Data there).
 
 The ten ITU ARIS excerpts in data/extracted/sealed_peek at 60-100 dB SPL, against the war soundscape at
 90 dB SPL and the cars layer (six development engines, 50 km/h, 30 m, as entry 179) at 20, 35 and
@@ -23,11 +26,17 @@ import complete_test_engine as E  # noqa: E402
 dwg = E.dwg
 RUNS = dwg.ROOT / "artifacts/runs"
 NETS = {}
+IT23 = "--it23" in sys.argv   # entry 211: the 2 s colour networks of iteration 23 against it19_colour
 for s in (0, 1, 2):   # the reference's threshold comes from its re-score (entry 207), the same as its own run's
     NETS[f"it19 colour s{s}"] = (RUNS / f"it22_ref_s{s}.json", dwg.MODEL_DIR / f"it19_colour_s{s}_none_simdist_colour_crnn.pt")
-    NETS[f"it21 uav16 s{s}"] = (RUNS / f"it21_uav16_s{s}.json", dwg.MODEL_DIR / f"it21_uav16_s{s}_none_simdist_colour_crnn.pt")
+    if IT23:
+        for arch in ("dscnn", "crnn"):
+            NETS[f"it23 2s colour {arch} s{s}"] = (RUNS / f"it23_2s_colour_s{s}.json",
+                                                   dwg.MODEL_DIR / f"it23_2s_colour_s{s}_none_simdist_colour_{arch}.pt")
+    else:
+        NETS[f"it21 uav16 s{s}"] = (RUNS / f"it21_uav16_s{s}.json", dwg.MODEL_DIR / f"it21_uav16_s{s}_none_simdist_colour_crnn.pt")
 dwg.MODELS.update(NETS)
-OUT = E.OUT_ROOT / "it21_test1"
+OUT = E.OUT_ROOT / ("it23_test1" if IT23 else "it21_test1")
 quick = "--quick" in sys.argv
 
 
@@ -44,7 +53,7 @@ def table():
             cell[(bg, arm, "none", "drone round" if r["drone"] != "none" else "no-drone round")].append(float(r["mean_conf_no_drone"]))
     print("mean confidence %, three seeds pooled; n = rounds x seeds")
     for key in sorted(cell):
-        print(f"{key[0]:28} {key[1]:12} {key[2]:5} {key[3]:>15}  {100 * statistics.mean(cell[key]):5.1f}  n={len(cell[key])}")
+        print(f"{key[0]:28} {key[1]:22} {key[2]:5} {key[3]:>15}  {100 * statistics.mean(cell[key]):5.1f}  n={len(cell[key])}")
 
 
 if "--table" not in sys.argv:
@@ -62,7 +71,8 @@ if "--table" not in sys.argv:
     if quick:
         OUT = E.OUT_ROOT / "it21_test1_quick"
     shard = sys.argv[sys.argv.index("--shard") + 1:][:2] if "--shard" in sys.argv else None
-    t = E.Test(plan, OUT / f"shard_{shard[0]}" if shard else OUT)
+    device = sys.argv[sys.argv.index("--device") + 1] if "--device" in sys.argv else "cpu"
+    t = E.Test(plan, OUT / f"shard_{shard[0]}" if shard else OUT, device=device)
     if shard:
         t.rounds = t.rounds[int(shard[0])::int(shard[1])]
     t.run(progress=lambda s: print(s, flush=True))

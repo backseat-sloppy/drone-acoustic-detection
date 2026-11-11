@@ -39,7 +39,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 20 | 172 to 173, 192 to 193 | Optional bandpass (Butterworth 80 Hz - 6 kHz) and Wiener gain (noise median across frequency) on the power spectrum before the mel bank; CPU gates before any training | Mads asked for a bandpass and a Wiener filter; the frontend has no noise suppression, and steady noise reads as drone | **Both fail; the frozen frontend stays.** Council (entry 172): Wiener against best practice, tried only as a gated ablation. Wiener fails its CPU gate (entry 173): 66% of drone line bins kept at 0 dB SNR (80% required), 34% at -10 dB; rig background only 2.3 dB lower. The bandpass mainly removes 6-8 kHz; trained on the `600k` arm, three seeds (entry 192): Lund recall DS-CNN +0.058, CRNN +0.028 (bar +0.07), but mower false alarms 0.149 to 0.395 and 0.171 to 0.357, brown noise alarms up. The 6-8 kHz band seems to trade range against confuser rejection (untested). PCEN is the next frontend candidate. The six bandpass models are in the test GUIs for the virtual tests (entry 193). |
 | Iteration 21 | 200 to 205 | A fifth rig in the training pool: UAV16 (Zenodo 23613504; DJI Flip hovering at 5-70 m over a 16-microphone ground array, with 28 background recordings from the same array), on iteration 19's `simdist_colour` recipe | Marius's request (2026-11-11) to retrain the colour model with the new dataset; `docs/datasets.md` names same-rig drone and no-drone audio as the most valuable addition | **Failed.** Recall on the held UAV16 batches fell instead of rising (DS-CNN 0.912 to 0.887, CRNN 0.857 to 0.829) and Lund recall fell by 0.076 for both networks (limit 0.03), on all three seeds. Validation, mower and pink/brown guards held. `it19_colour` stays. |
 | Iteration 22 | 206 to 207 | Iteration 21 with only UAV16's four plain-environment recordings as that rig's negatives; its other 24 backgrounds (fans, exhaust pipes, a car, other places) never train and are scored for false alarms | Entry 205: most of UAV16's backgrounds are drone-like sources or other places, and in iteration 21 they were a quarter of the rig negatives; Marius's request | **Failed.** Lund recall fell further than in iteration 21 (DS-CNN -0.113, CRNN -0.104 against `it19_colour`), so the confuser negatives were not what cost it. CRNN recall on the held UAV16 batches rose (0.857 to 0.901); the DS-CNN's did not. `it19_colour` stays. |
-| Iteration 23 | 209 (open) | The colour recipe with a 2 s window (iterations 17 and 19 combined), trained twice: on the usual pool, and with UAV16 added as in iteration 22 | Entries 204, 207 and 208: UAV16 at 1 s did not beat `it19_colour`; the 2 s window and the colour recipe each passed their box on different readouts and were never combined; Marius chose both arms | **Not run yet.** |
+| Iteration 23 | 209 to 210 | The colour recipe with a 2 s window (iterations 17 and 19 combined), trained twice: on the usual pool, and with UAV16 added as in iteration 22 | Entries 204, 207 and 208: UAV16 at 1 s did not beat `it19_colour`; the 2 s window and the colour recipe each passed their box on different readouts and were never combined; Marius chose both arms | **The 2 s colour DS-CNN passes; the CRNN and both UAV16 networks fail.** DS-CNN against the 2 s reference: pink and brown 0%, Lund 0.440 (ref 0.457), validation 0.782 (0.794), mower false alarms 0.066 (0.209). The CRNN loses 0.058 of Lund. UAV16 costs Lund 0.07-0.08 again. Not yet run against war and cars. |
 
 ## Templates
 
@@ -12508,4 +12508,71 @@ The percentage may go over 100, which puts the threshold above the highest peak.
 17 passed (macOS). The noise check was not run on a 2 s model here.
 
 **Result.** No training yet.
+
+## 210 - Iteration 23 result: the 2 s colour DS-CNN passes its box; the CRNN fails on Lund; UAV16 fails a third time
+
+- Date: 2026-11-11
+- Iteration: 23
+- Type: Evaluation
+- Commit: 5fdb281 on the server (`~/dad21`, detached); this entry is uncommitted
+
+**What changed.** Twelve networks trained (two arms, DS-CNN and CRNN, seeds 0-2) and scored on the
+box's readouts. The 2 s reference `it16_win2s600k_s0-2` (iteration 17) was re-scored with the same
+code; the 1 s reference `it19_colour` is entry 207's re-score (`it22_ref_sS`, same arm definition).
+
+**How.** On the server, in `~/dad21` at 5fdb281, two runs per GPU:
+```
+run_range.py --name it23_2s_colour_sS --pool --no-uav16 --arms none --recipes simdist_colour --models dscnn crnn \
+    --device cuda --windows 600000 --window-seconds 2.0 --speed 0.8 1.25 --deploy-fa 0.05 --seed S --frontend mfe
+run_range.py --name it23_2s_uav16_sS  (the same without --no-uav16)                  # 3754-3915 s per run
+run_range.py --name it23_ref2s_sS --load-from it16_win2s600k_sS --pool --no-uav16 --arms none --recipes simdist ... --window-seconds 2.0
+scripts/it19_colour_check.py it16_win2s600k_s0-2 it23_2s_colour_s0-2 it23_2s_uav16_s0-2
+```
+The reference scoring and the noise check were started twice by mistake (a queued copy and a manual
+one) and wrote the same files; the noise check's log holds one complete set of 108 lines. Before the
+checkout the server's untracked `it21_uav16_s*_crnn.pt` were moved to `~/it21_ckpt_backup` (commit
+52b8b42 tracks them) and compared equal to the tracked copies. Figures were read from the run files
+through the JupyterLab contents API; seed means by hand from values rounded to three decimals.
+
+**Result.** Threshold at 5% false alarms on validation, evaluation hop 0.5 s, one window per
+decision; window 2 s except `it19_colour` (1 s). Means over seeds 0-2:
+
+| | Val recall | Lund recall | Mower FA | UAV16 held, all | 50-100 m | FA confusers | FA elsewhere | Pink / brown at -30 dBFS |
+|---|---|---|---|---|---|---|---|---|
+| DS-CNN `it16_win2s600k` (2 s ref.) | 0.794 | 0.457 | 0.209 | 0.956 | 0.882 | 0.976 | 0.625 | 81.0% / 7.4% |
+| DS-CNN `it23_2s_colour` | 0.782 | 0.440 | 0.066 | 0.935 | 0.833 | 0.979 | 0.481 | 0.0% / 0.0% |
+| DS-CNN `it23_2s_uav16` | 0.789 | 0.359 | 0.083 | 0.922 | 0.664 | 0.880 | 0.397 | 0.0% / 0.0% |
+| DS-CNN `it19_colour` (1 s) | 0.773 | 0.401 | 0.053 | 0.912 | 0.771 | 0.945 | 0.403 | (entry 171) |
+| CRNN `it16_win2s600k` (2 s ref.) | 0.794 | 0.462 | 0.281 | 0.893 | 0.765 | 0.928 | 0.422 | 8.5% / 31.2% |
+| CRNN `it23_2s_colour` | 0.795 | 0.404 | 0.220 | 0.852 | 0.579 | 0.894 | 0.358 | 0.0% / 0.0% |
+| CRNN `it23_2s_uav16` | 0.789 | 0.334 | 0.298 | 0.922 | 0.628 | 0.680 | 0.291 | 0.0% / 0.0% |
+| CRNN `it19_colour` (1 s) | 0.787 | 0.358 | 0.112 | 0.857 | 0.558 | 0.828 | 0.303 | (entry 171) |
+
+Per seed, Lund: DS-CNN `it23_2s_colour` 0.417 / 0.435 / 0.468 (ref. 0.446 / 0.453 / 0.473); CRNN
+0.400 / 0.436 / 0.375 (ref. 0.389 / 0.512 / 0.485). The re-scored reference reproduces entry 158
+(validation 0.794, Lund 0.457 and 0.462, mower 0.209 and 0.281). Baselines `comb` and `lgbm` not
+run, as in iterations 19, 21 and 22.
+
+**Assessment.** `it23_2s_colour` against the 2 s reference:
+- **DS-CNN passes all four:** pink and brown 0% (reference 81% and 7%), Lund -0.017, validation
+  -0.012, mower false alarms 0.066 against 0.209.
+- **CRNN fails readout 2:** Lund -0.058 (limit 0.03); two of three seeds are lower. It passes the
+  other three (mower 0.220 against 0.281).
+- Against `it19_colour` at 1 s, the 2 s colour networks have higher Lund recall (DS-CNN 0.440
+  against 0.401, CRNN 0.404 against 0.358). The CRNN's mower false alarms are double (0.220 against
+  0.112); the DS-CNN's are about the same (0.066 against 0.053).
+- On UAV16's left-out backgrounds nothing is gained: the 2 s colour DS-CNN alarms on 98% of the
+  fan, exhaust and car windows and 48% of the other places.
+
+`it23_2s_uav16` against `it23_2s_colour` (iteration 22's readouts): both networks fail. Lund falls
+by 0.081 (DS-CNN) and 0.070 (CRNN); the DS-CNN's held UAV16 recall falls too (0.922 against 0.935),
+and the CRNN's mower false alarms rise by 0.078. The CRNN's held recall rises (0.852 to 0.922) and
+false alarms on the left-out backgrounds fall for both. This is the third run in which UAV16 in
+the pool costs about 0.07 to 0.11 of Lund recall.
+
+**Verdict.** The 2 s colour DS-CNN passes its box, the first candidate today that does. The CRNN
+does not, and UAV16 does not. Per the box, the DS-CNN is not proposed for `Complete_Test_Gui`
+until it has run through the war and cars plan of `scripts/it21_test1.py`. Two things to weigh
+there: the DS-CNNs gave 9-14 points less confidence with a drone than the CRNNs in test 1 (entry
+180), and a 2 s window reacts later (entry 191).
 
