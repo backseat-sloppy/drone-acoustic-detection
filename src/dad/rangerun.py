@@ -106,7 +106,7 @@ def _unit(r: Recording) -> str:
     return f"fpv:{ch.session(r)}" if r.source == "fpv" else r.source
 
 
-def make_pool_arm(manifest: list[Recording], held: str) -> Arm:
+def make_pool_arm(manifest: list[Recording], held: str, uav16: bool = True) -> Arm:
     """Iteration 5: train on every rig with both classes except `held`.
 
     Units are Nightjar, d3set and the three FPV campaigns (the phones of one
@@ -117,13 +117,17 @@ def make_pool_arm(manifest: list[Recording], held: str) -> Arm:
     the Nightjar and d3set validation sessions that are in training. Lund is
     scored for recall only.
 
+    `uav16=False` keeps UAV16 out of training altogether; its held batches and
+    left-out backgrounds are still scored (iteration 23's arm without it).
+
     `held="none"` trains on every unit and leaves nothing out (the final model
     for the real test, iteration 6); its test list is then empty.
     """
     if held != "none" and held not in UNITS:
         raise ValueError(f"unknown unit {held!r}; expected one of {UNITS} or 'none'")
     pool = [r for r in manifest if r.source in ("nightjar", "d3set", "fpv", "glasgow", "uav16")
-            and ch.session(r) not in CONFUSER and not _uav16_out(r)]
+            and ch.session(r) not in CONFUSER and not _uav16_out(r)
+            and (uav16 or r.source != "uav16")]
     train = [r for r in pool if _unit(r) != held]
     by = collections.defaultdict(list)
     out16: dict[str, list[Recording]] = collections.defaultdict(list)

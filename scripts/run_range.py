@@ -51,6 +51,8 @@ def main() -> None:
     p.add_argument("--pool", action="store_true",
                    help="train on every rig but the held-out one (iteration 5); arms may then also be "
                         "fpv:ariel_25.02, fpv:palmahim_10.02, fpv:palmahim_27.05, or none to train on all")
+    p.add_argument("--no-uav16", action="store_true",
+                   help="with --pool: keep UAV16 out of training; it is still scored (iteration 23)")
     p.add_argument("--pair", action="store_true",
                    help="read Nightjar and d3set from the two-microphone stores (entry 036); use with --load-from")
     p.add_argument("--speed", nargs=2, type=float, default=None, metavar=("LO", "HI"),
@@ -96,7 +98,7 @@ def main() -> None:
     t_start = time.time()
 
     for held in args.arms:
-        arm = rg.make_pool_arm(manifest, held) if args.pool else rg.make_arm(manifest, held)
+        arm = rg.make_pool_arm(manifest, held, uav16=not args.no_uav16) if args.pool else rg.make_arm(manifest, held)
         print(f"\n=== {arm.name}: train on {arm.train_chain} ({len(arm.train)} segments), "
               f"validate on {len(arm.val)} segments, test {len(arm.test)} segments", flush=True)
 

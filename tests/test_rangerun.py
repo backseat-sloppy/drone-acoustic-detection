@@ -103,6 +103,8 @@ def test_uav16_trains_in_the_pool_except_held_batches_and_all_but_the_plain_back
     assert {k: [r.recording_id for r in v] for k, v in arm.unseen.items() if k != "lund"} == {
         "uav16": ["u3"], "uav16_confusers": ["rec-undated-0007"], "uav16_elsewhere": ["rec-20261012-0001"]}
     assert set(rg.make_pool_arm([m[0], m[4]], "none").unseen) == {"lund"}   # a manifest without it is unchanged
+    without = rg.make_pool_arm(m, "none", uav16=False)                      # iteration 23: scored, not trained
+    assert {r.recording_id for r in without.train} == {"n1"} and set(without.unseen) == set(arm.unseen)
 
 
 def test_evaluate_chain_reports_false_alarms_for_a_set_without_drones():

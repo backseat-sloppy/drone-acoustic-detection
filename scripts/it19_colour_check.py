@@ -37,7 +37,8 @@ for run in RUNS:
     for arch in args["models"]:
         ckpt = next((ROOT / "artifacts/models").glob(f"{run}_none_*_{arch}.pt"))
         # Iteration 20: a filtered model is scored with its own frontend (run args `bandpass`, `wiener`).
-        cfg = dataclasses.replace(DEFAULT, bandpass=tuple(args["bandpass"]) if args.get("bandpass") else None,
+        cfg = dataclasses.replace(DEFAULT, window_seconds=float(args.get("window_seconds", 1.0)),   # iteration 23: 2 s models
+                                  bandpass=tuple(args["bandpass"]) if args.get("bandpass") else None,
                                   wiener=bool(args.get("wiener", False)))
         thr = threshold_from_run(rj, str(ckpt), cfg.window_seconds)
         sc = load_scorer(str(ckpt), cfg, device)

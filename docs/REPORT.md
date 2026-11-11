@@ -39,6 +39,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 20 | 172 to 173, 192 to 193 | Optional bandpass (Butterworth 80 Hz - 6 kHz) and Wiener gain (noise median across frequency) on the power spectrum before the mel bank; CPU gates before any training | Mads asked for a bandpass and a Wiener filter; the frontend has no noise suppression, and steady noise reads as drone | **Both fail; the frozen frontend stays.** Council (entry 172): Wiener against best practice, tried only as a gated ablation. Wiener fails its CPU gate (entry 173): 66% of drone line bins kept at 0 dB SNR (80% required), 34% at -10 dB; rig background only 2.3 dB lower. The bandpass mainly removes 6-8 kHz; trained on the `600k` arm, three seeds (entry 192): Lund recall DS-CNN +0.058, CRNN +0.028 (bar +0.07), but mower false alarms 0.149 to 0.395 and 0.171 to 0.357, brown noise alarms up. The 6-8 kHz band seems to trade range against confuser rejection (untested). PCEN is the next frontend candidate. The six bandpass models are in the test GUIs for the virtual tests (entry 193). |
 | Iteration 21 | 200 to 205 | A fifth rig in the training pool: UAV16 (Zenodo 23613504; DJI Flip hovering at 5-70 m over a 16-microphone ground array, with 28 background recordings from the same array), on iteration 19's `simdist_colour` recipe | Marius's request (2026-11-11) to retrain the colour model with the new dataset; `docs/datasets.md` names same-rig drone and no-drone audio as the most valuable addition | **Failed.** Recall on the held UAV16 batches fell instead of rising (DS-CNN 0.912 to 0.887, CRNN 0.857 to 0.829) and Lund recall fell by 0.076 for both networks (limit 0.03), on all three seeds. Validation, mower and pink/brown guards held. `it19_colour` stays. |
 | Iteration 22 | 206 to 207 | Iteration 21 with only UAV16's four plain-environment recordings as that rig's negatives; its other 24 backgrounds (fans, exhaust pipes, a car, other places) never train and are scored for false alarms | Entry 205: most of UAV16's backgrounds are drone-like sources or other places, and in iteration 21 they were a quarter of the rig negatives; Marius's request | **Failed.** Lund recall fell further than in iteration 21 (DS-CNN -0.113, CRNN -0.104 against `it19_colour`), so the confuser negatives were not what cost it. CRNN recall on the held UAV16 batches rose (0.857 to 0.901); the DS-CNN's did not. `it19_colour` stays. |
+| Iteration 23 | 209 (open) | The colour recipe with a 2 s window (iterations 17 and 19 combined), trained twice: on the usual pool, and with UAV16 added as in iteration 22 | Entries 204, 207 and 208: UAV16 at 1 s did not beat `it19_colour`; the 2 s window and the colour recipe each passed their box on different readouts and were never combined; Marius chose both arms | **Not run yet.** |
 
 ## Templates
 
@@ -12459,3 +12460,52 @@ The percentage may go over 100, which puts the threshold above the highest peak.
 - Why the onset peak is higher with wind was not examined.
 
 **Assessment.** "Wind on is better" is an artefact. It comes from the clip's abrupt onset combined with the first-alarm rule, not from the wind helping detection. The onset of a cut clip is not something a real approaching drone has. Reading the time before impact needs the stays-above rule beside the first-alarm one, or a fade-in on the clips.
+
+# Iteration 23 - The colour recipe with a 2 s window, with and without UAV16
+
+> **Changed from iteration 19 (`it19_colour`):** the window is 2 s instead of 1 s
+> (`--window-seconds 2.0`, as iteration 17). Two arms, trained with the same code:
+> `it23_2s_colour` on the usual pool (`--no-uav16`), and `it23_2s_uav16` with UAV16 in the pool as in
+> iteration 22 (its drones, and its four plain-environment recordings as rig negatives).
+> **Why:** Marius asked what could still beat `it19_colour` and chose these two arms (2026-11-11).
+> Iteration 17's 2 s window raised the CRNN's Lund recall (0.357 to 0.462) and lowered mower false
+> alarms; iteration 19's colour recipe removed the pink and brown alarms. They act on different
+> readouts and were never combined. Iterations 12, 21 and 22 show that further negatives trade
+> recall for false alarms without separating better (entries 127, 204, 207), so the second arm is
+> there to see whether UAV16 behaves differently at 2 s, not because it is expected to.
+> **Kept the same:** `simdist_colour`, pool arm `none`, speed 0.8-1.25, MFE 64 mel, 600,000 training
+> windows, DS-CNN and CRNN, seeds 0-2, threshold at 5% false alarms on the unchanged validation.
+> **Hypothesis:** the 2 s colour model keeps iteration 17's Lund recall and iteration 19's silence
+> on pink and brown noise. UAV16 on top of it is expected to cost Lund recall again.
+> **Judged by** (seed means, per network; references re-scored with this code):
+> `it23_2s_colour` against `it16_win2s600k` (2 s, no colour):
+> 1. Pink and brown alarms at -30 dBFS: at most 5%.
+> 2. Lund recall at the frozen threshold: no lower than minus 0.03.
+> 3. Validation recall: no lower than minus 0.02.
+> 4. Mower-only false alarms: no higher than plus 0.05.
+> Reported beside it, against `it19_colour`: recall on the held UAV16 batches and false alarms on
+> `uav16_confusers` and `uav16_elsewhere`, which no arm but `it23_2s_uav16` has any UAV16 audio for.
+> `it23_2s_uav16` against `it23_2s_colour`: iteration 22's readouts 1 to 6.
+> An arm that passes is then run through `scripts/it21_test1.py`'s plan (war and cars) before it is
+> proposed for `Complete_Test_Gui`. Known cost of 2 s, not judged here: time to detection (entry 191).
+
+## 209 - A switch to keep UAV16 out of training, and the noise check reads a run's window
+
+- Date: 2026-11-11
+- Iteration: 23
+- Type: Engineering
+- Commit: uncommitted, on top of 8560f9e (branch `iteration-21-uav16`, which now holds a merge of
+  `master` at 797c0dd, made on another machine; the report has two sets of entries 200-205)
+
+**What changed.**
+- `make_pool_arm(..., uav16=False)` and `scripts/run_range.py --no-uav16`: UAV16 stays out of
+  training, and its held batches and left-out backgrounds are still scored. Default unchanged.
+- `scripts/it19_colour_check.py` takes the window from the run's arguments. It built every frontend
+  with a 1 s window, so `threshold_from_run` would have refused a 2 s run.
+
+**How.** `tests/test_rangerun.py` covers the switch.
+`.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_rangerun.py tests/test_steady.py`:
+17 passed (macOS). The noise check was not run on a 2 s model here.
+
+**Result.** No training yet.
+
