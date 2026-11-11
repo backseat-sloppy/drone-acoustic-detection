@@ -38,7 +38,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 19 | 169 to 171 | Pink (-3 dB/oct) and brown (-6 dB/oct) noise as 15% of the no-drone training windows, on the `600k` arm of iteration 16 | Mads's request; the networks alarm on pink and brown noise, which no planned test contains; iteration 11's broader steady noise fixed it but halved Lund recall | **Fails narrowly on Lund recall.** Pink and brown alarms to 0% for both networks (DS-CNN was 74% on pink), mower false alarms down (CRNN 0.171 to 0.112, DS-CNN 0.149 to 0.053), validation unchanged, but Lund recall -0.04 (limit -0.03). `it19 CRNN colour s1` pushed for the virtual tests. 2 s models now usable in Complete_Test_Gui (entry 170). |
 | Iteration 20 | 172 to 173, 192 to 193 | Optional bandpass (Butterworth 80 Hz - 6 kHz) and Wiener gain (noise median across frequency) on the power spectrum before the mel bank; CPU gates before any training | Mads asked for a bandpass and a Wiener filter; the frontend has no noise suppression, and steady noise reads as drone | **Both fail; the frozen frontend stays.** Council (entry 172): Wiener against best practice, tried only as a gated ablation. Wiener fails its CPU gate (entry 173): 66% of drone line bins kept at 0 dB SNR (80% required), 34% at -10 dB; rig background only 2.3 dB lower. The bandpass mainly removes 6-8 kHz; trained on the `600k` arm, three seeds (entry 192): Lund recall DS-CNN +0.058, CRNN +0.028 (bar +0.07), but mower false alarms 0.149 to 0.395 and 0.171 to 0.357, brown noise alarms up. The 6-8 kHz band seems to trade range against confuser rejection (untested). PCEN is the next frontend candidate. The six bandpass models are in the test GUIs for the virtual tests (entry 193). |
 | Iteration 21 | 200 to 205 | A fifth rig in the training pool: UAV16 (Zenodo 23613504; DJI Flip hovering at 5-70 m over a 16-microphone ground array, with 28 background recordings from the same array), on iteration 19's `simdist_colour` recipe | Marius's request (2026-11-11) to retrain the colour model with the new dataset; `docs/datasets.md` names same-rig drone and no-drone audio as the most valuable addition | **Failed.** Recall on the held UAV16 batches fell instead of rising (DS-CNN 0.912 to 0.887, CRNN 0.857 to 0.829) and Lund recall fell by 0.076 for both networks (limit 0.03), on all three seeds. Validation, mower and pink/brown guards held. `it19_colour` stays. |
-| Iteration 22 | 206 (open) | Iteration 21 with only UAV16's four plain-environment recordings as that rig's negatives; its other 24 backgrounds (fans, exhaust pipes, a car, other places) never train and are scored for false alarms | Entry 205: most of UAV16's backgrounds are drone-like sources or other places, and in iteration 21 they were a quarter of the rig negatives; Marius's request | **Not run yet.** |
+| Iteration 22 | 206 to 207 | Iteration 21 with only UAV16's four plain-environment recordings as that rig's negatives; its other 24 backgrounds (fans, exhaust pipes, a car, other places) never train and are scored for false alarms | Entry 205: most of UAV16's backgrounds are drone-like sources or other places, and in iteration 21 they were a quarter of the rig negatives; Marius's request | **Failed.** Lund recall fell further than in iteration 21 (DS-CNN -0.113, CRNN -0.104 against `it19_colour`), so the confuser negatives were not what cost it. CRNN recall on the held UAV16 batches rose (0.857 to 0.901); the DS-CNN's did not. `it19_colour` stays. |
 
 ## Templates
 
@@ -12143,3 +12143,69 @@ threshold). `.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_ranger
 **Next.** On the server: `it22_plain_s0-2` with entry 203's command, `it22_ref_s0-2` with
 `--load-from it19_colour_sS`, and `scripts/it19_colour_check.py` on the new runs.
 
+## 207 - Iteration 22 result: Lund falls further without the confuser negatives; the hypothesis of entry 205 is rejected
+
+- Date: 2026-11-11
+- Iteration: 22
+- Type: Evaluation
+- Commit: 0b9b665 on the server (`~/dad21`, detached); this entry is uncommitted
+
+**What changed.** Six networks trained with only UAV16's four plain-environment recordings as that
+rig's negatives (entry 206), scored on the box's six readouts against `it19_colour_s0-2` re-scored
+with the same code. The iteration 21 networks were re-scored too, for the two new sets.
+
+**Why.** Iteration 22's box.
+
+**How.** On the server, in `~/dad21` at 0b9b665, with entry 203's training command and entry 204's
+re-score command under new names:
+```
+run_range.py --name it22_plain_sS ...                                  # trained; S = 0, 1, 2
+run_range.py --name it22_ref_sS  --load-from it19_colour_sS ...        # the reference
+run_range.py --name it22_it21_sS --load-from it21_uav16_sS ...         # iteration 21's networks
+scripts/it19_colour_check.py it22_plain_s0 it22_plain_s1 it22_plain_s2
+```
+The training log shows 540 segments, UAV16 negatives 13.6 min at share 0.233 (99.3 min in
+iteration 21). Figures were read from the run files through the JupyterLab contents API; seed
+means were taken by hand from values rounded to three decimals.
+
+**Result.** Conditions as entry 204. `uav16_confusers`: 8 recordings, 2,721 windows.
+`uav16_elsewhere`: 16 recordings, 7,584 windows. Means over seeds 0-2:
+
+| | Val recall | Lund recall | Mower FA | UAV16 held, all | 0-50 m | 50-100 m | FA confusers | FA elsewhere |
+|---|---|---|---|---|---|---|---|---|
+| DS-CNN `it19_colour` | 0.773 | 0.401 | 0.053 | 0.912 | 0.939 | 0.771 | 0.945 | 0.403 |
+| DS-CNN `it22_plain` | 0.778 | 0.288 | 0.056 | 0.907 | 0.955 | 0.652 | 0.854 | 0.374 |
+| difference | +0.006 | **-0.113** | +0.003 | **-0.005** | +0.016 | -0.119 | -0.091 | -0.029 |
+| DS-CNN `it21_uav16` (trained on both sets) | 0.762 | 0.324 | 0.059 | 0.887 | 0.929 | 0.667 | 0.270 | 0.236 |
+| CRNN `it19_colour` | 0.787 | 0.358 | 0.112 | 0.857 | 0.914 | 0.558 | 0.828 | 0.303 |
+| CRNN `it22_plain` | 0.788 | 0.254 | 0.157 | 0.901 | 0.965 | 0.569 | 0.643 | 0.241 |
+| difference | +0.000 | **-0.104** | +0.045 | +0.044 | +0.051 | +0.011 | -0.185 | -0.062 |
+| CRNN `it21_uav16` (trained on both sets) | 0.784 | 0.282 | 0.099 | 0.829 | 0.893 | 0.487 | 0.027 | 0.080 |
+
+Per seed, Lund (reference -> `it22_plain`): DS-CNN 0.392 -> 0.343, 0.394 -> 0.256, 0.416 -> 0.265;
+CRNN 0.340 -> 0.271, 0.403 -> 0.255, 0.332 -> 0.236. Pink and brown alarms at -30 dBFS: 0.0% for all
+six networks. Baselines `comb` and `lgbm` not run, as in iterations 19 and 21.
+
+**Assessment.** By the box:
+1. Held UAV16 recall higher: CRNN passes (+0.044), DS-CNN **fails** (-0.005).
+2. Lund no lower than minus 0.03: **fails** for both, on every seed, and by more than in iteration 21.
+3. Validation: passes. 4. Mower: passes (the CRNN at +0.045 of an allowed 0.05). 5. Pink and
+brown: passes. 6. False alarms on the two left-out sets: passes, both are lower than the reference.
+
+Three things follow.
+- Entry 205's reading is rejected as the cause of the Lund loss: without the fans, exhaust pipes
+  and other places as negatives, Lund fell further (-0.10 to -0.11 against -0.076). The loss comes
+  with having UAV16 in the pool at all. Not separated: the UAV16 drones themselves, the four
+  recordings now carrying a quarter of the rig negatives (822 s drawn as often as the 99 minutes
+  were), or the smaller shares left to Nightjar, d3set and FPV.
+- `it19_colour` alarms on 83-95% of the windows with a fan, an exhaust pipe or a starting car, and
+  on 30-40% of the traffic, indoor and wind recordings. That is a false-alarm weakness of the
+  current colour model on real recordings it never saw, in line with entry 179 (cars taken for
+  drones).
+- Iteration 21's CRNN, which trained on those recordings, alarms on 2.7% and 8.0% of them. Those
+  two figures are on training data, so they show the networks can learn the sources, not that
+  they generalise.
+
+**Verdict.** Iteration 22 fails. `it19 CRNN colour s1` stays. The UAV16 line has now failed twice
+on Lund; before a third attempt the question is whether Lund recall or false alarms on real
+confusers matters more for the tests in REQUIREMENTS.md, which is Mads's and Nicolai's call.
