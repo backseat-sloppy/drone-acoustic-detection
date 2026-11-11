@@ -37,7 +37,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 18 | 159 to 161 | It9B: the it9 CRNN with drone windows weighted 2 in the loss, threshold at 10% false alarms | Mads wants higher confidence with a drone in the virtual tests, accepting worse separation; the requirements are now judged in confidence (entry 159) | **Hypothesis holds.** Mean score up on every window: drone +0.05 to +0.13, no drone +0.10 to +0.17 (mower alone 0.44 to 0.60); recall at matched false alarms unchanged (0.789 against 0.790). Added to the GUIs as "It9B"; war soundscape not measured yet. |
 | Iteration 19 | 169 to 171 | Pink (-3 dB/oct) and brown (-6 dB/oct) noise as 15% of the no-drone training windows, on the `600k` arm of iteration 16 | Mads's request; the networks alarm on pink and brown noise, which no planned test contains; iteration 11's broader steady noise fixed it but halved Lund recall | **Fails narrowly on Lund recall.** Pink and brown alarms to 0% for both networks (DS-CNN was 74% on pink), mower false alarms down (CRNN 0.171 to 0.112, DS-CNN 0.149 to 0.053), validation unchanged, but Lund recall -0.04 (limit -0.03). `it19 CRNN colour s1` pushed for the virtual tests. 2 s models now usable in Complete_Test_Gui (entry 170). |
 | Iteration 20 | 172 to 173, 192 to 193 | Optional bandpass (Butterworth 80 Hz - 6 kHz) and Wiener gain (noise median across frequency) on the power spectrum before the mel bank; CPU gates before any training | Mads asked for a bandpass and a Wiener filter; the frontend has no noise suppression, and steady noise reads as drone | **Both fail; the frozen frontend stays.** Council (entry 172): Wiener against best practice, tried only as a gated ablation. Wiener fails its CPU gate (entry 173): 66% of drone line bins kept at 0 dB SNR (80% required), 34% at -10 dB; rig background only 2.3 dB lower. The bandpass mainly removes 6-8 kHz; trained on the `600k` arm, three seeds (entry 192): Lund recall DS-CNN +0.058, CRNN +0.028 (bar +0.07), but mower false alarms 0.149 to 0.395 and 0.171 to 0.357, brown noise alarms up. The 6-8 kHz band seems to trade range against confuser rejection (untested). PCEN is the next frontend candidate. The six bandpass models are in the test GUIs for the virtual tests (entry 193). |
-| Iteration 21 | 200 to 201 (open) | A fifth rig in the training pool: UAV16 (Zenodo 23613504; DJI Flip hovering at 5-70 m over a 16-microphone ground array, with 28 background recordings from the same array), on iteration 19's `simdist_colour` recipe | Marius's request (2026-11-11) to retrain the colour model with the new dataset; `docs/datasets.md` names same-rig drone and no-drone audio as the most valuable addition | **Not run yet.** Preparation step and pool change written and unit-tested on this Mac; nothing prepared or trained on the server. |
+| Iteration 21 | 200 to 204 | A fifth rig in the training pool: UAV16 (Zenodo 23613504; DJI Flip hovering at 5-70 m over a 16-microphone ground array, with 28 background recordings from the same array), on iteration 19's `simdist_colour` recipe | Marius's request (2026-11-11) to retrain the colour model with the new dataset; `docs/datasets.md` names same-rig drone and no-drone audio as the most valuable addition | **Failed.** Recall on the held UAV16 batches fell instead of rising (DS-CNN 0.912 to 0.887, CRNN 0.857 to 0.829) and Lund recall fell by 0.076 for both networks (limit 0.03), on all three seeds. Validation, mower and pink/brown guards held. `it19_colour` stays. |
 
 ## Templates
 
@@ -11928,3 +11928,126 @@ same" holds as written: the same store is used.
 
 **Next.** Put the four missing stores and Mads's `manifest.csv` into the `mariusq` clone, compare
 the four shared stores byte for byte, and bring the clone's code to the current commit.
+
+## 203 - UAV16 prepared on the server and the three iteration 21 runs started
+
+- Date: 2026-11-11
+- Iteration: 21
+- Type: Data, Training
+- Commit: cd20af0 (branch `iteration-21-uav16`), checked out on the server as the worktree
+  `~/dad21` of the `jupyter-mariusq` clone. Entries 200-202 are in that commit; this entry is
+  uncommitted.
+
+**What changed.** On the server account `jupyter-mariusq`, through its JupyterLab terminal:
+- `fpv.i16`, `lund.f32`, `dronenoise.f32`, `halmstad.i16`, `manifest.csv`, `range_track.csv`,
+  `ddl_clips.csv` and `summary.json` copied from `/tmp/dad_store_mads/` (entry 202) into
+  `~/drone-acoustic-detection/data/processed/`. `cmp` of `nightjar.i16`, `d3set.i16`, `ddl.f32` and
+  `fsd50k.i16` against Mads's copies: identical.
+- `~/dad21/data/processed/` holds links to those stores and its own copies of the CSV and JSON
+  files, so the older clone's manifest is not changed by this iteration.
+  `~/dad21/data/extracted/UAV16` links to `~/data/extracted/UAV16`.
+- The `uav16` step run, then three training runs started.
+
+**How.** Python is `~/dad/.venv/bin/python` (torch 2.14.1+cu126; the clone itself has no `.venv`).
+```
+~/dad/.venv/bin/python -I scripts/prepare_new_data.py uav16                       # 40 s
+CUDA_VISIBLE_DEVICES=S nohup ~/dad/.venv/bin/python -u scripts/run_range.py --name it21_uav16_sS --pool \
+    --arms none --recipes simdist_colour --models dscnn crnn --device cuda --windows 600000 \
+    --speed 0.8 1.25 --deploy-fa 0.05 --seed S --frontend mfe > artifacts/runs/it21_uav16_sS.log   # S = 0, 1, 2
+```
+
+**Result.**
+- `uav16`: 200 drone recordings (19,211.9 s; 152 train, 48 held), 28 background (5,992.8 s), 45
+  replays skipped. `uav16.i16` is 806,551,712 bytes.
+- Levels in the manifest (channel 0 at 16 kHz): drone RMS -61.2 to -32.4 dBFS, median -48.4;
+  background -60.8 to -39.2 dBFS, median -48.7. Quiet, as Marius heard, but far above the 16-bit
+  floor. Drone and background are from different days, so the two medians say nothing about how
+  far the drone stands above its own background.
+- The manifest has no Glasgow rows (sources: dronenoise, halmstad, nightjar, ddl, d3set, fpv, lund,
+  fsd50k, uav16). This settles what entry 202 left unread.
+- Each run's log, at the start: 564 training segments, 21 validation segments. Positive cells:
+  d3set 62.6 min, fpv 130.4, nightjar 36.2, uav16 165.4, ddl 14.8, dronenoise 28.2, each with share
+  0.033; simulated distance 0.800. Negatives: d3set, fpv, nightjar and uav16 0.233 each (uav16
+  99.3 min of background).
+
+**Assessment.** The pool is iteration 19's plus `uav16`, as the box says. A quarter of the rig
+negatives, and of the backgrounds under the simulated-distance drones, now come from `uav16`.
+Not done: `it19_colour` has not been re-scored with this code (`--load-from`), so readout 1 has no
+reference yet; `scripts/it19_colour_check.py` has not been run on the new models. The backup
+`manifest_mariusq_backup.csv` on the server is a copy of Mads's manifest, not of the earlier
+`mariusq` one: Marius and Claude typed into the same terminal at the same time. The earlier
+manifest had the size of Mads's `manifest_before_sealed_car_removed.csv` (7,759,023 bytes).
+
+**Next.** When the runs end (iteration 19 took 1316-1383 s per seed), read the three run files,
+re-score `it19_colour_s0-2` and judge by the box.
+
+## 204 - Iteration 21 result: adding UAV16 lowers recall on its own held batches and on Lund
+
+- Date: 2026-11-11
+- Iteration: 21
+- Type: Evaluation
+- Commit: cd20af0 on the server (`~/dad21`); this entry and entry 203 are uncommitted
+
+**What changed.** Six networks trained with `uav16` in the pool (entry 203) and scored on the
+box's five readouts against `it19_colour_s0-2` re-scored with the same code and store.
+
+**Why.** Iteration 21's box.
+
+**How.** On the server (3x TITAN X, one seed per GPU), in `~/dad21`:
+```
+run_range.py --name it21_uav16_sS ...                       # entry 203; 1256-1261 s for seeds 0 and 1
+CUDA_VISIBLE_DEVICES=S ~/dad/.venv/bin/python -u scripts/run_range.py --name it21_ref_sS --load-from it19_colour_sS \
+    --pool --arms none --recipes simdist_colour --models dscnn crnn --device cuda --windows 600000 \
+    --speed 0.8 1.25 --deploy-fa 0.05 --seed S --frontend mfe             # S = 0, 1, 2; 31 s for seed 0
+~/dad/.venv/bin/python -u scripts/it19_colour_check.py it21_uav16_s0 it21_uav16_s1 it21_uav16_s2
+```
+The figures were read from `artifacts/runs/it21_ref_sS.json`, `it21_uav16_sS.json` and the colour
+check's log through the JupyterLab contents API, and the seed means taken by hand from values
+rounded to three decimals. No judge script was written.
+
+**Result.** Threshold frozen at 5% false alarms on validation (Nightjar and d3set validation
+sessions, 21 segments), 1 s window, evaluation hop 0.5 s, one window per decision. Held UAV16: 48
+drone recordings of two acquisition batches, 8,846 windows (7,432 at 0-50 m, 1,414 at 50-100 m);
+no background, so recall only. Means over seeds 0-2:
+
+| | Val recall | Lund recall | Mower FA | UAV16 held, all | 0-50 m | 50-100 m | Pink / brown at -30 dBFS |
+|---|---|---|---|---|---|---|---|
+| DS-CNN `it19_colour` (re-scored) | 0.773 | 0.401 | 0.053 | 0.912 | 0.939 | 0.771 | (entry 171) |
+| DS-CNN `it21_uav16` | 0.762 | 0.324 | 0.059 | 0.887 | 0.929 | 0.667 | 0.0% / 0.0% |
+| difference | -0.010 | **-0.076** | +0.005 | **-0.025** | -0.010 | -0.104 | |
+| CRNN `it19_colour` (re-scored) | 0.787 | 0.358 | 0.112 | 0.857 | 0.914 | 0.558 | (entry 171) |
+| CRNN `it21_uav16` | 0.784 | 0.282 | 0.099 | 0.829 | 0.893 | 0.487 | 0.0% / 0.0% |
+| difference | -0.004 | **-0.076** | -0.013 | **-0.029** | -0.021 | -0.071 | |
+
+Per seed (reference -> new). Lund: DS-CNN 0.392 -> 0.347, 0.394 -> 0.299, 0.416 -> 0.327; CRNN
+0.340 -> 0.245, 0.403 -> 0.340, 0.332 -> 0.261. UAV16 held, all: DS-CNN 0.908 -> 0.896, 0.890 ->
+0.881, 0.938 -> 0.883; CRNN 0.867 -> 0.814, 0.856 -> 0.844, 0.849 -> 0.828. Every seed is lower on
+both. Pink and brown alarms are 0.0% for all six networks at -50, -30 and -10 dBFS.
+
+The re-score reproduces iteration 19: `it21_ref_s1` DS-CNN has threshold 0.6064 and validation
+recall 0.766, as `artifacts/runs/it19_colour_s1.json` (0.6064, 0.7662). The baselines `comb` and
+`lgbm` were not run: the runs used `--models dscnn crnn`, as iteration 19's did.
+
+**Assessment.** By the box:
+1. Held UAV16 recall higher than `it19_colour`: **fails** for both networks. It is lower.
+2. Lund no lower than minus 0.03: **fails** for both (-0.076).
+3. Validation no lower than minus 0.02: passes. 4. Mower no higher than plus 0.05: passes.
+5. Pink and brown at most 5%: passes.
+
+The hypothesis is rejected. `it19_colour`, which never saw this rig, already finds 86-91% of the
+held DJI Flip windows, so there was little to gain, and what the pool gained cost recall on the
+unseen rig (Lund) and at 50-100 m on UAV16 itself. A possible reason, not examined: a quarter of
+the rig negatives and of the backgrounds under simulated-distance drones now come from UAV16's
+backgrounds, which were recorded on other days and at other places than its drones (entry 200),
+so the rig's negatives are not matched to its positives the way Nightjar's and d3set's are. The
+50-100 m recordings do not train under `simdist_colour`. Not scored: ITU ARIS, the war
+soundscape tests, and false alarms on UAV16's own backgrounds (all of them trained).
+
+**Verdict.** Iteration 21 fails. `uav16` stays out of the recipe for the `600k` colour models and
+`it19 CRNN colour s1` stays the colour model in the GUIs. The six `it21_uav16` checkpoints are on
+the server only (`~/dad21/artifacts/models/`) and are not proposed for `Complete_Test_Gui`.
+
+**Next.** Not decided. Two single changes would separate the cause, if Marius or Mads wants the
+dataset pursued: `uav16` drones without its backgrounds as rig negatives, or its backgrounds
+without its drones.
+
