@@ -312,6 +312,7 @@ class Plan:
     car_engines: list | None = None                          # which development cars (indices of car_engines.txt); None: all
     car_once: bool = False                                   # cars layer: one car (ONE_CAR, or the sealed car), one pass-by
                                                              # from the round's start, not looped; False in older plans
+    fa_percentile: float = 95.0                              # Conclusions: the threshold leaves this % of no-drone windows below it
 
     def __post_init__(self):
         """Every Pure Data setting as a list of values (a plan may hold single values); an older plan's
