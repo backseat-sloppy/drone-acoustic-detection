@@ -12270,3 +12270,192 @@ seeds pooled, no per-seed spread taken; no baselines. ITU ARIS scored finished n
 
 **Verdict.** Nothing here changes entry 204: `it19 CRNN colour s1` stays. The car failure remains
 the open problem of test 1, and UAV16 as training data does not address it.
+## 200 - Complete test results window: the playhead waits for the sound
+
+- Date: 2026-11-11
+- Type: Bug fix (GUI playback only)
+- Commit: uncommitted: `scripts/Complete_Test_Gui.py`
+
+**Bug.** The user saw the playhead run ahead of the sound: the audio started late. Playback used `winsound.PlaySound(..., SND_ASYNC)` on a temporary WAV, and the playhead's clock started at the call (`time.perf_counter()`), before the figure was even redrawn. `winsound` gives no start time.
+
+**Measured** on this PC (Realtek speaker, PortAudio host API MME), through sounddevice:
+- opening and starting an output stream took 0.24-0.43 s;
+- the first callback came about 0.04 s later;
+- its first buffer reaches the DAC about 0.175 s after that (`outputBufferDacTime - currentTime`).
+
+So the sound starts 0.46-0.65 s after the click, and 1.35 s on the first, cold start in a fresh process. The old playhead started at 0 s, ahead by that much.
+
+**Fix.** Playback now goes through `sounddevice` (already a project dependency, used by `live`), in a new class `Sound`. Its callback records when the first buffer will be heard on the stream's clock (`outputBufferDacTime`, or `stream.time + latency` where a host API reports 0). `Sound.elapsed()` is None until then and afterwards the seconds since, from the audio device's own clock. The playhead is drawn first, stays hidden until `elapsed()` is not None, and then follows it, so it cannot run ahead or drift. It goes away when the sound is done, even if the clock stops with the stream. Closing the Results window now stops the sound. `play`/`stop_sound` (winsound) and the `tempfile` import were removed.
+
+**Checks.** `Sound` playing 2 s of silence: `perf_counter - elapsed` stayed constant to the millisecond while playing (1.347 s), so no drift. The two runs above gave the timings quoted. The GUI was not opened and nothing was listened to. The sync rests on the device's reported DAC time: any extra delay Windows adds after PortAudio (audio enhancements, Bluetooth) would not be seen.
+
+## 201 - Two new drone clips compared in a modified drone test (20261111_101745_modified)
+
+- Date: 2026-11-11
+- Type: Evaluation (modified drone test; one model; new recordings of unrecorded provenance)
+- Commit: run by the user in `Complete_Test_Gui` (engine with `car_once`, entry 199); analysis by a scratch script, not in the repo
+
+**Run.** `artifacts/complete_test/20261111_101745_modified`. The user asked to evaluate the difference between its two drone files.
+- Drones: two 10 s clips the user cut from their own files in `Downloads/aup3_wav`. `drone1_2_Audio_2_raw_00m14-00m24.wav` was cut in this session. `drone_2_Audio_2_raw_0127-0137.wav` was cut by the user.
+  - Where the recordings come from is not recorded here. They are outside `data/`, and whether they belong to any dataset (ITU ARIS included) was not checked.
+- Model: it19 CRNN colour s1, threshold 0.612.
+- Setup:
+  - 80 dB SPL at 1 m;
+  - 100 and 180 km/h;
+  - Doppler off;
+  - pitch 1;
+  - 20 s rounds, starts every 1 s;
+  - war soundscape 60 dB from 118 s;
+  - wind (Pd, 10 m/s) 25 or 50 dB;
+  - cars (one car, once, 50 km/h at 50 m) 1 or 25 dB.
+- Size: 176 drone rounds (22 per file, speed and background) and 4 no-drone rounds. No baselines.
+
+**Result** (it19 CRNN colour s1; confidence = mean score on drone windows):
+
+| | drone1_2 (00:14-00:24) | drone_2 (01:27-01:37) |
+|---|---|---|
+| all 88 rounds: confidence / recall | 39.0 % / 31.5 % | 41.5 % / 36.0 % |
+| measured SNR (median of round means) | -10.1 dB | -12.5 dB |
+| test 2 figure, 3-7 s before impact, 100 km/h | 39.8 % | 37.8 % |
+| same, 180 km/h | 24.8 % | 24.9 % |
+| 1 s before impact, 100 / 180 km/h | 64 / 62 % | 77 / 57 % |
+| confidence, wind 25 dB (cars 1 / 25), 100 km/h | 43.4 / 45.1 % | 60.3 / 61.4 % |
+| confidence, wind 50 dB (cars 1 / 25), 100 km/h | 45.5 / 45.3 % | 36.7 / 35.9 % |
+| confidence, wind 25 dB, 180 km/h | 36.9 / 37.7 % | 48.8 / 45.9 % |
+| confidence, wind 50 dB, 180 km/h | 29.2 / 28.9 % | 21.7 / 21.1 % |
+
+No-drone rounds (whole round): 6.8 % (wind 25, cars 1), 19.5 % (wind 25, cars 25), 8.6 % (wind 50, cars 1), 9.0 % (wind 50, cars 25). One round each. Figure: `drone_file_comparison.png` in the run folder, looked at.
+
+**The files themselves** (mono content: L/R correlation 1.00 in both, 44.1 kHz float):
+- drone1_2: steady (1 s levels -30.5 to -28.6 dBFS), spectral centroid 1588 Hz. Its strongest peaks (242, 732, 1459, 1534, 2186, 2826 Hz) are not one harmonic series, and much of its energy is above 1 kHz.
+- drone_2: louder and less steady (1 s levels -24.1 to -16.9 dBFS, peak -1.6 dBFS), centroid 1670 Hz, with a clean harmonic series on about 200 Hz (205, 398, 603, 818, 1001, 1200 Hz).
+
+**Assessment.**
+- Before impact the two clips score the same: the test 2 figure differs by 2.0 points at 100 km/h and 0.1 at 180 km/h.
+- The real difference is how they react to wind:
+  - drone_2 is clearly better with the quiet wind: +15 to +17 points at 100 km/h, +9 to +12 at 180.
+  - It loses most with the loud wind (-9 and -8 points against drone1_2), and it rises higher in the last second.
+  - A plausible reading, not tested: the low harmonic lines of drone_2 are what the network locks onto. Wind noise, strongest at low frequencies, masks them at 50 dB. drone1_2's energy lies higher, so the wind level hardly matters to it.
+- drone_2's uneven level also gives it a lower measured SNR (-12.5 against -10.1 dB) at the same set level: the set level is the clip's RMS, and its loud stretches carry most of that.
+- Cars at 25 against 1 dB change drone confidence by at most 3 points here. In the no-drone round with the quiet wind they raise confidence from 7 % to 20 %.
+- Limits:
+  - one 10 s clip per recording, 22 rounds per cell, and the starts are not independent;
+  - one model, no baselines, one no-drone round per background;
+  - the wind explanation is not tested.
+
+## 202 - The same run: which drone clip disappears most when wind and cars go up
+
+- Date: 2026-11-11
+- Type: Evaluation (follow-up to entry 201; same run, model and limits)
+- Commit: scratch script, not in the repo
+
+**Question.** Which of the two clips disappears most when the car level and the wind are turned up? Compared from the quiet background (wind 25 dB, cars 1 dB) to the loud one (wind 50 dB, cars 25 dB), with one step at a time between. 22 rounds per cell, war soundscape 60 dB throughout.
+
+| clip, speed | confidence quiet / wind up / cars up / both | change, quiet to both | test 2 figure quiet to both | recall quiet to both | SNR quiet to both |
+|---|---|---|---|---|---|
+| drone1_2, 100 km/h | 43.4 / 45.5 / 45.1 / 45.3 % | +1.9 points (+4 %) | 39.7 to 38.7 % | 34.2 to 40.1 % | -9.0 to -9.1 dB |
+| drone1_2, 180 km/h | 36.9 / 29.2 / 37.7 / 28.9 % | -8.0 (-22 %) | 32.0 to 17.1 % | 28.6 to 20.0 % | -11.2 to -11.3 dB |
+| drone_2, 100 km/h | 60.3 / 36.7 / 61.4 / 35.9 % | -24.4 (-40 %) | 54.8 to 20.7 % | 57.4 to 28.8 % | -11.0 to -11.2 dB |
+| drone_2, 180 km/h | 48.8 / 21.7 / 45.9 / 21.1 % | -27.7 (-57 %) | 42.6 to 10.1 % | 44.6 to 12.5 % | -13.9 to -14.0 dB |
+
+**Assessment.**
+- drone_2 disappears most. Its confidence falls by 24-28 points (40-57 %), and its test 2 figure by 33-34 points, to 10-21 %. drone1_2 holds at 100 km/h and loses 8 points at 180 km/h.
+- Almost all of it is the wind. Wind up alone gives nearly the whole drop. Cars up alone changes confidence by -3 to +2 points.
+- The measured SNR hardly moves (at most 0.2 dB): the 60 dB war soundscape dominates the background's energy. So drone_2 is lost to where the wind's energy lies, not to how much there is. This fits entry 201's reading that wind masks drone_2's low harmonic lines, but it is still not tested directly. A spectral check of the wind render against drone_2's harmonics would test it.
+- Limits as entry 201: one clip per recording, one model, provenance of the recordings not recorded.
+
+## 203 - The same run: the wind does cover drone_2's lines; correction to entries 201-202's "low harmonics" reading
+
+- Date: 2026-11-11
+- Type: Evaluation (spectral check of entry 202's open point; no model run)
+- Commit: scratch script, not in the repo
+
+**How.** Rounds of `20261111_101745_modified` were rebuilt with `Test.rebuild` (start 5 s, cars 1 dB, wind 25 or 50 dB, both speeds, both clips). Each part (drone, wind (Pd), war soundscape) was measured over 3-7 s before impact: Welch power (nperseg 2048, 16 kHz) summed into the frontend's 64 mel bands (50-8000 Hz). The masked share is the part of the drone's energy that lies in bands where the wind is louder than the drone. Figure: `wind_vs_drone_spectra.png` in the run folder (100 km/h), looked at.
+
+**Result.**
+
+| clip, speed | drone energy under the wind, 25 dB / 50 dB | under the war (60 dB) |
+|---|---|---|
+| drone1_2, 100 km/h | 0.8 % / 9.0 % | 100 % |
+| drone1_2, 180 km/h | 2.0 % / 50.5 % | 100 % |
+| drone_2, 100 km/h | 2.2 % / 69.2 % | 99.9 % |
+| drone_2, 180 km/h | 2.8 % / 100 % | 100 % |
+
+- Half of drone1_2's energy lies below 779 Hz and 80 % below 1456 Hz. For drone_2 the figures are 1154 Hz and 2215 Hz.
+- The wind render has half its energy below 314 Hz and 80 % below 353 Hz: a resonant peak at about 250-450 Hz, above a broadband floor.
+
+**Assessment.**
+- The wind at 50 dB covers most of drone_2 and little of drone1_2 at 100 km/h. This matches which clip disappears (entry 202): masking by the wind explains the drop, and the wind's level change, not the SNR, is what matters.
+- Correction to entries 201 and 202: "low harmonic lines masked by wind strongest at low frequencies" is only part of it.
+  - drone_2's two lowest lines (about 200 and 400 Hz) sit under the wind's 300 Hz peak.
+  - Its higher lines (600-1200 Hz and up) are no louder than the wind's broadband floor at 50 dB, so they are covered too.
+  - drone1_2's strongest lines (about 730 Hz and 1.4-1.5 kHz) stand about 5-8 dB above that floor (read from the figure). At 180 km/h, where the drone is 5 dB quieter at the same time to impact, half of drone1_2 goes under as well.
+  - So the difference is how far each clip's lines rise above the wind across the spectrum, not that drone_2 is low-pitched: by energy it is the higher of the two.
+- The war soundscape is louder than the drone in essentially every band for both clips, yet the network still finds the drone against it (entry 201: 38-40 % at 100 km/h). Masking measured by band power alone does not predict detection against the war. The war varies in time, while the drone lines and the Pd wind are steady, and steady noise is what this network confuses with drone (entry 100). That is a reading, not tested here.
+- Limits: one start per cell, band power only (no time structure), the it19 network not probed directly.
+
+## 204 - Complete test: a false-alarm threshold from the no-drone rounds, and the time before impact at it
+
+- Date: 2026-11-11
+- Type: Engineering (a readout in Conclusions; no model, mix or split changed)
+- Commit: uncommitted: `scripts/complete_test_engine.py` (one Plan field), `scripts/Complete_Test_Gui.py`
+
+**Why.** The user asked for a conclusion on the parameters:
+1. Look at the confidence without a drone, with the distractors, and put a threshold above the lower p % of it, so that only confidence above it counts as drone.
+2. Use that threshold to compute the time before impact.
+3. Give it for all distractors and for each one.
+
+The percentage may go over 100, which puts the threshold above the highest peak.
+
+**Decisions, asked one at a time and answered by the user.**
+- One common threshold per detector, from all no-drone rounds (all backgrounds of the test together), not one per distractor.
+- Time before impact = the first alarm, by the existing rule of `wavio.lead_times` (`lead_s`): the first window at or over the threshold that is at least half drone and no later than impact. A single short peak counts.
+- Summary per group: the median with a round that never reaches the threshold counted as 0 s, plus the share that reaches it and the share at least 3 s before impact.
+- Over 100 %: "100 % is exactly the peak, 101 % must be above it". The scaling was left open, so the recommended one was used: threshold = highest no-drone window x p / 100. A threshold over 100 % confidence can never be reached.
+
+**Change.**
+- `Plan.fa_percentile` (default 95), set from a new "false alarms: __ %" box under the no-drone tick on the front page (50 to 200 %, `fa_pct`). Older runs load with 95.
+- Conclusions has the same box in its top bar (Enter redraws), so older runs can be read at any %.
+- New section at the top of the single-detector page and of "comparison". It shows the threshold per detector (`fa_threshold`: the percentile of all 1 s windows of the no-drone rounds, comb squashed as elsewhere), and the time before impact at it (`leads_at`, `lead_summary`). The groups are all rounds, and each background layer on and off where the test has both. One graph per layer that varies shows the median time before impact per level, with a dotted line for the layer off. Modified tests only (an impact); otherwise the section says why it is empty.
+
+**Checks.**
+- `leads_at` at each model's own threshold equals the engine's `lead_s` in `rounds.csv` in every round: 176 of 176 (20261111_101745_modified) and 54,830 rounds with a lead (10_11_TBITest, it9 CRNN), 0 differences.
+- The 95 % threshold equals a hand computation (50.4 % and 55.8 %).
+- On 20261111_101745_modified (it19 CRNN colour s1, 612 no-drone windows, highest 92.19 %):
+
+  | false alarms | threshold | median s before impact | reach it | at least 3 s |
+  |---|---|---|---|---|
+  | 95 % | 50.4 % | 7.56 | 100 % | 79 % |
+  | 99 % | 85.4 % | 3.75 | 90 % | 57 % |
+  | 100 % | 92.2 % (the peak) | 1.25 | 64 % | 38 % |
+  | 101 % | 93.1 % (1.01 x peak) | 0.62 | 58 % | 35 % |
+  | 150 % | 138.3 % | 0 | 0 % | 0 % |
+
+  250 % is refused with its message.
+- 10_11_TBITest, it9 CRNN, 95 % (threshold 55.8 %): median 4.38 s, 96 % reach it, 61 % at least 3 s. With wind on: 4.00 s; with wind off: 7.88 s.
+- The page was drawn and looked at (single detector and comparison). A slow group split (a set rebuilt per round, 235 s) was fixed before use; it now takes 36.5 s on 10_11_TBITest.
+- `uv run pytest` not run: no test imports these files.
+
+**Caveat on reading it.** With the first-alarm rule, an alarm caused by a background spike after the drone starts counts as detection. In 10_11_TBITest the median time before impact is longer at war 55-81 dB (7.1-8.0 s) than at 30 dB (3.5 s). The no-drone confidence is highest at those war levels (entry 191), so part of those early alarms are probably the war itself. Not checked further.
+
+## 205 - Why "wind on" gave a longer time before impact than "wind off": a peak at the drone clip's onset
+
+- Date: 2026-11-11
+- Type: Evaluation (reading of entry 204's readout; no change)
+- Commit: scratch scripts, not in the repo
+
+**Question.** In `20261111_113753_modified`, at the 100 % false-alarm threshold (89.2 %), the user saw a longer median time before impact with the wind on (8.9 s) than off (7.5 s), and asked why.
+
+**Run.**
+- it19 CRNN colour s1, one drone clip (`drone_2_Audio_2_raw_0127-0137.wav`) at 13 km/h. The drone starts only about 36 m away, so it is loud throughout.
+- War soundscape 60 dB, wind (Pd) 50 dB or off, cars 1-25 dB or off.
+- 66 drone rounds with wind and 66 without.
+
+**Findings.**
+- **The threshold is set by the car without wind.** No-drone maxima: with wind 50 dB 35.8-37.5 % for every car level. Without wind they are 10.0 % (cars 1 dB), 52.4, 81.0, 85.6 and 89.2 % (cars 25 dB). The 100 % threshold is the car at 25 dB with no wind to mask it.
+- **The mean confidence before impact is the same** with and without wind (figure `wind_on_off_before_impact.png` in the run folder, looked at).
+- **The difference is a peak in the drone's first second.** The clip starts abruptly, and the windows that first count as drone (0.5-1.0 s into the drone sound) peak at a median of 92 % with wind and 53 % without. They cross the threshold in 55 % and 36 % of rounds. The first-alarm rule (entry 204) counts that peak, so the median first alarm lands 1.0 s into the drone sound with wind and 2.4 s without, hence 8.9 against 7.5 s.
+- **Under a "crosses and stays above until impact" rule the order flips**, as the earlier wind results would predict: 4.00 s with wind against 4.88 s without. After the first alarm the confidence stays above the threshold in a median 90 % (wind) and 96 % (no wind) of the windows. Only 12 % and 35 % of rounds never drop below it again.
+- Why the onset peak is higher with wind was not examined.
+
+**Assessment.** "Wind on is better" is an artefact. It comes from the clip's abrupt onset combined with the first-alarm rule, not from the wind helping detection. The onset of a cut clip is not something a real approaching drone has. Reading the time before impact needs the stays-above rule beside the first-alarm one, or a fade-in on the clips.

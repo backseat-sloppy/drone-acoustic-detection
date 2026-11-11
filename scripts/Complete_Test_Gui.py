@@ -46,7 +46,6 @@ import json
 import os
 import queue
 import sys
-import tempfile
 import threading
 import time
 import tkinter as tk
@@ -171,6 +170,21 @@ def speed_steps(lo: str, hi: str, n: str) -> list[float]:
         return E.dwg.steps(lo_, hi_, n_, "speed")
     except ValueError as e:
         raise ValueError(str(e).replace("the count", "#").replace("count 1", "# 1")) from None
+
+
+FA_MAX = 200.0                                               # the false-alarm box's ceiling (2 x the highest no-drone peak)
+
+
+def fa_pct(s: str) -> float:
+    """The false-alarm box, in %: up to 100 the share of no-drone windows that must lie below the threshold
+    (100 = the highest no-drone peak); above 100 the threshold is that peak times the % (101 = just above it)."""
+    try:
+        p = float(str(s).strip().rstrip("%"))
+    except ValueError:
+        raise ValueError("false alarms: a number in %, for example 95") from None
+    if not 50 <= p <= FA_MAX:
+        raise ValueError(f"false alarms: from 50 to {FA_MAX:g} %")
+    return p
 
 
 def pd_steps(name: str, lo: str, hi: str, n: str) -> list[float]:
@@ -482,7 +496,15 @@ class Page(ttk.Frame):
         ttk.Label(f, text="s until it ends with the soundscape").grid(row=0, column=4, sticky="w")
         ttk.Checkbutton(f, text="add one no-drone round per background (false alarms)", variable=self.v_nodrone,
                         command=self.update_count).grid(row=1, column=0, columnspan=5, sticky="w", pady=(6, 0))
-        for v in (self.v_len, self.v_step):
+        fa = ttk.Frame(f)
+        fa.grid(row=2, column=0, columnspan=5, sticky="w", pady=(4, 0))
+        ttk.Label(fa, text="false alarms:").pack(side="left")
+        self.v_fa = tk.StringVar(value="95")
+        ttk.Entry(fa, textvariable=self.v_fa, width=5).pack(side="left", padx=4)
+        ttk.Label(fa, text="%  of the no-drone windows lie below the threshold (100 = the highest no-drone peak, above 100 = "
+                           "that peak x the %); Conclusions gives the threshold and the time before impact at it",
+                  style="Muted.TLabel").pack(side="left")
+        for v in (self.v_len, self.v_step, self.v_fa):
             v.trace_add("write", lambda *_: self.update_count())
 
     def _build_detectors(self, f):
@@ -580,6 +602,7 @@ class Page(ttk.Frame):
                    step_s=step, no_drone_rounds=self.v_nodrone.get(), pd_settings={**E.PD_SETTINGS, **pd_settings},
                    also_without=[n for n in layers if self.v_layer_off[n].get()], final_evaluation=self.v_final.get(),
                    car_once=True,                            # one car, one pass-by from the round's start (entry 199)
+                   fa_percentile=fa_pct(self.v_fa.get()),
                    soundscape_start_s=float(start) if start else None, **({"synth": synth} if synth else {}),
                    **({"speeds": speeds, "approach": approach, "pitches": pitches, "pitch_random": self.v_pitch_random.get()}
                       if self.kind == "modified" else {}))
@@ -749,7 +772,8 @@ class Results(tk.Toplevel):
         self.configure(bg=BG)
         self.by_round = {r["round"]: r for r in test.rounds}
         self.scores = self._scores()
-        self._wav = None
+        self._sound = None
+        self.protocol("WM_DELETE_WINDOW", lambda: (self._stop_play(), self.destroy()))   # closing stops the sound
         self._build()
 
     def _scores(self) -> dict:
@@ -1000,10 +1024,10 @@ class Results(tk.Toplevel):
         x = {"mix": m["mix"], "drone": drone, "background": m["mix"] - drone}[what]
         g = 0.9 / max(float(np.max(np.abs(m["mix"]))), 1e-12)   # the mix's gain for all three: levels stay comparable
         self._stop_play()
-        self._wav = play(np.clip(x * g, -1, 1), self._wav)
-        self._start_head(len(x) / E.SR, time.perf_counter())   # the clock starts with the sound
+        self._start_head(len(x) / E.SR)                      # drawn first, so drawing does not delay the sound
+        self._sound = Sound(np.clip(x * g, -1, 1))           # the line waits for the sound's own clock (Sound.elapsed)
 
-    def _start_head(self, seconds: float, t0: float):
+    def _start_head(self, seconds: float):
         """A vertical line across the log-mel and the graphs that follows the sound as it plays. Only
         the line is redrawn (blitting over a saved background), so it moves smoothly."""
         self._head = [ax.axvline(0, color="#00e5ff" if i == 0 else "#111111", lw=1.6, alpha=0.9, zorder=10,
@@ -1011,15 +1035,24 @@ class Results(tk.Toplevel):
         self.canvas.draw()                                   # the figure without the (animated) line
         self._head_bg = self.canvas.copy_from_bbox(self.fig.bbox)
         self._head_cid = self.canvas.mpl_connect("draw_event", self._new_head_bg)   # resized: save it again
-        self._head_t0, self._head_len = t0, seconds
-        self._tick_head()
+        self._head_len = seconds
+        self._head_job = self.after(10, self._tick_head)
 
     def _new_head_bg(self, _):
         self._head_bg = self.canvas.copy_from_bbox(self.fig.bbox)
 
     def _tick_head(self):
-        t = time.perf_counter() - self._head_t0
-        if t > self._head_len or not self._head:
+        if not self._head:
+            return
+        snd = self._sound
+        t = snd.elapsed() if snd else None
+        if t is None:                                        # the sound has not reached the speaker yet: no line
+            if snd and snd.active():
+                self._head_job = self.after(10, self._tick_head)
+            else:
+                self._remove_head()
+            return
+        if t > self._head_len or (not snd.active() and t > self._head_len - 0.5):   # done, even if the clock stops
             self._remove_head()
             return
         self.canvas.restore_region(self._head_bg)
@@ -1041,7 +1074,9 @@ class Results(tk.Toplevel):
             self.canvas.draw_idle()
 
     def _stop_play(self):
-        stop_sound()
+        if self._sound:
+            self._sound.stop()
+            self._sound = None
         self._remove_head()
 
 
@@ -1215,6 +1250,57 @@ def confidence_over_time(test: E.Test, det: str, scores: dict) -> dict[float, di
     return out
 
 
+def fa_threshold(test: E.Test, det: str, scores: dict, pct: float) -> tuple[float | None, int]:
+    """Up to 100: the confidence that `pct` % of `det`'s windows in the no-drone rounds lie below (all
+    backgrounds together; each 1 s window one value, comb squashed as drawn elsewhere); 100 is the highest
+    one. Above 100: that highest one times pct / 100, so 101 is just above every no-drone window (a
+    threshold over 1 can never be reached). -> (threshold, windows)."""
+    vals = [scores[f"{rnd}|{det}"] for rnd in test.results
+            if test.by_round[rnd]["drone"] is None and f"{rnd}|{det}" in scores]
+    if not vals:
+        return None, 0
+    v = np.concatenate(vals)
+    v = v[~np.isnan(v)]
+    if det == "comb":
+        v = E.dwg.squash(v, test.thr[det])
+    if not v.size:
+        return None, 0
+    return (float(np.percentile(v, pct)) if pct <= 100 else float(v.max()) * pct / 100), int(v.size)
+
+
+def leads_at(test: E.Test, det: str, scores: dict, thr: float) -> dict[int, float | None]:
+    """Modified drone tests: per drone round, how long before impact `det` first reaches `thr`, by the rule
+    of wavio.lead_times (the first window at least half drone and no later than impact); None if never."""
+    hop, base = DEFAULT.samples_per_hop / E.SR, DEFAULT.window_seconds
+    win = base if det == "comb" else E.dwg.model_cfg(det).window_seconds
+    out = {}
+    for rnd in test.results:
+        r = test.by_round[rnd]
+        s = scores.get(f"{rnd}|{det}")
+        if r["drone"] is None or s is None:
+            continue
+        s0, _, imp = test.drones.span[r["drone"]]
+        if imp is None:
+            continue
+        y = E.dwg.squash(s, test.thr[det]) if det == "comb" else s
+        t_end = np.arange(len(y)) * hop + base               # on_grid: every detector on the 1 s window's time axis
+        start, impact = r["start_s"] + s0, r["start_s"] + imp
+        with np.errstate(invalid="ignore"):
+            hit = (y >= thr) & (t_end - win / 2 >= start) & (t_end <= impact)   # a NaN (2 s model's first hops) is no hit
+        out[rnd] = float(impact - t_end[hit][0]) if hit.any() else None
+    return out
+
+
+def lead_summary(leads: list) -> dict:
+    """Median seconds before impact with a round that never reaches the threshold counted as 0 s, and the
+    shares that reach it at all and at least 3 s before impact."""
+    if not leads:
+        return dict(n=0, median=None, reached=None, ge3=None)
+    v = np.array([0.0 if x is None else x for x in leads])
+    return dict(n=len(leads), median=float(np.median(v)), reached=float(np.mean([x is not None for x in leads])),
+                ge3=float(np.mean(v >= 3.0)))
+
+
 class Conclusions(tk.Toplevel):
     """A scrollable page: Overall (the drone-to-layer dB ratio), summaries of speed, war soundscape, wind
     and cars, then any other setting that varies (summary_sections). Each graph is a detector's mean confidence on drone windows (true) and on
@@ -1245,6 +1331,12 @@ class Conclusions(tk.Toplevel):
             with np.load(p) if p.exists() else nullcontext({}) as d:
                 self.scores = {k: d[k] for k in getattr(d, "files", [])}
         ttk.Button(bar, text="Save PNG", command=self.save).pack(side="right")
+        ttk.Label(bar, text="false alarms").pack(side="left", padx=(20, 4))   # the threshold's percentile, from the plan
+        self.v_fa = tk.StringVar(value=f"{getattr(test.plan, 'fa_percentile', 95.0):g}")
+        e_fa = ttk.Entry(bar, textvariable=self.v_fa, width=5)
+        e_fa.pack(side="left")
+        ttk.Label(bar, text="%  (Enter to apply)", style="Muted.TLabel").pack(side="left", padx=(2, 0))
+        e_fa.bind("<Return>", lambda e: self.draw())
         holder = ttk.Frame(self)
         self.scroll = tk.Canvas(holder, bg="white", highlightthickness=0)
         sb = ttk.Scrollbar(holder, orient="vertical", command=self.scroll.yview)
@@ -1278,8 +1370,11 @@ class Conclusions(tk.Toplevel):
             return self._draw_compare()
         thr = 0.5 if det == "comb" else self.test.thr[det]
         curves = confidence_over_time(self.test, det, self.scores)
-        secs = summary_sections(self.test)
+        secs = [self._fa_section([det]), *summary_sections(self.test)]
         for s in secs:
+            if "fa" in s:                                    # cells set by _fa_section
+                s["rows"] = (s["cells"] + 1) // 2
+                continue
             s["curves"] = curves if s["title"] == "Speed summary" else {}
             s["cells"] = len(s["charts"]) + len(s["curves"])
             s["rows"] = (s["cells"] + 1) // 2
@@ -1304,6 +1399,10 @@ class Conclusions(tk.Toplevel):
                 y += NOTE_IN
                 continue
             axes = [self._axes(i, s["cells"], y, height) for i in range(s["cells"])]
+            if "fa" in s:
+                lines += self._draw_fa(axes, s["fa"])
+                y += s["rows"] * ROW_IN
+                continue
             for ax, chart in zip(axes, s["charts"]):
                 lines.append(self._chart(ax, det, *chart))
             if s["charts"]:
@@ -1415,6 +1514,100 @@ class Conclusions(tk.Toplevel):
         (COLORS has near-identical purples for it9 CRNN and the it17 CRNNs, which cannot be told apart)."""
         return SPARE_COLORS[self.test.plan.detectors.index(det) % len(SPARE_COLORS)]
 
+    def _fa_section(self, dets: list) -> dict:
+        """The top section: from the false-alarm % (front page, or the box here), each detector's threshold =
+        that percentile of its no-drone windows, then the time before impact at that threshold for all
+        rounds and for the rounds with each background layer on, and per level of each layer that varies."""
+        t, title = self.test, "False alarms: the threshold, and the time before impact at it"
+        try:
+            pct = fa_pct(self.v_fa.get())
+        except ValueError as e:
+            return dict(title=title, cells=0, note=str(e), fa=None)
+        if t.plan.kind != "modified":
+            return dict(title=title, cells=0, note="Time before impact needs a modified drone test: only it has an impact.", fa=None)
+        if not any(t.by_round[r]["drone"] is None for r in t.results):
+            return dict(title=title, cells=0, fa=None,
+                        note="No no-drone rounds in this run: tick \"add one no-drone round per background\" to get a threshold.")
+        if not self.scores:
+            return dict(title=title, cells=0, note="scores.npz is missing from the run folder.", fa=None)
+        per = {}
+        for d in dets:
+            thr, nwin = fa_threshold(t, d, self.scores, pct)
+            per[d] = dict(thr=thr, nwin=nwin, leads=leads_at(t, d, self.scores, thr) if thr is not None else {})
+        drone_rounds = [rnd for rnd in t.results if t.by_round[rnd]["drone"] is not None]
+        groups = [("all rounds", drone_rounds)]
+        for n in t.plan.layers:
+            on = [rnd for rnd in drone_rounds if setting(t.by_round[rnd], n) not in (None, "off")]
+            if on and len(on) < len(drone_rounds):           # a layer on in every round is just "all rounds"
+                on_set = set(on)
+                groups.append((f"{n} on", on))
+                groups.append((f"{n} off", [rnd for rnd in drone_rounds if rnd not in on_set]))
+        curve_layers = [n for n in t.plan.layers if len([v for v in values_of(t, n) if v != "off"]) > 1]
+        fa = dict(pct=pct, per=per, groups=groups, layers=curve_layers, dets=dets)
+        return dict(title=title, cells=1 + len(curve_layers), note="", fa=fa)
+
+    def _draw_fa(self, axes, fa: dict) -> list[str]:
+        t, dets, pct = self.test, fa["dets"], fa["pct"]
+        col = (lambda d: self._color(d)) if len(dets) > 1 else (lambda d: COLORS.get(d, "#2a78d6"))
+        lines = []
+        ax = axes[0]
+        names = [g for g, _ in fa["groups"]]
+        w = 0.8 / max(len(dets), 1)
+        for j, d in enumerate(dets):
+            p = fa["per"][d]
+            if p["thr"] is None:
+                lines.append(f"False alarms {pct:g} % · {d}: no no-drone windows, no threshold")
+                continue
+            how = (f"{pct:g} % of its {p['nwin']} no-drone windows lie below it" if pct < 100 else
+                   f"the highest of its {p['nwin']} no-drone windows" if pct == 100 else
+                   f"{pct:g} % of the highest of its {p['nwin']} no-drone windows: above every one"
+                   + ("; over 100 % confidence, so never reached" if p["thr"] > 1 else ""))
+            lines.append(f"False alarms {pct:g} % · {d}: threshold {100 * p['thr']:.1f} % confidence ({how})")
+            meds = []
+            for g, rnds in fa["groups"]:
+                s = lead_summary([p["leads"].get(r) for r in rnds if r in p["leads"]])
+                meds.append(s["median"])
+                if s["n"]:
+                    lines.append(f"    {g}: median {s['median']:.2f} s before impact (a miss = 0 s);  {100 * s['reached']:.0f} % of "
+                                 f"{s['n']} rounds reach the threshold;  {100 * s['ge3']:.0f} % at least 3 s before impact")
+            xs = np.arange(len(names)) + (j - (len(dets) - 1) / 2) * w
+            ax.bar(xs, [0 if m is None else m for m in meds], w * 0.9, color=col(d),
+                   label=f"{d}: threshold {100 * p['thr']:.0f} %")
+            for x, m in zip(xs, meds):
+                if m is not None:
+                    ax.text(x, m + 0.15, f"{m:.1f}", ha="center", fontsize=7)
+        ax.set_xticks(range(len(names)), names, fontsize=8)
+        ax.set(ylim=(0, E.DRONE_S + 1), ylabel="median seconds before impact")
+        ax.set_title(f"time before impact at the {pct:g} % false-alarm threshold (median; a miss = 0 s)",
+                     fontsize=10, loc="left", weight="bold")
+        ax.axhline(3, color="#888", ls="--", lw=1)
+        ax.grid(axis="y", color="#e8e8e8", lw=0.5)
+        ax.set_axisbelow(True)
+        ax.legend(loc="upper right", fontsize=8, frameon=False)
+        for ax, n in zip(axes[1:], fa["layers"]):
+            vals = values_of(t, n)
+            nums = [v for v in vals if v != "off"]
+            for d in dets:
+                p = fa["per"][d]
+                if p["thr"] is None:
+                    continue
+                by = {}
+                for rnd, lead in p["leads"].items():
+                    by.setdefault(setting(t.by_round[rnd], n), []).append(lead)
+                med = [lead_summary(by.get(v, []))["median"] for v in nums]
+                ax.plot(nums, [np.nan if m is None else m for m in med], "-o", color=col(d), lw=2, ms=4, label=d)
+                off = lead_summary(by["off"])["median"] if "off" in by else None
+                if off is not None:
+                    ax.axhline(off, color=col(d), ls=":", lw=1.2)
+                lines.append(f"    {n} · {d}: median s before impact " + ("" if off is None else f"off {off:.2f};  ")
+                             + ";  ".join(f"{fmt(v)} dB {m:.2f}" for v, m in zip(nums, med) if m is not None))
+            ax.set(ylim=(0, E.DRONE_S + 1), ylabel="median seconds before impact")
+            ax.set_xlabel(f"{n} level (dB SPL)" + ("; dotted = layer off" if "off" in vals else ""))
+            ax.set_title(f"{n}: time before impact at the threshold", fontsize=10, loc="left", weight="bold")
+            ax.axhline(3, color="#888", ls="--", lw=1)
+            ax.grid(color="#e8e8e8", lw=0.5)
+        return lines
+
     def _draw_compare(self):
         """The "comparison" page: every detector together, on two questions only.
         1. Confidence before impact (modified drone tests): each detector's mean confidence over time, all
@@ -1441,7 +1634,8 @@ class Conclusions(tk.Toplevel):
         curves = {d: confidence_over_time(t, d, self.scores) for d in dets}
         has_time = any(curves.values())
 
-        secs = [dict(title="Confidence before impact", cells=2 if has_time else 0,
+        secs = [self._fa_section(dets),
+                dict(title="Confidence before impact", cells=2 if has_time else 0,
                      note="Only a modified drone test has an impact; this test has no confidence over time."),
                 dict(title="Confidence during distractors: no-drone windows (lower is better)", cells=len(layers) + 1, note="")]
         for s in secs:
@@ -1467,9 +1661,11 @@ class Conclusions(tk.Toplevel):
                 continue
             axes_of.append([self._axes(i, s["cells"], y, height) for i in range(s["cells"])])
             y += s["rows"] * ROW_IN
+        if axes_of[0]:
+            lines += self._draw_fa(axes_of[0], secs[0]["fa"])
         if has_time:
-            lines += self._compare_impact(*axes_of[0], curves)
-        lines += self._compare_distractors(axes_of[1], layers, sums, groups, gnames)
+            lines += self._compare_impact(*axes_of[1], curves)
+        lines += self._compare_distractors(axes_of[2], layers, sums, groups, gnames)
         self.canvas.draw_idle()
         self.l_text.configure(text="\n".join(lines))
         self.scroll.yview_moveto(0)
@@ -1584,25 +1780,42 @@ def sort_key(v):
         return (1, s)
 
 
-def play(x: np.ndarray, old: str | None) -> str | None:
-    """Plays x (16 kHz) from a temp WAV; returns its path so the next call can delete it."""
-    if sys.platform != "win32":
-        return old
-    import winsound
-    winsound.PlaySound(None, 0)
-    f = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    f.close()
-    sf.write(f.name, x.astype(np.float32), E.SR, subtype="PCM_16")
-    if old:
-        Path(old).unlink(missing_ok=True)
-    winsound.PlaySound(f.name, winsound.SND_FILENAME | winsound.SND_ASYNC)
-    return f.name
+class Sound:
+    """Plays x (16 kHz, -1..1) through sounddevice and says how far the listener has got, read from the
+    audio device's own clock: elapsed() is None until the first sample reaches the speaker, then the
+    seconds since. The playhead follows that, so it neither runs ahead of a slow device start-up (winsound,
+    used before, gave no start time) nor drifts."""
 
+    def __init__(self, x: np.ndarray):
+        import sounddevice as sd
+        self._stop = sd.CallbackStop
+        self.x, self.pos, self.dac0 = np.ascontiguousarray(x, dtype=np.float32), 0, None
+        self.stream = sd.OutputStream(samplerate=E.SR, channels=1, dtype="float32", callback=self._fill)
+        self.stream.start()
 
-def stop_sound():
-    if sys.platform == "win32":
-        import winsound
-        winsound.PlaySound(None, 0)
+    def _fill(self, out, frames, ti, status):
+        if self.dac0 is None:                                # when this first buffer will be heard, on the stream's clock
+            t = ti.outputBufferDacTime                       # some Windows host APIs report 0 here
+            self.dac0 = t if t and t >= ti.currentTime > 0 else self.stream.time + self.stream.latency
+        chunk = self.x[self.pos:self.pos + frames]
+        out[:len(chunk), 0] = chunk
+        out[len(chunk):] = 0
+        self.pos += len(chunk)
+        if len(chunk) < frames:
+            raise self._stop
+
+    def elapsed(self) -> float | None:
+        if self.dac0 is None:
+            return None
+        t = self.stream.time - self.dac0
+        return t if t >= 0 else None
+
+    def active(self) -> bool:
+        return bool(self.stream.active)
+
+    def stop(self):
+        self.stream.abort()
+        self.stream.close()
 
 
 def load_test(folder: Path) -> E.Test:
@@ -1611,7 +1824,7 @@ def load_test(folder: Path) -> E.Test:
     p = cfg["plan"]
     plan = E.Plan(**{k: p[k] for k in ("kind", "length_s", "drones", "drone_levels", "layers", "detectors", "step_s",
                                        "no_drone_rounds", "soundscape_start_s", "synth")},
-                  **{k: p[k] for k in ("speeds", "approach", "pitches", "pitch_random", "pd_settings", "also_without", "final_evaluation", "car_engines", "car_once") if k in p})   # not in every run's config
+                  **{k: p[k] for k in ("speeds", "approach", "pitches", "pitch_random", "pd_settings", "also_without", "final_evaluation", "car_engines", "car_once", "fa_percentile") if k in p})   # not in every run's config
     t = E.Test(plan, folder)
     t.start_s = cfg["soundscape_start_s"]
     t.prepare(progress=lambda s: None)
