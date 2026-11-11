@@ -71,6 +71,8 @@ def main() -> None:
                    help="Butterworth bandpass on the power spectrum, Hz (iteration 20, entry 172)")
     p.add_argument("--wiener", action="store_true",
                    help="Wiener gain with a noise median across frequency (iteration 20, entry 172)")
+    p.add_argument("--pcen", type=float, default=None, metavar="T",
+                   help="PCEN with this time constant in s in place of the log (iteration 22)")
     p.add_argument("--pos-weight", type=float, default=1.0, help="loss weight of drone windows (It9B: 2)")
     p.add_argument("--eval-hop", type=float, default=0.5)
     p.add_argument("--deploy-fa", type=float, default=0.10)
@@ -83,7 +85,7 @@ def main() -> None:
     n_fft = args.n_fft or (1024 if args.frontend == "linear" else 400)
     cfg = FrontendConfig(window_seconds=args.window_seconds, kind=args.frontend, n_fft=n_fft, n_mfcc=args.n_mfcc,
                           n_mels=args.n_mels, bandpass=tuple(args.bandpass) if args.bandpass else None,
-                          wiener=args.wiener)
+                          wiener=args.wiener, pcen=args.pcen is not None, pcen_t=args.pcen or 0.4)
     print(f"frontend: {cfg.describe()}", flush=True)
     manifest = load_manifest()
     if args.pair:

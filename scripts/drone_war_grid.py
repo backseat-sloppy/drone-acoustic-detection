@@ -281,7 +281,8 @@ def model_cfg(model: str):
     w = a.get("window_s", 1.0) if "models" in run else a.get("window_seconds", 1.0)
     bp = a.get("bandpass")   # iteration 20: a filtered model must be fed filtered features
     return dataclasses.replace(DEFAULT, window_seconds=float(w), bandpass=tuple(bp) if bp else None,
-                               wiener=bool(a.get("wiener", False)))
+                               wiener=bool(a.get("wiener", False)),
+                               pcen=a.get("pcen") is not None, pcen_t=float(a.get("pcen") or 0.4))
 
 
 def _detectors(model="it6 CNN", device="cpu"):

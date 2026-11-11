@@ -96,6 +96,15 @@ class GpuFrontend:
         if level_norm:
             ref = torch.log(torch.exp(L.double()).mean(dim=(1, 2), keepdim=True))
             L = torch.clamp(L - ref, min=_FLOOR).float()
+        if self.cfg.pcen:   # realrun.pcen
+            E = torch.exp(L.double())
+            M = [E[..., 0]]
+            s = self.cfg.pcen_s
+            for t in range(1, E.shape[-1]):
+                M.append((1.0 - s) * M[-1] + s * E[..., t])
+            M = torch.stack(M, dim=-1)
+            c = self.cfg
+            return ((E / (1e-6 + M) ** c.pcen_alpha + c.pcen_delta) ** c.pcen_r - c.pcen_delta ** c.pcen_r).float()
         return L if self.dct is None else self.dct @ L
 
     def train_features(self, audio: np.ndarray, down: np.ndarray, eq: np.ndarray) -> torch.Tensor:

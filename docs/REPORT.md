@@ -12294,3 +12294,71 @@ Iteration 21 was written on one PC as entries 194-196 while the other PC pushed 
 them inside iteration 21, the "Iterations at a glance" row, and the comments in `tests/test_steady.py` and
 `scripts/dev_test.py`. Entries 194-196 elsewhere in the report mean the other PC's entries. Text is otherwise
 unchanged.
+
+# Iteration 22 - Two frontend probes: PCEN, and the band above 8 kHz
+
+> **Changed from iteration 21:** the frontend, one change per arm, on branch `frontend-probes`. Arm P: PCEN
+> on the 64 mel energies in place of the log, everything else as `it16_600k`. Probe B: whether 8-11 kHz adds
+> drone / no-drone information to the 64 log-mel bands, measured on raw recordings before any data rebuild.
+> **Why:** Mads asked for small tests of both (2026-11-11). PCEN has been the named next frontend candidate
+> since entry 095 and again in entries 172 and 192. The frontend stops at 8 kHz, iteration 20 found the
+> networks lean on 6-8 kHz to reject a mower (entry 192), the deployed microphone samples at 42 kHz (Mads,
+> 2026-11-11), and the ITU ARIS excerpts on this PC (`sealed_peek`) are 22.05 kHz files, so test 1 holds at
+> most about 11 kHz.
+> **Kept the same:** `simdist` recipe, 600,000 windows, speed 0.8-1.25, CRNN and DS-CNN, seeds 0-2, 1 s
+> window, 16 kHz store; `it16_600k` is the reference; the development test of entry 207 is the yardstick.
+> ITU ARIS is not scored.
+> **Hypothesis:** (P) PCEN removes slow background level per band and lowers no-drone confidence in war and
+> with cars without losing the drone; (B) 8-11 kHz carries drone information the 8 kHz frontend misses.
+> **Judged by**, fixed before any number (entry 210):
+> - P, CPU gate first (`scripts/it22_pcen_gate.py`): the drone's footprint in the standardised features
+>   (mean |features(background + drone) - features(background)|, sigma) must be at least 0.8 of log-mel's at
+>   0 and -10 dB in-band SNR for some T in {0.06, 0.4, 2} s; the T with the largest footprint at 0 dB is
+>   trained. Then the arm on the development test, tune half, seed means against `it16_600k`: **pass** if
+>   AUC drone-in-war against war-alone is at least +0.015 for both networks and cars-alone confidence is not
+>   higher; **fail** if either network loses more than 0.006 AUC or the gain is under 0.010; inconclusive
+>   in between. Pinned no-drone confidences (war, wind, cars, helicopter) are reported beside it.
+> - B (`scripts/it22_band_probe.py`): a LightGBM on per-band means and standard deviations, trained on one
+>   of Nightjar and FPV (the two training sources with drone and no-drone audio from the same devices) and
+>   scored on the other. 8-11 kHz is worth a GPU arm only if adding it raises AUC by at least 0.01 in both
+>   directions. A 22.05 kHz arm needs a rebuilt store and would itself come back to the council.
+
+## 210 - Council: PCEN, a higher sample rate, both, or keep the frontend
+
+- Date: 2026-11-11
+- Iteration: 22
+- Type: Council
+- Commit: uncommitted, branch `frontend-probes` on top of 7242462 (iteration 21's changes in the working tree)
+
+**Question.** Try (a) PCEN in place of the log of the 64 mel bands, (b) a higher sample rate (22.05 or 24
+kHz, mel bands to about 11 kHz), (c) both, or (d) keep the frozen frontend?
+
+**Devil's Advocate.** Decisive: (b) confounds source with label, because d3set (1.84 h of drone) exists only
+at 16 kHz and would have an empty top band; the store rebuild costs much against no evidence of gain; the
+baselines would lose parity. Decisive for (c): two changes at once. Serious: PCEN removes level, which the
+graded drone levels test; two earlier councils flagged PCEN's suppression of stationary targets; every
+frontend change so far (128 mel, bandpass, Wiener) was flat or negative while data changes moved the
+number; the development copy is weak evidence. *Answered:* (c) is rejected. (b) gets no GPU arm now: a
+probe on raw Nightjar and FPV, where both labels come from the same devices and d3set plays no part, must
+show information first, and any arm comes back to the council. The stationary-target objection is built
+into P's CPU gate. The level objection stands as a risk; PCEN here runs after the per-window level
+normalisation, which already removes the overall level, so what PCEN adds is a per-band, per-time gain.
+"Frontends have not helped" is noted and is why both are probes with fixed bars.
+
+**Scholar** (context-free). PCEN is standard and defensible for noisy-event detection, with large false
+alarm reductions in bioacoustics (Wang et al. 2017, arXiv:1607.05666; Lostanlen et al., IEEE SPL 2019;
+arXiv:1911.00417; checked by the Scholar), unsettled for stationary tonal targets; the smoother's start
+must be the same in training and inference. No checked standard exists for the bandwidth of drone
+detection; above 8 kHz is a defensible variation with no checked evidence of benefit, and mixing sources of
+different bandwidth risks a bandwidth shortcut; accepted practice is to band-limit all to the common band
+or to augment the bandwidth (unverified). Changing both at once is against practice. *Departure:* none.
+The smoother starts at each window's first frame in training, scoring and the stream alike, because every
+path computes features per 1 s window.
+
+**Problem Solver.** (a) try a modified, window-local PCEN, with a CPU check first; (b) probe first, then a
+like-for-like 16 against 24 kHz arm on the same subset, and the development test must then render at that
+rate or it cannot show a benefit; (c) no; (d) stays the default. Pass bars: +0.015 AUC on both networks,
+fail below +0.010 or a loss over 0.006. Confidence moderate that PCEN gives no gain.
+
+**Decision.** Iteration 22 as boxed: (a) behind its CPU gate, (b) as a CPU probe only, (c) rejected, (d) the
+default until something passes.
