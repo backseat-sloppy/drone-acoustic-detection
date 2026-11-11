@@ -19,8 +19,9 @@ levels x backgrounds (+ backgrounds).
 
 Levels are real levels, not SNRs. Every WAV in this project has full scale = 110 dB SPL
 (env_sim.FULL_SCALE_DB), so a layer at L dB SPL has RMS 10 ** ((L - 110) / 20) in WAV units. A
-background layer's level is its long-term level, the RMS over the whole source (all 600 s of the war
-track, the whole wind stem): a calm stretch of the war track stays calm and an explosion stays loud.
+background layer's level is its long-term level, the RMS over the whole source (all 38.5 s of
+WarSoundScape.wav, looped; the whole wind stem): a calm stretch stays calm and an explosion stays loud.
+Runs before 2026-11-11 used the 600 s war track (scripts/war_track.py); Plan.war_file keeps them apart.
 
 Each round is scored by every chosen detector hop by hop (dad.wavio.stream: the model's own window,
 1 s or 2 s, and a 0.125 s hop; scores.npz puts every detector on the 1 s time axis, NaN before a 2 s
@@ -69,7 +70,8 @@ DRONE_S = 10.0                                               # every drone sound
 MIN_DRONE_S = 5.0                                            # a real drone file may be 5-10 s (Mads, 2026-11-06)
 APPROACH = dict(closest_m=1.0, doppler=False)                # modified drones: distance at impact, Doppler on/off
 OUT_ROOT = dwg.ROOT / "artifacts/complete_test"
-WAR_TRACK = dwg.es.WAR / "war_track.wav"
+WAR_TRACK = dwg.es.WAR / "war_track.wav"                     # the old 600 s war track (scripts/war_track.py): runs before 2026-11-11
+WAR_SOUNDSCAPE = dwg.ROOT / "WarSoundScape/WarSoundScape.wav"   # the war soundscape since 2026-11-11 (Mads): 38.5 s, looped
 WIND_STEM = dwg.es.STEMS / dwg.es.WIND
 WSN_LOOP_S = 60.0
 PD_CACHE = OUT_ROOT / "layers"                               # Pure Data renders, made once per patch version
@@ -128,8 +130,15 @@ class Layer:
         return np.take(x, np.arange(i, i + n), mode="wrap") * (rms_for(level_db) / r)
 
 
-def _war_track():
-    x, sr = sf.read(WAR_TRACK, dtype="float64")
+def war_path(war_file: str) -> Path:
+    p = Path(war_file)
+    return p if p.is_absolute() else dwg.ROOT / p
+
+
+def _war_track(path: Path = WAR_SOUNDSCAPE):
+    x, sr = sf.read(path, dtype="float64")
+    if x.ndim > 1:                                           # stereo -> mono: the mean of the channels
+        x = x.mean(axis=1)
     return resample_poly(x, SR, sr)
 
 
@@ -267,13 +276,17 @@ def pd_config(name: str, pd: dict) -> dict:
     return cfg
 
 
-def make_layers() -> dict[str, Layer]:
+def make_layers(war_file: str | None = None) -> dict[str, Layer]:
     """Every background layer the GUI lists, available or not (helicopter, insects: not yet). The two
-    Pure Data layers here are at the patches' own values; Test.layers_for gives a round's."""
+    Pure Data layers here are at the patches' own values; Test.layers_for gives a round's. The war
+    soundscape is WarSoundScape.wav unless `war_file` names another (an older run's 600 s track)."""
     pd = _pd_layer_state()
+    war = war_path(war_file) if war_file else WAR_SOUNDSCAPE
+    war_note = ("WarSoundScape.wav (38.5 s of gunfire, explosions, movement and voices), looped" if war == WAR_SOUNDSCAPE
+                else f"{war.name}, looped")
     return {
-        "war soundscape": Layer("war soundscape", "the 600 s war track (scripts/war_track.py), calm, normal and "
-                                "intense phases", WAR_TRACK.exists(), _war_track),
+        "war soundscape": Layer("war soundscape", war_note if war.exists() else f"{war.name} missing on this machine",
+                                war.exists(), lambda: _war_track(war)),
         "war-shaped noise": Layer("war-shaped noise", "steady noise with the war's long-term spectrum, 60 s loop",
                                   dwg.WSN_GAIN.exists(), _wsn),
         "wind": Layer("wind", "wind on the capsule (FSD50K stem), looped" if WIND_STEM.exists() else
@@ -313,6 +326,8 @@ class Plan:
     car_once: bool = False                                   # cars layer: one car (ONE_CAR, or the sealed car), one pass-by
                                                              # from the round's start, not looped; False in older plans
     fa_percentile: float = 95.0                              # Conclusions: the threshold leaves this % of no-drone windows below it
+    war_file: str = "WarSoundScape/WarSoundScape.wav"        # the war soundscape layer's source, repo-relative; an older
+                                                             # run without it used the 600 s track (load_test sets that)
 
     def __post_init__(self):
         """Every Pure Data setting as a list of values (a plan may hold single values); an older plan's
@@ -672,6 +687,42 @@ def snr(m: dict) -> dict:
                 drone_db=db_spl(d) if pd > 0 else None)      # measured: also for "as rendered" drones
 
 
+SNR_WINDOWS = (1.0, 2.0)                                     # the detectors' window lengths (s)
+
+
+def grid_t_end(n: int) -> np.ndarray:
+    """The end times of the shared score grid (on_grid): the first 1 s window ends at 1 s, then every hop."""
+    return np.arange(n) * (DEFAULT.samples_per_hop / SR) + DEFAULT.window_seconds
+
+
+def window_snr(m: dict, t_end: np.ndarray, win: float) -> np.ndarray:
+    """The SNR of every window of `win` s ending at t_end, from the round's separate parts: 10 log10 of
+    the drone's power over the power of everything else (mix - drone) in the same samples, so the drone
+    and the background are measured at the same time. NaN for a window whose middle is outside the
+    drone's sound (its truth span), and where either power is 0 (no drone, or no background at all)."""
+    out = np.full(len(t_end), np.nan)
+    if not m["truth"].drones or "drone" not in m["parts"]:
+        return out
+    d = m["parts"]["drone"]
+    bg = m["mix"] - d
+    cd = np.concatenate([[0.0], np.cumsum(d ** 2)])
+    cb = np.concatenate([[0.0], np.cumsum(bg ** 2)])
+    b = np.clip(np.round(t_end * SR).astype(int), 0, len(d))
+    a = np.clip(b - int(round(win * SR)), 0, None)
+    pd, pb = cd[b] - cd[a], cb[b] - cb[a]
+    k = m["truth"].drones[0]
+    mid = t_end - win / 2
+    ok = (mid >= k["start_s"]) & (mid <= k["end_s"]) & (pd > 0) & (pb > 0)
+    out[ok] = 10 * np.log10(pd[ok] / pb[ok])
+    return out
+
+
+def round_window_snrs(m: dict, n: int) -> dict[str, np.ndarray]:
+    """A round's window SNRs for each detector window length, keyed by the length ("1.0", "2.0")."""
+    t_end = grid_t_end(n)
+    return {f"{w:g}": window_snr(m, t_end, w) for w in SNR_WINDOWS}
+
+
 def hop_levels(parts: dict, t_end: np.ndarray) -> dict:
     """dB SPL of every part (and the mix) in each 1 s window ending at t_end, as the detectors hear it."""
     n = int(DEFAULT.window_seconds * SR)
@@ -701,7 +752,7 @@ class Test:
     def __init__(self, plan: Plan, out_dir: Path | None = None, device: str = "cpu"):
         self.plan, self.device = plan, device
         self.out = Path(out_dir or OUT_ROOT / f"{time.strftime('%Y%m%d_%H%M%S')}_{plan.kind}")
-        self.layers = make_layers()
+        self.layers = make_layers(plan.war_file)
         self._pd_layers: dict[tuple, Layer] = {}             # (layer, settings) -> its render, shared by rounds
         self.rounds = plan.rounds()
         self.results: dict[int, dict] = {}                   # round -> detector -> row (+ "scores")
@@ -755,7 +806,7 @@ class Test:
             self.prepare(progress)
         fields = row_fields(self.plan)
         t0 = time.time()
-        scores = {}
+        scores, snrs = {}, {}
         with open(self.out / "rounds.csv", "w", newline="", encoding="utf-8") as fh:
             w = csv.DictWriter(fh, fields)
             w.writeheader()
@@ -777,12 +828,17 @@ class Test:
                                     else r["drone_level_db"], start_s=r["start_s"],
                                     **{f"{n}_db": r["background"].get(n, "off") for n in self.plan.layers}, **r["pd"],
                                     detector=k, threshold=self.thr[k], **v["row"]))
+                if r["drone"] is not None and res:
+                    n_grid = max(len(scores[f"{r['round']}|{k}"]) for k in res)
+                    for win, x in round_window_snrs(m, n_grid).items():   # not `w`: that is the csv writer
+                        snrs[f"{r['round']}|{win}"] = x
                 fh.flush()
                 el = time.time() - t0
                 progress(f"round {i} of {len(self.rounds)}  ({el:.0f} s, about {el / i * (len(self.rounds) - i):.0f} s left)")
                 if on_round:
                     on_round(i, r)
         np.savez_compressed(self.out / "scores.npz", **scores)
+        np.savez_compressed(self.out / "window_snr.npz", **snrs)   # round|window -> SNR (dB) per score-grid window
         write_summary(self)
         return self.results
 

@@ -28,7 +28,7 @@ On each page:
     Run                  the live count of rounds, Start / Stop, progress and time left, the results window
 
 Levels are real levels: full scale in every WAV here is 110 dB SPL. A background layer's level is its
-long-term level over the whole source (all 600 s of the war track), so its calm and loud stretches
+long-term level over the whole source (all 38.5 s of WarSoundScape.wav, looped), so its calm and loud stretches
 keep their difference. The engine (scripts/complete_test_engine.py) explains the scoring.
 
 Results go to artifacts/complete_test/<time>_<kind>/: rounds.csv (one row per round and detector),
@@ -84,9 +84,10 @@ COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it
           "it17 CNN 2s 600k s2": "#81c784", "it17 CRNN 2s 600k s0": "#311b92", "it17 CRNN 2s 600k s1": "#5e35b1",
           "it17 CRNN 2s 600k s2": "#9575cd", "it20 CNN bp s0": "#006064", "it20 CNN bp s1": "#0097a7",
           "it20 CNN bp s2": "#4dd0e1", "it20 CRNN bp s0": "#3e2723", "it20 CRNN bp s1": "#6d4c41",
-          "it20 CRNN bp s2": "#a1887f", "it22 CNN pcen s0": "#1a237e", "it22 CNN pcen s1": "#3949ab",
+          "it20 CRNN bp s2": "#a1887f", "it21 CRNN uav16 s0": "#263238", "it21 CRNN uav16 s1": "#607d8b",
+          "it21 CRNN uav16 s2": "#b0bec5", "it22 CNN pcen s0": "#1a237e", "it22 CNN pcen s1": "#3949ab",
           "it22 CNN pcen s2": "#7986cb", "it22 CRNN pcen s0": "#b71c1c", "it22 CRNN pcen s1": "#e53935",
-          "it22 CRNN pcen s2": "#ef9a9a", "comb": "#1baf7a"}   # it20: the same colours as detect_gui
+          "it22 CRNN pcen s2": "#ef9a9a", "comb": "#1baf7a"}   # it20, it21, it22: the same colours as detect_gui
 PD_CONTROLS = {"wind (Pd)": ("wind", (("speed_ms", "speed (m/s, assumed)", "quiet: 1  ·  storm: 25"),
                                       ("reso", "resonance (0-127)", "open field: 10  ·  city: 90"))),
                "cars": ("cars", (("speed_kmh", "speed (km/h)", "town: 50  ·  motorway: 130"),
@@ -211,8 +212,10 @@ def pd_steps(name: str, lo: str, hi: str, n: str) -> list[float]:
 def detector_names() -> list[str]:
     """The detectors offered on the setup page: the recurrent networks (CRNN, It9B) and comb. The DS-CNNs
     are left out at Nicolai's request (2026-11-10); they stay in dwg.MODELS, so older results that used
-    them still open."""
-    return [m for m, (_, ckpt) in E.dwg.MODELS.items() if not str(ckpt).endswith("_dscnn.pt")] + ["comb"]
+    them still open. A model whose run file or checkpoint is missing on this machine is not offered (run
+    files are git-ignored, so a pulled checkpoint can arrive without the threshold it needs)."""
+    return [m for m, (run, ckpt) in E.dwg.MODELS.items()
+            if not str(ckpt).endswith("_dscnn.pt") and Path(run).exists() and Path(ckpt).exists()] + ["comb"]
 
 
 def model_view(x: np.ndarray, sc, batch: int = 256) -> np.ndarray:
@@ -1270,9 +1273,10 @@ def fa_threshold(test: E.Test, det: str, scores: dict, pct: float) -> tuple[floa
     return (float(np.percentile(v, pct)) if pct <= 100 else float(v.max()) * pct / 100), int(v.size)
 
 
-def leads_at(test: E.Test, det: str, scores: dict, thr: float) -> dict[int, float | None]:
-    """Modified drone tests: per drone round, how long before impact `det` first reaches `thr`, by the rule
-    of wavio.lead_times (the first window at least half drone and no later than impact); None if never."""
+def round_curves(test: E.Test, det: str, scores: dict) -> dict[int, tuple]:
+    """Modified drone tests: per drone round, `det`'s confidence in each window at least half drone and no
+    later than impact, keyed by its time before impact in hops. -> rnd -> (hops before impact, confidence,
+    index into the score grid); comb squashed as drawn elsewhere, NaN hops left out."""
     hop, base = DEFAULT.samples_per_hop / E.SR, DEFAULT.window_seconds
     win = base if det == "comb" else E.dwg.model_cfg(det).window_seconds
     out = {}
@@ -1286,21 +1290,142 @@ def leads_at(test: E.Test, det: str, scores: dict, thr: float) -> dict[int, floa
             continue
         y = E.dwg.squash(s, test.thr[det]) if det == "comb" else s
         t_end = np.arange(len(y)) * hop + base               # on_grid: every detector on the 1 s window's time axis
-        start, impact = r["start_s"] + s0, r["start_s"] + imp
-        with np.errstate(invalid="ignore"):
-            hit = (y >= thr) & (t_end - win / 2 >= start) & (t_end <= impact)   # a NaN (2 s model's first hops) is no hit
-        out[rnd] = float(impact - t_end[hit][0]) if hit.any() else None
+        impact = r["start_s"] + imp
+        idx = np.flatnonzero((t_end - win / 2 >= r["start_s"] + s0) & (t_end <= impact + 1e-9) & np.isfinite(y))
+        out[rnd] = (np.round((impact - t_end[idx]) / hop).astype(int), y[idx], idx)
     return out
 
 
-def lead_summary(leads: list) -> dict:
-    """Median seconds before impact with a round that never reaches the threshold counted as 0 s, and the
-    shares that reach it at all and at least 3 s before impact."""
-    if not leads:
-        return dict(n=0, median=None, reached=None, ge3=None)
-    v = np.array([0.0 if x is None else x for x in leads])
-    return dict(n=len(leads), median=float(np.median(v)), reached=float(np.mean([x is not None for x in leads])),
-                ge3=float(np.mean(v >= 3.0)))
+def curve_lead(curves: dict, rounds: list, thr: float) -> dict:
+    """The time before impact of a group of rounds (Mads, 2026-11-11; replaces the per-round rules of entries
+    213 and 220): their mean confidence at each moment before impact, as in the "confidence over time"
+    graphs, and the first moment it is at or above thr. A moment counts only when at least half the
+    rounds have a window there. -> dict(lead s or None, rounds, k = that moment in hops before impact)."""
+    sums: dict[int, list] = {}
+    rs = [r for r in rounds if r in curves]
+    for r in rs:
+        for k, v in zip(curves[r][0], curves[r][1]):
+            a = sums.setdefault(int(k), [0.0, 0])
+            a[0] += float(v)
+            a[1] += 1
+    hop = DEFAULT.samples_per_hop / E.SR
+    for k in sorted(sums, reverse=True):                     # earliest moment first
+        tot, n = sums[k]
+        if n * 2 >= len(rs) and tot / n >= thr:
+            return dict(lead=k * hop, rounds=len(rs), k=k)
+    return dict(lead=None, rounds=len(rs), k=None)
+
+
+SNR_BIN_DB = 2.0                                             # width of an SNR bin
+SNR_MIN_WINDOWS = 10                                         # a bin with fewer windows is not drawn
+
+
+def window_snrs(test: E.Test, scores: dict) -> dict[str, np.ndarray]:
+    """round|window -> the SNR (dB) of every score-grid window of a drone round (E.window_snr): read from
+    window_snr.npz, or, for a run made before it was stored, measured once by rebuilding each drone round
+    from its parts and saved there."""
+    p = test.out / "window_snr.npz"
+    if p.exists():
+        with np.load(p) as d:
+            return {k: d[k] for k in d.files}
+    out = {}
+    for rnd in test.results:
+        r = test.by_round[rnd]
+        n = max((len(v) for k, v in scores.items() if k.split("|")[0] == str(rnd)), default=0)
+        if r["drone"] is None or not n:
+            continue
+        for w, x in E.round_window_snrs(test.rebuild(r), n).items():
+            out[f"{rnd}|{w}"] = x
+    if out:
+        np.savez_compressed(p, **out)
+    return out
+
+
+def det_window(det: str) -> float:
+    return DEFAULT.window_seconds if det == "comb" else E.dwg.model_cfg(det).window_seconds
+
+
+def snr_pairs(test: E.Test, det: str, scores: dict, snrs: dict) -> tuple[np.ndarray, np.ndarray]:
+    """Every drone window of every drone round: (its SNR in dB, `det`'s confidence there), with the SNR over
+    the detector's own window (1 s or 2 s); comb squashed as drawn elsewhere."""
+    w = f"{det_window(det):g}"
+    xs, ys = [], []
+    for rnd in test.results:
+        s, q = scores.get(f"{rnd}|{det}"), snrs.get(f"{rnd}|{w}")
+        if s is None or q is None:
+            continue
+        y = E.dwg.squash(s, test.thr[det]) if det == "comb" else s
+        n = min(len(y), len(q))
+        ok = np.isfinite(q[:n]) & np.isfinite(y[:n])
+        xs.append(q[:n][ok])
+        ys.append(y[:n][ok])
+    return (np.concatenate(xs), np.concatenate(ys)) if xs else (np.array([]), np.array([]))
+
+
+def snr_bins(x: np.ndarray, y: np.ndarray, thr: float) -> dict:
+    """Windows grouped by SNR in SNR_BIN_DB bins (centres): mean confidence, its middle half, the share at or
+    above thr, and the window count; bins under SNR_MIN_WINDOWS left out."""
+    k = np.floor(x / SNR_BIN_DB).astype(int)
+    rows = []
+    for b in np.unique(k):
+        v = y[k == b]
+        if v.size >= SNR_MIN_WINDOWS:
+            rows.append(((b + 0.5) * SNR_BIN_DB, v.mean(), np.percentile(v, 25), np.percentile(v, 75), np.mean(v >= thr), v.size))
+    a = np.array(rows).reshape(-1, 6)
+    return dict(x=a[:, 0], mean=a[:, 1], p25=a[:, 2], p75=a[:, 3], share=a[:, 4], n=a[:, 5].astype(int))
+
+
+def crossing(x: np.ndarray, y: np.ndarray, level: float) -> float | None:
+    """The first x where y reaches level, interpolated between bins; None if it never does (or starts above)."""
+    above = np.flatnonzero(y >= level)
+    if not above.size or above[0] == 0:
+        return None
+    i = above[0]
+    return float(x[i - 1] + (level - y[i - 1]) * (x[i] - x[i - 1]) / (y[i] - y[i - 1]))
+
+
+def snr_over_time(test: E.Test, snrs: dict) -> dict[float, dict]:
+    """Modified drone tests: per speed, the SNR (1 s windows) at each moment of the drone file, impact at
+    10 s, over every drone round at that speed: median and middle half. -> speed -> dict(x, med, p25, p75, n)."""
+    if test.plan.kind != "modified" or test.drones is None:
+        return {}
+    hop = DEFAULT.samples_per_hop / E.SR
+    bins: dict[float, dict[int, list]] = {}
+    for rnd in test.results:
+        r = test.by_round[rnd]
+        q = snrs.get(f"{rnd}|1")
+        if r["drone"] is None or q is None or test.drones.span[r["drone"]][2] is None:
+            continue
+        impact = r["start_s"] + test.drones.span[r["drone"]][2]
+        x = E.DRONE_S - (impact - E.grid_t_end(len(q)))
+        b = bins.setdefault(E.split_key(r["drone"])[1], {})
+        for k, v in zip(np.round(x / hop).astype(int), q):
+            if np.isfinite(v):
+                b.setdefault(int(k), []).append(float(v))
+    out = {}
+    for speed, b in sorted(bins.items()):
+        ks = sorted(k for k in b if -2 / hop <= k <= (E.DRONE_S + 1) / hop)
+        vals = [np.asarray(b[k]) for k in ks]
+        out[speed] = dict(x=np.array(ks) * hop, med=np.array([np.median(v) for v in vals]),
+                          p25=np.array([np.percentile(v, 25) for v in vals]),
+                          p75=np.array([np.percentile(v, 75) for v in vals]), n=np.array([len(v) for v in vals]))
+    return out
+
+
+def snr_at_alarm(test: E.Test, det: str, scores: dict, snrs: dict, thr: float) -> list[float]:
+    """Modified drone tests: the moment all drone rounds' mean confidence first reaches thr (curve_lead),
+    and every round's window SNR at that moment, over the detector's own window."""
+    curves = round_curves(test, det, scores)
+    k = curve_lead(curves, list(curves), thr)["k"]
+    if k is None:
+        return []
+    out = []
+    for rnd, (ks, _, idx) in curves.items():
+        q = snrs.get(f"{rnd}|{det_window(det):g}")
+        j = np.flatnonzero(ks == k)
+        if q is not None and j.size and idx[j[0]] < len(q) and np.isfinite(q[idx[j[0]]]):
+            out.append(float(q[idx[j[0]]]))
+    return out
 
 
 class Conclusions(tk.Toplevel):
@@ -1327,11 +1452,11 @@ class Conclusions(tk.Toplevel):
         self.v_det = tk.StringVar(value=test.plan.detectors[0])
         choices = [*test.plan.detectors, *([COMPARE] if len(test.plan.detectors) > 1 else [])]
         ttk.Combobox(bar, textvariable=self.v_det, values=choices, state="readonly", width=14).pack(side="left")
-        self.scores = {}
-        if test.plan.kind == "modified":                     # per-hop scores for confidence over time
-            p = test.out / "scores.npz"
-            with np.load(p) if p.exists() else nullcontext({}) as d:
-                self.scores = {k: d[k] for k in getattr(d, "files", [])}
+        self.scores = {}                                     # per-hop scores: over time, false alarms, window SNR
+        p = test.out / "scores.npz"
+        with np.load(p) if p.exists() else nullcontext({}) as d:
+            self.scores = {k: d[k] for k in getattr(d, "files", [])}
+        self._snr = None                                     # window_snrs(), on first use
         ttk.Button(bar, text="Save PNG", command=self.save).pack(side="right")
         ttk.Label(bar, text="false alarms").pack(side="left", padx=(20, 4))   # the threshold's percentile, from the plan
         self.v_fa = tk.StringVar(value=f"{getattr(test.plan, 'fa_percentile', 95.0):g}")
@@ -1372,9 +1497,9 @@ class Conclusions(tk.Toplevel):
             return self._draw_compare()
         thr = 0.5 if det == "comb" else self.test.thr[det]
         curves = confidence_over_time(self.test, det, self.scores)
-        secs = [self._fa_section([det]), *summary_sections(self.test)]
+        secs = [self._fa_section([det]), self._snr_section([det]), *summary_sections(self.test)]
         for s in secs:
-            if "fa" in s:                                    # cells set by _fa_section
+            if "fa" in s or "snr" in s:                      # cells set by _fa_section / _snr_section
                 s["rows"] = (s["cells"] + 1) // 2
                 continue
             s["curves"] = curves if s["title"] == "Speed summary" else {}
@@ -1401,8 +1526,8 @@ class Conclusions(tk.Toplevel):
                 y += NOTE_IN
                 continue
             axes = [self._axes(i, s["cells"], y, height) for i in range(s["cells"])]
-            if "fa" in s:
-                lines += self._draw_fa(axes, s["fa"])
+            if "fa" in s or "snr" in s:
+                lines += self._draw_fa(axes, s["fa"]) if "fa" in s else self._draw_snr(axes, s["snr"])
                 y += s["rows"] * ROW_IN
                 continue
             for ax, chart in zip(axes, s["charts"]):
@@ -1535,7 +1660,7 @@ class Conclusions(tk.Toplevel):
         per = {}
         for d in dets:
             thr, nwin = fa_threshold(t, d, self.scores, pct)
-            per[d] = dict(thr=thr, nwin=nwin, leads=leads_at(t, d, self.scores, thr) if thr is not None else {})
+            per[d] = dict(thr=thr, nwin=nwin, curves=round_curves(t, d, self.scores) if thr is not None else {})
         drone_rounds = [rnd for rnd in t.results if t.by_round[rnd]["drone"] is not None]
         groups = [("all rounds", drone_rounds)]
         for n in t.plan.layers:
@@ -1544,9 +1669,113 @@ class Conclusions(tk.Toplevel):
                 on_set = set(on)
                 groups.append((f"{n} on", on))
                 groups.append((f"{n} off", [rnd for rnd in drone_rounds if rnd not in on_set]))
-        curve_layers = [n for n in t.plan.layers if len([v for v in values_of(t, n) if v != "off"]) > 1]
-        fa = dict(pct=pct, per=per, groups=groups, layers=curve_layers, dets=dets)
-        return dict(title=title, cells=1 + len(curve_layers), note="", fa=fa)
+        params = []                                          # every setting that varies: speed, file, levels, Pd settings...
+        for key, (label, vals) in parameter_values(t).items():
+            if key in t.plan.layers and len([v for v in vals if v != "off"]) < 2:
+                continue                                     # only on/off: already a bar on the left
+            params.append((key, label))
+        params += [(k, PD_LABELS[k]) for k in t.plan.pd_combos()[0] if len(values_of(t, k)) > 1]
+        fa = dict(pct=pct, per=per, groups=groups, params=params, dets=dets)
+        return dict(title=title, cells=1 + len(params), note="", fa=fa)
+
+    def _snr_section(self, dets: list) -> dict:
+        """Window SNR: the drone's power against the background's in the same seconds, from the separate
+        parts. Two views: continuous (confidence and detection against each window's SNR, all windows
+        pooled) and, for modified tests, the SNR over the time before impact with the SNR at first alarm."""
+        t, title = self.test, "SNR: the drone against the simultaneous background, window by window"
+        if not self.scores:
+            return dict(title=title, cells=0, note="scores.npz is missing from the run folder.", snr=None)
+        if self._snr is None:
+            self._snr = window_snrs(t, self.scores)
+        if not self._snr:
+            return dict(title=title, cells=0, snr=None, note="No drone round with a background: no SNR to measure.")
+        try:
+            pct = fa_pct(self.v_fa.get())
+        except ValueError:
+            pct = None
+        has_nd = any(t.by_round[r]["drone"] is None for r in t.results)
+        per = {}
+        for d in dets:
+            thr, how = None, ""
+            if pct is not None and has_nd:
+                thr = fa_threshold(t, d, self.scores, pct)[0]
+                how = f"{pct:g} % false-alarm threshold"
+            if thr is None:
+                thr, how = (0.5 if d == "comb" else t.thr[d]), "its own threshold"
+            x, y = snr_pairs(t, d, self.scores, self._snr)
+            per[d] = dict(thr=thr, how=how, bins=snr_bins(x, y, thr) if x.size else None, n=int(x.size),
+                          first=snr_at_alarm(t, d, self.scores, self._snr, thr) if t.plan.kind == "modified" else [])
+        over = snr_over_time(t, self._snr)
+        return dict(title=title, cells=2 + (1 if over else 0), note="", snr=dict(per=per, over=over, dets=dets))
+
+    def _draw_snr(self, axes, sn: dict) -> list[str]:
+        dets = sn["dets"]
+        col = (lambda d: self._color(d)) if len(dets) > 1 else (lambda d: COLORS.get(d, "#2a78d6"))
+        ax_c, ax_s = axes[0], axes[1]
+        lines = ["SNR = 10 log10(drone power / background power) over the same window (1 s, or the detector's 2 s), "
+                 "from the round's separate drone and background parts; only windows whose middle is inside the drone's sound."]
+        for d in dets:
+            p = sn["per"][d]
+            b = p["bins"]
+            if b is None:
+                lines.append(f"SNR · {d}: no drone windows with a background")
+                continue
+            if len(dets) == 1:
+                ax_c.fill_between(b["x"], 100 * b["p25"], 100 * b["p75"], color=col(d), alpha=0.18, lw=0, label="middle half")
+            ax_c.plot(b["x"], 100 * b["mean"], "-o", color=col(d), lw=2, ms=3, label=d)
+            ax_s.plot(b["x"], 100 * b["share"], "-o", color=col(d), lw=2, ms=3,
+                      label=f"{d}: threshold {100 * p['thr']:.0f} % ({p['how']})")
+            c50, s50 = crossing(b["x"], b["mean"], 0.5), crossing(b["x"], b["share"], 0.5)
+            txt = (f"SNR · {d} ({p['n']} drone windows): mean confidence reaches 50 % at "
+                   + ("-" if c50 is None else f"{c50:+.1f} dB") + ";  half the windows at or above the threshold "
+                   f"({100 * p['thr']:.0f} %, {p['how']}) at " + ("-" if s50 is None else f"{s50:+.1f} dB"))
+            if p["first"]:
+                f = np.array(p["first"])
+                txt += (f";  SNR when the mean confidence first reaches the threshold ({f.size} rounds): median {np.median(f):+.1f} dB, "
+                        f"middle half {np.percentile(f, 25):+.1f} to {np.percentile(f, 75):+.1f} dB")
+            lines.append(txt)
+        if len(dets) == 1 and sn["per"][dets[0]]["bins"] is not None:   # how many windows lie behind each point
+            b = sn["per"][dets[0]]["bins"]
+            tw = ax_s.twinx()
+            tw.bar(b["x"], b["n"], SNR_BIN_DB * 0.9, color="#bbb", alpha=0.35, zorder=0)
+            tw.set_ylabel("windows per bin", fontsize=8, color="#888")
+            tw.tick_params(labelsize=7, colors="#888")
+            ax_s.set_zorder(tw.get_zorder() + 1)
+            ax_s.patch.set_visible(False)
+        for ax in (ax_c, ax_s):
+            ax.axhline(50, color="#888", ls="--", lw=1)
+            ax.axvline(0, color="#999", lw=0.8, ls=":")
+            ax.set_xlabel(f"SNR in the window (dB; {SNR_BIN_DB:g} dB bins, at least {SNR_MIN_WINDOWS} windows; 0 = drone as loud as the background)", fontsize=8)
+            ax.set_ylim(0, 105)
+            ax.grid(color="#e8e8e8", lw=0.5)
+        ax_c.set_ylabel("mean confidence (%)")
+        ax_c.set_title("continuous: confidence against the window's SNR", fontsize=10, loc="left", weight="bold")
+        ax_c.legend(loc="upper left", fontsize=8, frameon=False)
+        ax_s.set_ylabel("drone windows at or above threshold (%)")
+        ax_s.set_title("continuous: detected windows against the window's SNR", fontsize=10, loc="left", weight="bold")
+        ax_s.legend(loc="upper left", fontsize=7, frameon=False)
+        if sn["over"]:
+            ax = axes[2]
+            for k, (speed, c) in enumerate(sn["over"].items()):
+                cc = SPARE_COLORS[k % len(SPARE_COLORS)]
+                ax.fill_between(c["x"], c["p25"], c["p75"], color=cc, alpha=0.12, lw=0)
+                ax.plot(c["x"], c["med"], color=cc, lw=2, label=f"{speed:g} km/h")
+                at = []
+                for before in (1, 3, 5, 7):
+                    i = np.flatnonzero(np.isclose(c["x"], E.DRONE_S - before))
+                    if i.size:
+                        at.append(f"{before} s before {c['med'][i[0]]:+.1f} dB")
+                lines.append(f"SNR before impact · {speed:g} km/h ({int(c['n'].max())} rounds), median: " + ",  ".join(at))
+            ax.axvspan(E.DRONE_S - 7, E.DRONE_S - 3, color="#888", alpha=0.1, lw=0)
+            ax.axvline(E.DRONE_S, color="#d93025", lw=1.2)
+            ax.axhline(0, color="#999", lw=0.8, ls=":")
+            ax.set(xlim=(-2, E.DRONE_S + 1), ylabel="SNR (dB), 1 s windows")
+            ax.set_xticks(range(-2, int(E.DRONE_S) + 2))
+            ax.set_xlabel("time in the drone file (s); impact at 10 s; shaded 3-7 s before impact; band = middle half", fontsize=8)
+            ax.set_title("SNR over the time before impact (median over rounds, per speed)", fontsize=10, loc="left", weight="bold")
+            ax.grid(color="#e8e8e8", lw=0.5)
+            ax.legend(loc="upper left", fontsize=8, frameon=False)
+        return lines
 
     def _draw_fa(self, axes, fa: dict) -> list[str]:
         t, dets, pct = self.test, fa["dets"], fa["pct"]
@@ -1567,11 +1796,11 @@ class Conclusions(tk.Toplevel):
             lines.append(f"False alarms {pct:g} % · {d}: threshold {100 * p['thr']:.1f} % confidence ({how})")
             meds = []
             for g, rnds in fa["groups"]:
-                s = lead_summary([p["leads"].get(r) for r in rnds if r in p["leads"]])
-                meds.append(s["median"])
-                if s["n"]:
-                    lines.append(f"    {g}: median {s['median']:.2f} s before impact (a miss = 0 s);  {100 * s['reached']:.0f} % of "
-                                 f"{s['n']} rounds reach the threshold;  {100 * s['ge3']:.0f} % at least 3 s before impact")
+                s = curve_lead(p["curves"], rnds, p["thr"])
+                meds.append(0.0 if s["rounds"] and s["lead"] is None else s["lead"])
+                if s["rounds"]:
+                    lines.append(f"    {g}: the mean confidence of its {s['rounds']} rounds first reaches the threshold "
+                                 + ("never before impact (0 s)" if s["lead"] is None else f"{s['lead']:.2f} s before impact"))
             xs = np.arange(len(names)) + (j - (len(dets) - 1) / 2) * w
             ax.bar(xs, [0 if m is None else m for m in meds], w * 0.9, color=col(d),
                    label=f"{d}: threshold {100 * p['thr']:.0f} %")
@@ -1579,35 +1808,45 @@ class Conclusions(tk.Toplevel):
                 if m is not None:
                     ax.text(x, m + 0.15, f"{m:.1f}", ha="center", fontsize=7)
         ax.set_xticks(range(len(names)), names, fontsize=8)
-        ax.set(ylim=(0, E.DRONE_S + 1), ylabel="median seconds before impact")
-        ax.set_title(f"time before impact at the {pct:g} % false-alarm threshold (median; a miss = 0 s)",
+        ax.set(ylim=(0, E.DRONE_S + 1), ylabel="seconds before impact")
+        ax.set_title(f"when the mean confidence first reaches the {pct:g} % false-alarm threshold (s before impact)",
                      fontsize=10, loc="left", weight="bold")
         ax.axhline(3, color="#888", ls="--", lw=1)
         ax.grid(axis="y", color="#e8e8e8", lw=0.5)
         ax.set_axisbelow(True)
         ax.legend(loc="upper right", fontsize=8, frameon=False)
-        for ax, n in zip(axes[1:], fa["layers"]):
-            vals = values_of(t, n)
+        for ax, (key, label) in zip(axes[1:], fa["params"]):
+            vals = values_of(t, key)
             nums = [v for v in vals if v != "off"]
+            numeric = all(isinstance(v, (int, float)) for v in nums)
+            xs = nums if numeric else list(range(len(nums)))  # a drone file is a name: one place per file
             for d in dets:
                 p = fa["per"][d]
                 if p["thr"] is None:
                     continue
                 by = {}
-                for rnd, lead in p["leads"].items():
-                    by.setdefault(setting(t.by_round[rnd], n), []).append(lead)
-                med = [lead_summary(by.get(v, []))["median"] for v in nums]
-                ax.plot(nums, [np.nan if m is None else m for m in med], "-o", color=col(d), lw=2, ms=4, label=d)
-                off = lead_summary(by["off"])["median"] if "off" in by else None
+                for rnd in p["curves"]:
+                    by.setdefault(setting(t.by_round[rnd], key), []).append(rnd)
+
+                def lead(v):
+                    s = curve_lead(p["curves"], by.get(v, []), p["thr"])
+                    return None if not s["rounds"] else 0.0 if s["lead"] is None else s["lead"]
+                mean = [lead(v) for v in nums]
+                ax.plot(xs, [np.nan if m is None else m for m in mean], "-o", color=col(d), lw=2, ms=4, label=d)
+                off = lead("off") if "off" in by else None
                 if off is not None:
                     ax.axhline(off, color=col(d), ls=":", lw=1.2)
-                lines.append(f"    {n} · {d}: median s before impact " + ("" if off is None else f"off {off:.2f};  ")
-                             + ";  ".join(f"{fmt(v)} dB {m:.2f}" for v, m in zip(nums, med) if m is not None))
-            ax.set(ylim=(0, E.DRONE_S + 1), ylabel="median seconds before impact")
-            ax.set_xlabel(f"{n} level (dB SPL)" + ("; dotted = layer off" if "off" in vals else ""))
-            ax.set_title(f"{n}: time before impact at the threshold", fontsize=10, loc="left", weight="bold")
+                lines.append(f"    {label} · {d}: s before impact " + ("" if off is None else f"off {off:.2f};  ")
+                             + ";  ".join(f"{fmt(v)} {m:.2f}" for v, m in zip(nums, mean) if m is not None))
+            if not numeric:
+                ax.set_xticks(xs, [v if len(v) <= 14 else v[:13] + "~" for v in map(str, nums)], rotation=20, fontsize=8)
+            ax.set(ylim=(0, E.DRONE_S + 1), ylabel="seconds before impact")
+            ax.set_xlabel(label + ("; dotted = layer off" if "off" in vals else ""))
+            ax.set_title(f"{label}: time before impact at the threshold", fontsize=10, loc="left", weight="bold")
             ax.axhline(3, color="#888", ls="--", lw=1)
             ax.grid(color="#e8e8e8", lw=0.5)
+            if len(dets) > 1 and ax is axes[1]:
+                ax.legend(loc="lower left", fontsize=7, frameon=False)
         return lines
 
     def _draw_compare(self):
@@ -1636,7 +1875,7 @@ class Conclusions(tk.Toplevel):
         curves = {d: confidence_over_time(t, d, self.scores) for d in dets}
         has_time = any(curves.values())
 
-        secs = [self._fa_section(dets),
+        secs = [self._fa_section(dets), self._snr_section(dets),
                 dict(title="Confidence before impact", cells=2 if has_time else 0,
                      note="Only a modified drone test has an impact; this test has no confidence over time."),
                 dict(title="Confidence during distractors: no-drone windows (lower is better)", cells=len(layers) + 1, note="")]
@@ -1665,9 +1904,11 @@ class Conclusions(tk.Toplevel):
             y += s["rows"] * ROW_IN
         if axes_of[0]:
             lines += self._draw_fa(axes_of[0], secs[0]["fa"])
+        if axes_of[1]:
+            lines += self._draw_snr(axes_of[1], secs[1]["snr"])
         if has_time:
-            lines += self._compare_impact(*axes_of[1], curves)
-        lines += self._compare_distractors(axes_of[2], layers, sums, groups, gnames)
+            lines += self._compare_impact(*axes_of[2], curves)
+        lines += self._compare_distractors(axes_of[3], layers, sums, groups, gnames)
         self.canvas.draw_idle()
         self.l_text.configure(text="\n".join(lines))
         self.scroll.yview_moveto(0)
@@ -1826,7 +2067,8 @@ def load_test(folder: Path) -> E.Test:
     p = cfg["plan"]
     plan = E.Plan(**{k: p[k] for k in ("kind", "length_s", "drones", "drone_levels", "layers", "detectors", "step_s",
                                        "no_drone_rounds", "soundscape_start_s", "synth")},
-                  **{k: p[k] for k in ("speeds", "approach", "pitches", "pitch_random", "pd_settings", "also_without", "final_evaluation", "car_engines", "car_once", "fa_percentile") if k in p})   # not in every run's config
+                  **{k: p[k] for k in ("speeds", "approach", "pitches", "pitch_random", "pd_settings", "also_without", "final_evaluation", "car_engines", "car_once", "fa_percentile") if k in p},   # not in every run's config
+                  war_file=p.get("war_file", str(E.WAR_TRACK)))   # a run from before WarSoundScape.wav used the 600 s track
     t = E.Test(plan, folder)
     t.start_s = cfg["soundscape_start_s"]
     t.prepare(progress=lambda s: None)

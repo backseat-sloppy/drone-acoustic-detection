@@ -11970,6 +11970,495 @@ The percentage may go over 100, which puts the threshold above the highest peak.
 - Why the onset peak is higher with wind was not examined.
 
 **Assessment.** "Wind on is better" is an artefact. It comes from the clip's abrupt onset combined with the first-alarm rule, not from the wind helping detection. The onset of a cut clip is not something a real approaching drone has. Reading the time before impact needs the stays-above rule beside the first-alarm one, or a fade-in on the clips.
+# Iteration 21 - A fifth rig in the pool: the 16-channel DJI Flip dataset (UAV16)
+
+> **Changed from iteration 19 (`it19_colour`):** the training pool gains one source, `uav16`
+> (Zenodo 10.5281/zenodo.23613504): its DJI Flip hover recordings as positives and its 28 field
+> background recordings as that rig's negatives. One channel of the 16 is used. Two acquisition
+> batches (`batch-20260522`, quiet; `batch-20260701`, urban; 24 recordings each) never train and
+> are scored for recall. The 45 loudspeaker replays of FSD50K clips are not used at all.
+> **Why:** Marius's request (2026-11-11): retrain the colour model with the new dataset.
+> `docs/datasets.md` ("Known gap") names drone and no-drone audio from one recording setup as the
+> most valuable addition. The pool has that from Nightjar, d3set and the FPV campaigns only.
+> **Kept the same:** iteration 19's `600k` colour arm: recipe `simdist_colour`, pool arm `none`,
+> speed 0.8-1.25, MFE 64 mel, 1 s window, 600,000 training windows, DS-CNN and CRNN, seeds 0-2,
+> threshold frozen at 5% false alarms on validation. Validation is unchanged (the Nightjar and d3set
+> validation sessions), so thresholds stay comparable. Under `simdist_colour` only positives nearer
+> than 50 m slant range train, so the 50 m and 70 m recordings are not drawn.
+> **Hypothesis:** a fifth rig with its own negatives raises recall on recordings of that rig the
+> model never trained on, without costing the readouts iteration 19 was judged on.
+> **Judged by** (seed means, per network, against `it19_colour_s0-2` re-scored with the same code
+> through `--load-from`):
+> 1. Recall on the two held UAV16 batches at the frozen threshold: higher than `it19_colour`.
+> 2. Lund recall at the frozen threshold: no lower than `it19_colour` minus 0.03.
+> 3. Validation recall at the frozen threshold: no lower than `it19_colour` minus 0.02.
+> 4. Mower-only false alarms at the frozen threshold: no higher than `it19_colour` plus 0.05.
+> 5. Pink and brown alarms (`scripts/it19_colour_check.py`): at most 5%.
+> Passing all five: the model is proposed for `Complete_Test_Gui`. Readout 1 is the same rig on
+> other days, not an unseen rig; Lund is the unseen-rig readout. ITU ARIS is not scored in this
+> iteration unless Mads, Nicolai or Marius asks for it on the finished model.
+
+## 200 - A new dataset: UAV16 (Zenodo 23613504), found, downloaded and extracted on the server
+
+- Date: 2026-11-09 to 2026-11-11
+- Iteration: 21
+- Type: Data
+- Commit: uncommitted, on top of 73afe12
+
+**What changed.** A web search (2026-11-09) for drone audio the project does not have turned up
+"A 16-Channel Acoustic Dataset for Passive Ground-Based Monitoring of Small Drones" (Wang, Chen,
+Chen, Liu; Southeast University and Shanghai Dianji University; published 2026-10-24, v1.1.0, CC BY
+4.0). Marius downloaded the base archive and the maintenance patch on the JupyterLab server
+(account `mariusq`) to `~/data/UAV16_Zenodo23613504/` and extracted both, base first, to
+`~/data/extracted/UAV16/`. Provenance is in `docs/datasets.md`.
+
+**Why.** Marius asked for further drone datasets. This one has drone and no-drone recordings from
+one array, which `docs/datasets.md` lists as the known gap.
+
+**How.** Download with `wget -c`, then `md5sum -c` against Zenodo's checksums; extraction with
+`python3 -m zipfile -e`. Both were run by Marius in a server terminal. The facts below were read
+from `dataset/metadata/recordings.csv`, `dataset/README.md` and three recording JSON files through
+the JupyterLab contents API on 2026-11-11.
+
+**Result.** From `recordings.csv` (273 rows, all `is_duplicate_file` false, 272 `pass` and 1
+`pass_with_warning`):
+
+| Part | Recordings | Seconds | Notes |
+|---|---|---|---|
+| DJI Flip, hover, `quiet_outdoor` | 120 | 11,900 | 5 batches (2026-04-25 to 05-22), 24 each: 6 distances (5-70 m) x 4 heights (5-30 m) |
+| DJI Flip, hover, `urban_outdoor` | 80 | 7,312 | 3 batches (2026-05-25, 07-01, 07-02): 5 distances (5-50 m) x 4 heights |
+| Field background | 28 | 5,993 | 12 undated; 16 from 2026-10-12/13: crossroad, campus gate, roundabout, wind in trees, 2 `quiet_indoor` |
+| Loudspeaker replays of FSD50K (CC0) clips | 45 | 792 | 10 categories; the FSD50K id is in each JSON |
+
+48 kHz, 16-bit, 16 mono WAV files per recording, array 0.25 m above ground, Nanjing.
+
+**Assessment.**
+- The backgrounds are from the same array but not from the drone sessions: the drone batches are
+  April to July 2026, the dated backgrounds October 2026. Same rig, other days.
+- One drone type, hover only. Nothing here resembles test 2's approaching drone.
+- The replays are FSD50K clips. Whether any is from FSD50K eval (a held-out test source) was not
+  checked, so none is used.
+- Not verified by Claude: the `md5sum -c` result (Marius reported the download as done), the WAV
+  count (4,368 expected), `scripts/audit_release.py`, and the levels. Marius found the audio very
+  quiet by ear; the level was not measured.
+
+**Next.** Entry 201.
+
+## 201 - UAV16 preparation step and pool membership
+
+- Date: 2026-11-11
+- Iteration: 21
+- Type: Data
+- Commit: uncommitted, on top of 73afe12: `scripts/prepare_new_data.py`, `src/dad/rangerun.py`,
+  `tests/test_rangerun.py`
+
+**What changed.**
+- `scripts/prepare_new_data.py`: step `uav16` reads `data/extracted/UAV16/dataset`. One manifest row
+  per self-collected recording (channel 0, polyphase resampling to 16 kHz, int16 store `uav16.i16`;
+  no gain, filtering or mixing). Drone rows carry `range_m` = the slant range from the nominal
+  horizontal distance and height (7.1 to 76.2 m), so `chains.range_at` treats them like Glasgow.
+  `session` is the acquisition batch. `subset` is `held` for `batch-20260522` and
+  `batch-20260701`, else `train`. Rows with `data_origin` other than `self_collected` are skipped.
+- `src/dad/rangerun.py`: `make_pool_arm` adds `uav16` to the pool, keeps its `held` rows out of
+  training and scores them as `unseen["uav16"]`. A manifest without `uav16` gives the same arm as
+  before.
+
+**Why.** Iteration 21's box.
+
+**How.** Two tests in `tests/test_rangerun.py`: pool membership with and without `uav16` rows, and
+the step on three made-up recordings (one drone, one background, one replay).
+`.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_rangerun.py tests/test_sealed.py tests/test_steady.py`:
+45 passed (macOS).
+
+**Result.** No data prepared and nothing trained. The step has not read the real files.
+
+**Assessment.** Two things stand between this and the training run, both on the server account
+`mariusq`:
+- its clone `~/drone-acoustic-detection` dates from 2026-11-04 to 11-06: no `simdist_colour`, no
+  `src/dad/sealed.py`;
+- its `data/processed/` holds `nightjar.i16`, `d3set.i16`, `fsd50k.i16` and `ddl.f32` only. The
+  manifest lists `fpv.i16`, `lund.f32`, `dronenoise.f32` and `halmstad.i16`, which are not there,
+  and has no Glasgow rows. `it19_colour` was trained from another clone that has them (entry 171).
+Marius chose the full pool (2026-11-11), so the stores must come from that clone.
+
+**Next.** On the server, with current code and the full store:
+```
+.venv/bin/python -I scripts/prepare_new_data.py uav16
+CUDA_VISIBLE_DEVICES=S .venv/bin/python -u scripts/run_range.py --name it21_uav16_sS --pool --arms none \
+    --recipes simdist_colour --models dscnn crnn --device cuda --windows 600000 --speed 0.8 1.25 \
+    --deploy-fa 0.05 --seed S --frontend mfe                                  # S = 0, 1, 2
+CUDA_VISIBLE_DEVICES=S .venv/bin/python -u scripts/run_range.py --name it21_ref_sS --load-from it19_colour_sS \
+    (same arguments)                                                          # the reference, re-scored
+```
+
+## 202 - The training stores copied from Mads's server account; correction to entry 201 on Glasgow
+
+- Date: 2026-11-11
+- Iteration: 21
+- Type: Data
+- Commit: uncommitted, on top of 73afe12
+
+**What changed.** From the account `jupyter-mads`, every `*.i16`, `*.f32`, `*.csv` and `*.json` in
+`~/drone-acoustic-detection/data/processed/` was copied to `/tmp/dad_store_mads/` and made
+world-readable, so the account `jupyter-mariusq` can read it. `cp` and `chmod`, run in a server
+terminal by the users.
+
+**Result.** `ls -la /tmp/dad_store_mads` (2026-11-11 09:35): `d3set.i16` 264,420,040 bytes,
+`ddl.f32` 380,672,896, `dronenoise.f32` 227,200,000, `fpv.i16` 465,596,704, `fsd50k.i16`
+10,289,517,900, `halmstad.i16` 28,480,178, `lund.f32` 347,549,236, `nightjar.i16` 305,484,000,
+`manifest.csv` 7,758,851, `manifest_before_sealed_car_removed.csv` 7,759,023, `range_track.csv`
+9,208,678, `ddl_clips.csv`, `summary.json`. The four stores `mariusq` already had are the same
+size as these; their contents were not compared yet.
+
+**Correction to entry 201.** Entry 201 says the clone that trained `it19_colour` has the Glasgow
+store. Mads's `data/processed/` has no `glasgow.i16`. Whether its manifest has Glasgow rows was not
+read, but without the store they could not have trained. So the pool of `it19_colour` was Nightjar,
+d3set and the FPV campaigns, and iteration 21 trains on those plus `uav16`. The box's "kept the
+same" holds as written: the same store is used.
+
+**Next.** Put the four missing stores and Mads's `manifest.csv` into the `mariusq` clone, compare
+the four shared stores byte for byte, and bring the clone's code to the current commit.
+
+## 203 - UAV16 prepared on the server and the three iteration 21 runs started
+
+- Date: 2026-11-11
+- Iteration: 21
+- Type: Data, Training
+- Commit: cd20af0 (branch `iteration-21-uav16`), checked out on the server as the worktree
+  `~/dad21` of the `jupyter-mariusq` clone. Entries 200-202 are in that commit; this entry is
+  uncommitted.
+
+**What changed.** On the server account `jupyter-mariusq`, through its JupyterLab terminal:
+- `fpv.i16`, `lund.f32`, `dronenoise.f32`, `halmstad.i16`, `manifest.csv`, `range_track.csv`,
+  `ddl_clips.csv` and `summary.json` copied from `/tmp/dad_store_mads/` (entry 202) into
+  `~/drone-acoustic-detection/data/processed/`. `cmp` of `nightjar.i16`, `d3set.i16`, `ddl.f32` and
+  `fsd50k.i16` against Mads's copies: identical.
+- `~/dad21/data/processed/` holds links to those stores and its own copies of the CSV and JSON
+  files, so the older clone's manifest is not changed by this iteration.
+  `~/dad21/data/extracted/UAV16` links to `~/data/extracted/UAV16`.
+- The `uav16` step run, then three training runs started.
+
+**How.** Python is `~/dad/.venv/bin/python` (torch 2.14.1+cu126; the clone itself has no `.venv`).
+```
+~/dad/.venv/bin/python -I scripts/prepare_new_data.py uav16                       # 40 s
+CUDA_VISIBLE_DEVICES=S nohup ~/dad/.venv/bin/python -u scripts/run_range.py --name it21_uav16_sS --pool \
+    --arms none --recipes simdist_colour --models dscnn crnn --device cuda --windows 600000 \
+    --speed 0.8 1.25 --deploy-fa 0.05 --seed S --frontend mfe > artifacts/runs/it21_uav16_sS.log   # S = 0, 1, 2
+```
+
+**Result.**
+- `uav16`: 200 drone recordings (19,211.9 s; 152 train, 48 held), 28 background (5,992.8 s), 45
+  replays skipped. `uav16.i16` is 806,551,712 bytes.
+- Levels in the manifest (channel 0 at 16 kHz): drone RMS -61.2 to -32.4 dBFS, median -48.4;
+  background -60.8 to -39.2 dBFS, median -48.7. Quiet, as Marius heard, but far above the 16-bit
+  floor. Drone and background are from different days, so the two medians say nothing about how
+  far the drone stands above its own background.
+- The manifest has no Glasgow rows (sources: dronenoise, halmstad, nightjar, ddl, d3set, fpv, lund,
+  fsd50k, uav16). This settles what entry 202 left unread.
+- Each run's log, at the start: 564 training segments, 21 validation segments. Positive cells:
+  d3set 62.6 min, fpv 130.4, nightjar 36.2, uav16 165.4, ddl 14.8, dronenoise 28.2, each with share
+  0.033; simulated distance 0.800. Negatives: d3set, fpv, nightjar and uav16 0.233 each (uav16
+  99.3 min of background).
+
+**Assessment.** The pool is iteration 19's plus `uav16`, as the box says. A quarter of the rig
+negatives, and of the backgrounds under the simulated-distance drones, now come from `uav16`.
+Not done: `it19_colour` has not been re-scored with this code (`--load-from`), so readout 1 has no
+reference yet; `scripts/it19_colour_check.py` has not been run on the new models. The backup
+`manifest_mariusq_backup.csv` on the server is a copy of Mads's manifest, not of the earlier
+`mariusq` one: Marius and Claude typed into the same terminal at the same time. The earlier
+manifest had the size of Mads's `manifest_before_sealed_car_removed.csv` (7,759,023 bytes).
+
+**Next.** When the runs end (iteration 19 took 1316-1383 s per seed), read the three run files,
+re-score `it19_colour_s0-2` and judge by the box.
+
+## 204 - Iteration 21 result: adding UAV16 lowers recall on its own held batches and on Lund
+
+- Date: 2026-11-11
+- Iteration: 21
+- Type: Evaluation
+- Commit: cd20af0 on the server (`~/dad21`); this entry and entry 203 are uncommitted
+
+**What changed.** Six networks trained with `uav16` in the pool (entry 203) and scored on the
+box's five readouts against `it19_colour_s0-2` re-scored with the same code and store.
+
+**Why.** Iteration 21's box.
+
+**How.** On the server (3x TITAN X, one seed per GPU), in `~/dad21`:
+```
+run_range.py --name it21_uav16_sS ...                       # entry 203; 1256-1261 s for seeds 0 and 1
+CUDA_VISIBLE_DEVICES=S ~/dad/.venv/bin/python -u scripts/run_range.py --name it21_ref_sS --load-from it19_colour_sS \
+    --pool --arms none --recipes simdist_colour --models dscnn crnn --device cuda --windows 600000 \
+    --speed 0.8 1.25 --deploy-fa 0.05 --seed S --frontend mfe             # S = 0, 1, 2; 31 s for seed 0
+~/dad/.venv/bin/python -u scripts/it19_colour_check.py it21_uav16_s0 it21_uav16_s1 it21_uav16_s2
+```
+The figures were read from `artifacts/runs/it21_ref_sS.json`, `it21_uav16_sS.json` and the colour
+check's log through the JupyterLab contents API, and the seed means taken by hand from values
+rounded to three decimals. No judge script was written.
+
+**Result.** Threshold frozen at 5% false alarms on validation (Nightjar and d3set validation
+sessions, 21 segments), 1 s window, evaluation hop 0.5 s, one window per decision. Held UAV16: 48
+drone recordings of two acquisition batches, 8,846 windows (7,432 at 0-50 m, 1,414 at 50-100 m);
+no background, so recall only. Means over seeds 0-2:
+
+| | Val recall | Lund recall | Mower FA | UAV16 held, all | 0-50 m | 50-100 m | Pink / brown at -30 dBFS |
+|---|---|---|---|---|---|---|---|
+| DS-CNN `it19_colour` (re-scored) | 0.773 | 0.401 | 0.053 | 0.912 | 0.939 | 0.771 | (entry 171) |
+| DS-CNN `it21_uav16` | 0.762 | 0.324 | 0.059 | 0.887 | 0.929 | 0.667 | 0.0% / 0.0% |
+| difference | -0.010 | **-0.076** | +0.005 | **-0.025** | -0.010 | -0.104 | |
+| CRNN `it19_colour` (re-scored) | 0.787 | 0.358 | 0.112 | 0.857 | 0.914 | 0.558 | (entry 171) |
+| CRNN `it21_uav16` | 0.784 | 0.282 | 0.099 | 0.829 | 0.893 | 0.487 | 0.0% / 0.0% |
+| difference | -0.004 | **-0.076** | -0.013 | **-0.029** | -0.021 | -0.071 | |
+
+Per seed (reference -> new). Lund: DS-CNN 0.392 -> 0.347, 0.394 -> 0.299, 0.416 -> 0.327; CRNN
+0.340 -> 0.245, 0.403 -> 0.340, 0.332 -> 0.261. UAV16 held, all: DS-CNN 0.908 -> 0.896, 0.890 ->
+0.881, 0.938 -> 0.883; CRNN 0.867 -> 0.814, 0.856 -> 0.844, 0.849 -> 0.828. Every seed is lower on
+both. Pink and brown alarms are 0.0% for all six networks at -50, -30 and -10 dBFS.
+
+The re-score reproduces iteration 19: `it21_ref_s1` DS-CNN has threshold 0.6064 and validation
+recall 0.766, as `artifacts/runs/it19_colour_s1.json` (0.6064, 0.7662). The baselines `comb` and
+`lgbm` were not run: the runs used `--models dscnn crnn`, as iteration 19's did.
+
+**Assessment.** By the box:
+1. Held UAV16 recall higher than `it19_colour`: **fails** for both networks. It is lower.
+2. Lund no lower than minus 0.03: **fails** for both (-0.076).
+3. Validation no lower than minus 0.02: passes. 4. Mower no higher than plus 0.05: passes.
+5. Pink and brown at most 5%: passes.
+
+The hypothesis is rejected. `it19_colour`, which never saw this rig, already finds 86-91% of the
+held DJI Flip windows, so there was little to gain, and what the pool gained cost recall on the
+unseen rig (Lund) and at 50-100 m on UAV16 itself. A possible reason, not examined: a quarter of
+the rig negatives and of the backgrounds under simulated-distance drones now come from UAV16's
+backgrounds, which were recorded on other days and at other places than its drones (entry 200),
+so the rig's negatives are not matched to its positives the way Nightjar's and d3set's are. The
+50-100 m recordings do not train under `simdist_colour`. Not scored: ITU ARIS, the war
+soundscape tests, and false alarms on UAV16's own backgrounds (all of them trained).
+
+**Verdict.** Iteration 21 fails. `uav16` stays out of the recipe for the `600k` colour models and
+`it19 CRNN colour s1` stays the colour model in the GUIs. The six `it21_uav16` checkpoints are on
+the server only (`~/dad21/artifacts/models/`) and are not proposed for `Complete_Test_Gui`.
+
+**Next.** Not decided. Two single changes would separate the cause, if Marius or Mads wants the
+dataset pursued: `uav16` drones without its backgrounds as rig negatives, or its backgrounds
+without its drones.
+
+
+## 205 - What UAV16's 28 backgrounds are: mostly confusers and other places, not the drone site's ambience
+
+- Date: 2026-11-11
+- Iteration: 21
+- Type: Data (inspection after the verdict; no run)
+- Commit: uncommitted, on top of d7fe174
+
+**Why.** Marius objected to entry 204: the drone and no-drone recordings are from the same place,
+so the model should have improved. Entries 200 and 204 only said the backgrounds were from other
+days. The folder names had not been read.
+
+**How.** `metadata/sessions.csv` (`original_relative_directory`) joined to `recordings.csv`, read
+through the JupyterLab contents API. Durations are the rounded `duration_seconds`.
+
+**Result.** The 28 field backgrounds, by the authors' own folder names:
+
+| Group | Recordings | Seconds | Folder name (translated) |
+|---|---|---|---|
+| Plain environment | 4 | 822 | "pure environment without target" 1-4 (faint voices; birdsong and some e-bike sound) |
+| Car | 1 | 46 | "car starting slowly" |
+| Air-conditioner exhaust fan | 4 | 674 | "A0 5 m" to "A3 5 m": at the drone's four array positions |
+| Exhaust pipe | 3 | 646 | "drone-like sound, exhaust pipe" 1-3 |
+| Crossroad, campus gate, roundabout | 11 | 2,940 | "negatives 12 October": other places, traffic |
+| Indoor, wind in trees | 5 | 865 | "negatives 13 October" |
+
+The drone folders are dated 25 April to 2 July (five "quiet", three "urban noise"). Whether the
+four plain-environment recordings were made at a drone site is not stated; they are undated.
+
+**Assessment.** Marius is right that rig and city are shared, but at most 822 s of the 5,993 s can
+be the drone sites' own ambience. 1,320 s are sources the authors chose because they sound like a
+drone, and 3,805 s are other places. In training these were a quarter of the rig negatives and of
+the backgrounds under the simulated-distance drones (80% of positives), so a drone was often
+buried under a fan or an exhaust pipe, and such tonal sources were taught as "no drone". That
+fits the lower recall of entry 204. It is a reading of the folder names, not a tested cause.
+
+**Next.** If pursued, one change at a time: `uav16` with only the four plain-environment
+recordings as rig negatives, or `uav16` drones with no rig negatives of their own.
+
+# Iteration 22 - UAV16 with only its plain-environment recordings as negatives
+
+> **Changed from iteration 21 (`it21_uav16`):** of UAV16's 28 backgrounds only the four "pure
+> environment" recordings (`rec-undated-0001` to `-0004`, 822 s) are that rig's negatives. The
+> other 24 never train. They are scored for false alarms in two sets: `uav16_confusers` (the car,
+> the four exhaust-fan and the three exhaust-pipe recordings, 1,366 s) and `uav16_elsewhere` (the
+> 16 recordings of 12 and 13 October, 3,805 s).
+> **Why:** entry 205, and Marius's request (2026-11-11) to retrain this way. In iteration 21 those
+> 24 recordings were most of a quarter of the rig negatives and of the backgrounds under the
+> simulated-distance drones, and recall fell on Lund and on UAV16's own held batches (entry 204).
+> **Kept the same:** everything else of iteration 21: the UAV16 drones in the pool, the two held
+> batches, `simdist_colour`, pool arm `none`, speed 0.8-1.25, MFE 64 mel, 1 s window, 600,000
+> windows, DS-CNN and CRNN, seeds 0-2, threshold at 5% false alarms on the unchanged validation.
+> **Hypothesis:** with ambience as the rig's only negatives, the UAV16 drones add recall on the
+> held batches without the loss on Lund.
+> **Judged by** (seed means, per network, against `it19_colour_s0-2` re-scored with this code):
+> 1. Recall on the two held UAV16 batches at the frozen threshold: higher than `it19_colour`.
+> 2. Lund recall: no lower than `it19_colour` minus 0.03.
+> 3. Validation recall: no lower than minus 0.02.
+> 4. Mower-only false alarms: no higher than plus 0.05.
+> 5. Pink and brown alarms: at most 5%.
+> 6. False alarms on `uav16_confusers` and on `uav16_elsewhere` at the frozen threshold: no higher
+>    than `it19_colour` plus 0.05. Neither model trains on these recordings.
+> Passing all six: the model is proposed for `Complete_Test_Gui`. The four training negatives are
+> few (822 s); if the result turns on them, say so.
+
+## 206 - The pool keeps only UAV16's plain-environment negatives; two false-alarm sets
+
+- Date: 2026-11-11
+- Iteration: 22
+- Type: Data
+- Commit: this entry's commit, on top of d7fe174 (branch `iteration-21-uav16`)
+
+**What changed.** `src/dad/rangerun.py`: `_uav16_out` replaces `_uav16_held`. A UAV16 background
+trains only if its id is in `U16_PLAIN`; the others go to `unseen["uav16_confusers"]` (ids starting
+`rec-undated`) or `unseen["uav16_elsewhere"]`. `evaluate_chain` already reports `deploy_fa` for a
+set with background windows, so `scripts/run_range.py` is unchanged. The manifest is unchanged: no
+re-preparation. With this commit `make_pool_arm` no longer builds iteration 21's arm; that arm is
+at cd20af0.
+
+**Why.** Iteration 22's box.
+
+**How.** `tests/test_rangerun.py`: the pool test now covers the three left-out sets, and a new test
+checks `evaluate_chain` on a set without drones (`deploy_fa` 0.25 for 10 of 40 windows above the
+threshold). `.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_rangerun.py`: 10 passed
+(macOS).
+
+**Result.** No training yet.
+
+**Next.** On the server: `it22_plain_s0-2` with entry 203's command, `it22_ref_s0-2` with
+`--load-from it19_colour_sS`, and `scripts/it19_colour_check.py` on the new runs.
+
+## 207 - Iteration 22 result: Lund falls further without the confuser negatives; the hypothesis of entry 205 is rejected
+
+- Date: 2026-11-11
+- Iteration: 22
+- Type: Evaluation
+- Commit: 0b9b665 on the server (`~/dad21`, detached); this entry is uncommitted
+
+**What changed.** Six networks trained with only UAV16's four plain-environment recordings as that
+rig's negatives (entry 206), scored on the box's six readouts against `it19_colour_s0-2` re-scored
+with the same code. The iteration 21 networks were re-scored too, for the two new sets.
+
+**Why.** Iteration 22's box.
+
+**How.** On the server, in `~/dad21` at 0b9b665, with entry 203's training command and entry 204's
+re-score command under new names:
+```
+run_range.py --name it22_plain_sS ...                                  # trained; S = 0, 1, 2
+run_range.py --name it22_ref_sS  --load-from it19_colour_sS ...        # the reference
+run_range.py --name it22_it21_sS --load-from it21_uav16_sS ...         # iteration 21's networks
+scripts/it19_colour_check.py it22_plain_s0 it22_plain_s1 it22_plain_s2
+```
+The training log shows 540 segments, UAV16 negatives 13.6 min at share 0.233 (99.3 min in
+iteration 21). Figures were read from the run files through the JupyterLab contents API; seed
+means were taken by hand from values rounded to three decimals.
+
+**Result.** Conditions as entry 204. `uav16_confusers`: 8 recordings, 2,721 windows.
+`uav16_elsewhere`: 16 recordings, 7,584 windows. Means over seeds 0-2:
+
+| | Val recall | Lund recall | Mower FA | UAV16 held, all | 0-50 m | 50-100 m | FA confusers | FA elsewhere |
+|---|---|---|---|---|---|---|---|---|
+| DS-CNN `it19_colour` | 0.773 | 0.401 | 0.053 | 0.912 | 0.939 | 0.771 | 0.945 | 0.403 |
+| DS-CNN `it22_plain` | 0.778 | 0.288 | 0.056 | 0.907 | 0.955 | 0.652 | 0.854 | 0.374 |
+| difference | +0.006 | **-0.113** | +0.003 | **-0.005** | +0.016 | -0.119 | -0.091 | -0.029 |
+| DS-CNN `it21_uav16` (trained on both sets) | 0.762 | 0.324 | 0.059 | 0.887 | 0.929 | 0.667 | 0.270 | 0.236 |
+| CRNN `it19_colour` | 0.787 | 0.358 | 0.112 | 0.857 | 0.914 | 0.558 | 0.828 | 0.303 |
+| CRNN `it22_plain` | 0.788 | 0.254 | 0.157 | 0.901 | 0.965 | 0.569 | 0.643 | 0.241 |
+| difference | +0.000 | **-0.104** | +0.045 | +0.044 | +0.051 | +0.011 | -0.185 | -0.062 |
+| CRNN `it21_uav16` (trained on both sets) | 0.784 | 0.282 | 0.099 | 0.829 | 0.893 | 0.487 | 0.027 | 0.080 |
+
+Per seed, Lund (reference -> `it22_plain`): DS-CNN 0.392 -> 0.343, 0.394 -> 0.256, 0.416 -> 0.265;
+CRNN 0.340 -> 0.271, 0.403 -> 0.255, 0.332 -> 0.236. Pink and brown alarms at -30 dBFS: 0.0% for all
+six networks. Baselines `comb` and `lgbm` not run, as in iterations 19 and 21.
+
+**Assessment.** By the box:
+1. Held UAV16 recall higher: CRNN passes (+0.044), DS-CNN **fails** (-0.005).
+2. Lund no lower than minus 0.03: **fails** for both, on every seed, and by more than in iteration 21.
+3. Validation: passes. 4. Mower: passes (the CRNN at +0.045 of an allowed 0.05). 5. Pink and
+brown: passes. 6. False alarms on the two left-out sets: passes, both are lower than the reference.
+
+Three things follow.
+- Entry 205's reading is rejected as the cause of the Lund loss: without the fans, exhaust pipes
+  and other places as negatives, Lund fell further (-0.10 to -0.11 against -0.076). The loss comes
+  with having UAV16 in the pool at all. Not separated: the UAV16 drones themselves, the four
+  recordings now carrying a quarter of the rig negatives (822 s drawn as often as the 99 minutes
+  were), or the smaller shares left to Nightjar, d3set and FPV.
+- `it19_colour` alarms on 83-95% of the windows with a fan, an exhaust pipe or a starting car, and
+  on 30-40% of the traffic, indoor and wind recordings. That is a false-alarm weakness of the
+  current colour model on real recordings it never saw, in line with entry 179 (cars taken for
+  drones).
+- Iteration 21's CRNN, which trained on those recordings, alarms on 2.7% and 8.0% of them. Those
+  two figures are on training data, so they show the networks can learn the sources, not that
+  they generalise.
+
+**Verdict.** Iteration 22 fails. `it19 CRNN colour s1` stays. The UAV16 line has now failed twice
+on Lund; before a third attempt the question is whether Lund recall or false alarms on real
+confusers matters more for the tests in REQUIREMENTS.md, which is Mads's and Nicolai's call.
+
+## 208 - Test 1's shape on the Mac: iteration 21's CRNNs are no better than `it19_colour` against war and cars
+
+- Date: 2026-11-11
+- Iteration: 21 (scoring after the verdict; ITU ARIS, scoring only)
+- Type: Evaluation
+- Commit: uncommitted, on top of 06d2b8f: `scripts/it21_test1.py`
+
+**What changed.** The three `it21_uav16` CRNNs and the three `it19_colour` CRNNs were run through
+`complete_test_engine` in the shape of test 1 of `REQUIREMENTS.md`. Marius asked for it
+(2026-11-11): entries 204 and 207 judge on Lund, the requirements judge confidence against the war
+soundscape and distractors, and iteration 21's networks had learned UAV16's traffic and fans.
+
+**How.** The checkpoints and run files came from the server as `it21_models.zip` (8,279,812 bytes,
+MD5 1978293a3397fb46c882ea03c67c1848 on both sides), downloaded by Marius. The six networks are
+registered inside the script only, not in `drone_war_grid.MODELS`; the reference's thresholds are
+read from `it22_ref_sS.json`. On the Mac (CPU, six processes, 37 min):
+```
+for k in 0 1 2 3 4 5; do OMP_NUM_THREADS=1 .venv/bin/python scripts/it21_test1.py --shard $k 6 & done; wait
+.venv/bin/python scripts/it21_test1.py --table
+```
+Plan: the ten excerpts `data/extracted/sealed_peek/Drone_01-10.wav` (ITU ARIS; first 10 s each) at
+60, 70, 80, 90 and 100 dB SPL; 20 s rounds, drone starting at 0, 5 and 10 s; war soundscape at
+90 dB SPL or off; cars (Pure Data, the six development engines looped, 50 km/h, 30 m, as entry 179)
+at 20, 35, 50 dB SPL or off; one no-drone round per background. 1,208 rounds x 6 networks = 7,248
+rows. 1 s window, 0.125 s hop.
+
+**Result.** Mean confidence in %, the three seeds pooled. Drone: mean score over drone windows, 90
+rounds per cell. No drone: mean score over the no-drone windows of the drone rounds (450 rounds per
+cell); the no-drone rounds (3 per cell) agree within 7 points.
+
+| Background | Model | 60 dB | 70 dB | 80 dB | 90 dB | 100 dB | No drone |
+|---|---|---|---|---|---|---|---|
+| war 90 | `it19_colour` | 17.0 | 26.1 | 36.5 | 50.1 | 62.9 | 1.9 |
+| war 90 | `it21_uav16` | 19.1 | 26.9 | 36.9 | 48.3 | 58.7 | 3.5 |
+| war 90 + cars 50 | `it19_colour` | 15.3 | 23.3 | 35.7 | 50.2 | 62.9 | 24.4 |
+| war 90 + cars 50 | `it21_uav16` | 17.8 | 25.4 | 36.5 | 48.2 | 58.6 | 24.4 |
+| cars 20, no war | `it19_colour` | 74.7 | 74.8 | 74.7 | 74.6 | 74.6 | 81.2 |
+| cars 20, no war | `it21_uav16` | 72.2 | 72.5 | 72.7 | 72.7 | 72.7 | 83.5 |
+| cars 50, no war | `it19_colour` | 63.5 | 68.0 | 74.0 | 75.2 | 74.8 | 91.9 |
+| cars 50, no war | `it21_uav16` | 63.5 | 69.0 | 72.4 | 72.8 | 72.6 | 78.9 |
+| nothing | `it19_colour` | 74.3 | 74.6 | 74.6 | 74.6 | 74.6 | 0.5 |
+| nothing | `it21_uav16` | 72.2 | 72.7 | 72.7 | 72.7 | 72.7 | 1.7 |
+
+With war 90 and cars at 20 and 35 dB the no-drone confidence is 17.3 and 23.1 (`it19_colour`)
+against 19.6 and 22.2 (`it21_uav16`); cars at 35 dB alone, 91.9 against 84.0.
+
+**Assessment.** The two are within a few points of each other everywhere, and neither is better
+overall. Against the war soundscape `it21_uav16` is about 2 points higher for the quietest drone
+and 2-4 points lower for the loudest, with slightly higher no-drone confidence (3.5 against 1.9).
+With cars both fail as entry 179 found: cars alone, far quieter than the drone, give 79-92%
+confidence without a drone. `it21_uav16` is lower there only at 35 and 50 dB (84.0 and 78.9
+against 91.9), still far above its confidence with nothing playing. What it learned from UAV16's
+traffic and fan recordings does not carry over to this car layer.
+
+**Limits.** Ten excerpts, not the 35 drones; the car and war layers are synthetic mixes, so these
+are not detection figures; the six engines are FSD50K dev clips, which training draws from; three
+seeds pooled, no per-seed spread taken; no baselines. ITU ARIS scored finished networks only.
+
+**Verdict.** Nothing here changes entry 204: `it19 CRNN colour s1` stays. The car failure remains
+the open problem of test 1, and UAV16 as training data does not address it.
 # Iteration 21 - Car rejection, judged on a development copy of test 1
 
 > **Changed from iteration 20:** two things, in order. First the yardstick: candidates are judged in
@@ -12499,3 +12988,279 @@ failed arm, not a candidate, and must not be used where wind is present.
 **Next.** Iteration 22 closes on PCEN. The frozen frontend stays. The open lead is the CRNN's car gain:
 PCEN with a longer context (a stream-state smoother, as the Scholar of entry 210 described) or a two-channel
 input (log-mel and PCEN) would need its own council. The 8-11 kHz question stays open (entry 211).
+## 215 - Iteration 21's CRNNs in the test GUIs; duplicate entry numbers 200-205 renumbered
+
+- Date: 2026-11-11
+- Type: Infrastructure / correction
+- Commit: on branch `iteration-21-uav16` at 8560f9e (master merged in); uncommitted `scripts/drone_war_grid.py`, `scripts/detect_gui.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**Renumbering.** Merging master into `iteration-21-uav16` put this session's entries 200-205 (master, 2026-11-11) after the branch's own 200-208 (iterations 21 and 22), so six numbers appeared twice. This session's six were renumbered 209-214 in place, with their references to each other: 201 became 210, 202 became 211, 203 became 212, 204 became 213, 205 became 214. No other entry and no text was changed. The branch's 200-208 keep their numbers.
+
+**Iteration 21 in the GUIs.** The user asked for iteration 21 in `Complete_Test_Gui`.
+- Commit 52b8b42 carries the three checkpoints `artifacts/models/it21_uav16_s{0,1,2}_none_simdist_colour_crnn.pt`. Entry 208 scored them through its own script on a Mac, not through `drone_war_grid.MODELS`.
+- `MODELS` now has `it21 CRNN uav16 s0/s1/s2`, each with its run file `artifacts/runs/it21_uav16_sS.json`. Colours were added in `Complete_Test_Gui.COLORS` and `detect_gui.MODEL_COLORS` (27 colours for 27 models), plus a docstring line. Not added to `live.PRESETS` until the run files show whether the frontend is the default one.
+- **The run files are missing on this PC.** They are git-ignored and were not force-added, as happened with it20 (entry 194). They are not on the server account `mads` either (`find ~ -maxdepth 5`). Entry 202 says the iteration 21 training used stores copied to another account, and entry 208 says the files reached the Mac as `it21_models.zip`. Other users' accounts were not looked into.
+- `Complete_Test_Gui.detector_names()` now offers only models whose run file and checkpoint both exist on the machine. So the it21 entries appear as soon as their run files are in place, and a pulled checkpoint without its run file can no longer be picked and fail. With the run files missing, the list is unchanged: 12 networks and comb. `detect_gui` lists every `MODELS` entry and was not changed that way: picking it21 there fails until the run files exist.
+
+**Not done.** Loading and scoring the it21 models (needs the run files). `uv run pytest` not run.
+
+## 216 - Iteration 21's run files in place; the three it21 CRNNs load and run in Complete_Test_Gui
+
+- Date: 2026-11-11
+- Type: Infrastructure (follow-up to entry 215)
+- Commit: as entry 215; four untracked run files
+
+The user downloaded `it21_models.zip` to `Downloads`: 8,279,812 bytes, MD5 1978293a3397fb46c882ea03c67c1848, the same as entry 208.
+- Its three checkpoints are byte-identical (MD5) to those committed in 52b8b42.
+- Its `it21_uav16_s{0,1,2}.json` were written to `artifacts/runs/`; no file of those names existed. Its `it22_ref_s*.json` were left out.
+- The run files give the default frontend: `window_seconds` 1.0, no bandpass, no Wiener, recipe `simdist_colour`.
+
+**Checks.**
+- `Complete_Test_Gui.detector_names()` now offers `it21 CRNN uav16 s0`, `s1` and `s2`.
+- `load_detectors` loads them with thresholds 0.695 / 0.630 / 0.694, 1 s window and no bandpass. Each scores 3 s of white noise (17 hops, means 0.003-0.008).
+- A 2-round `Test.run` (modified test, Steady_07 at 80 dB at 1 m, 100 km/h, war 60 dB, one no-drone round) ran it21 s0 beside it19 colour s1. It gave drone / no-drone confidence 0.725 / 0.029 and 0.778 / 0.028. This only shows the models work in the engine; one round is not a result.
+
+The run files are still git-ignored and only on this PC. Other clones need them force-added (`git add -f artifacts/runs/it21_uav16_s*.json`) or fetched. With the default frontend, the it21 CRNNs could also go into `live.PRESETS`; not done, not asked.
+
+## 217 - Complete test: a measured SNR per window in Conclusions, continuous and over the time before impact
+
+- Date: 2026-11-11
+- Type: Evaluation tooling
+- Commit: on branch `iteration-21-uav16` at 8560f9e; uncommitted `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**Why.** The user asked for a proper SNR: how loud the drone is in a stretch of time against how loud the background is at the same time. The existing Overall graph "drone dB / war soundscape dB" is not that. It divides the set levels (60 dB / 90 dB = 0.67), where an SNR is the difference of measured levels. The user also pointed out that SNR over the time before impact and a continuous SNR are two different things, so both are shown.
+
+**Definition.** For every window on the shared score grid (end times k × 0.125 s + 1 s): SNR = 10 log10(P_drone / P_background). Both powers come from the round's separate parts over the same samples: the drone part, and mix minus drone (every background layer together). The window is the detector's own, 1 s or 2 s. Only windows whose middle lies inside the drone's truth span count. A window with zero drone or zero background power has no SNR. The measure is broadband, with no frequency weighting.
+
+**Code.**
+- `complete_test_engine.window_snr`, `round_window_snrs` and `grid_t_end`. `Test.run` now also writes `window_snr.npz` (keys `round|1`, `round|2`).
+- In `Complete_Test_Gui`, `window_snrs()` reads that file. For older runs it rebuilds every drone round once from its parts and saves the file in the run folder.
+- Conclusions loads `scores.npz` for every test kind, not only modified ones.
+- A new section "SNR: the drone against the simultaneous background, window by window", on the single-detector page and on the comparison page:
+  1. **Continuous: confidence against SNR.** Every drone window pooled, 2 dB bins with at least 10 windows; mean, plus the middle half for one detector.
+  2. **Continuous: detected windows against SNR.** The share of drone windows at or above the false-alarm threshold (entry 213), or the detector's own threshold when there are no no-drone rounds. For one detector, grey bars show the windows per bin.
+  3. **Over the time before impact** (modified tests). The median SNR at each moment of the drone file, impact at 10 s, per speed, with the middle half. The text adds the SNR at each detector's first alarm.
+- The text gives, per detector: the SNR where mean confidence reaches 50 %, the SNR where half the windows reach the threshold, and the SNR at the first alarm.
+
+**Checks** (run by `snr_check.py` in the session scratchpad, which loads the run, draws Conclusions and saves PNGs; looked at).
+- `20261111_101745_modified` (180 rounds, it19 CRNN colour s1, 14,128 drone windows; SNR file rebuilt in about 6 s):
+  - 50 % mean confidence at -21.3 dB.
+  - Half the windows at the 95 % threshold at -21.0 dB.
+  - SNR at first alarm: median -20.8 dB.
+  - Median SNR 3 s before impact: -25.9 dB at 100 km/h, -31.5 dB at 180 km/h.
+- `20261111_120310_modified` (136 rounds, it9 CRNN and it21 CRNN uav16 s0-s2), it9 CRNN:
+  - 50 % mean confidence at -26.9 dB.
+  - Half the windows at the threshold at -28.3 dB.
+  - SNR at first alarm: median -18.3 dB.
+  - The comparison page draws all four.
+- The SNRs are strongly negative because the measure is broadband: the war soundscape's low-frequency energy counts in full, also where the drone's harmonics stand clear of it.
+
+**An open observation.** Above about +5 dB, confidence falls again on every model (it9 CRNN in 120310: mean 0.88 at -20 to 0 dB, 0.91 at 0 to 5 dB, 0.37 at 5 dB and above).
+- Part of this comes from windows after impact: 28 % of the windows above +5 dB end after impact, with mean confidence 0.04 there.
+- The windows above +5 dB before impact still have only 0.37. Why was not examined; candidates are the closest pass (very loud, strong Doppler) and rounds with little background.
+- This is scored on simulated modified drones and on no held-out set, so it is not a detection result.
+
+`uv run pytest` was not run.
+
+## 218 - Complete test: time before impact as a mean, and one graph per varied setting
+
+- Date: 2026-11-11
+- Type: Evaluation tooling (changes entry 213's summary statistic)
+- Commit: as entry 217; uncommitted `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+The user asked for two changes to the "False alarms" section of Conclusions.
+- **The mean, not the median.** The time before impact at the false-alarm threshold is now the mean over the rounds. A round that never reaches the threshold still counts as 0 s. `lead_summary` returns `mean`, and the median from entry 213 is gone. The bars, the curves and the text say "mean".
+- **A graph per setting.** The right-hand graphs now cover every setting that varies in the run, not only background layers with two or more levels. That includes speed, drone file, pitch, drone level, drone start, each layer's level and each Pure Data setting. A layer that is only on/off at one level gets no curve, because the bars on the left already show it. A setting with names (the drone file) gets one place per value on the x axis.
+
+**Checks** (`fa_check.py` in the session scratchpad: loads the run, draws Conclusions, prints the lines; the top of the page was looked at).
+- `20261111_101745_modified`, it19 CRNN colour s1 at the 95 % threshold. All rounds: mean 6.30 s.
+  - Speed: 100 km/h 6.87 s, 180 km/h 5.73 s.
+  - Drone file: drone1_2 6.59 s, drone_2 6.02 s.
+  - Drone start: 0-10 s.
+  - Wind (Pd): 25 dB 8.08 s, 50 dB 4.52 s.
+  - Cars: 1 dB 6.35 s, 25 dB 6.26 s.
+- `20261111_120310_modified`, it9 CRNN. All rounds: mean 7.23 s; speed 50 / 100 / 150 km/h: 7.93 / 7.22 / 6.53 s. The four-model comparison page draws too.
+- These are simulated modified drones on non-held-out sources. They check the tool, not detection performance.
+
+## 219 - Why the time before impact at the threshold reads earlier than the mean confidence curve
+
+- Date: 2026-11-11
+- Type: Analysis (explains entries 213 and 218)
+- Commit: as entry 217; nothing changed in code
+
+**The question.** The user asked why `20261111_125937_modified` (it19 CRNN colour s1, 100 % false-alarm threshold = 0.506) gives a mean of 5.7 s before impact. On the over-time graphs, the mean confidence crosses 50 % only about 2-2.5 s before impact.
+
+**Explanation.** The two numbers measure different things.
+- **The time before impact is the mean of each round's first alarm.** That is the first window at or above the threshold (rule of entries 213 and 218). A single early spike in one round counts.
+- **The over-time graph is the mean confidence across rounds** at each moment. Its middle-half band already reaches above 51 % from about 3-4 s into the file, so many rounds cross early even though the mean curve does not.
+
+**Check** (`lead_check.py` in the session scratchpad, on that run, threshold at 100 %):
+
+| | Mean (s before impact) | Median (s before impact) |
+|---|---|---|
+| First alarm | 5.65 | 6.38 |
+| Crosses and stays above until impact | 2.01 | 1.25 |
+
+- 29 % of the first alarms fall in the drone clip's first 1.5 s: the onset peak of entry 214.
+- After its first alarm, a round has a median of 67 % of its windows still above the threshold, so the confidence dips back below.
+
+**Assessment.** The number is computed correctly by its rule, but the rule rewards a single spike. The "stays above until impact" rule (2.0 s mean) matches what the over-time graphs show and what a warning system needs. No change made yet; offered to the user.
+
+## 220 - Complete test: the time before impact now uses "crosses and stays above until impact"
+
+- Date: 2026-11-11
+- Type: Evaluation tooling (replaces the first-alarm rule of entries 213 and 218; follows entry 219)
+- Commit: as entry 217; uncommitted `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+The user decided to switch rules after entry 219.
+
+**The new rule.** `alarm_index()` in `Complete_Test_Gui.py` looks at the windows that are at least half drone and end no later than impact. The alarm is the first of those windows after which every window up to impact is at or above the threshold. If the last window before impact is below the threshold, the round is a miss and counts as 0 s.
+
+**What uses it.**
+- `leads_at`, so the false-alarm section's bars, its per-setting curves and its text.
+- The SNR section's "SNR where the alarm comes on" (it was "SNR at first alarm").
+- The text now says "% of rounds above it at impact" where it said "reach the threshold".
+
+The engine's `lead_s` column in rounds.csv (`wavio.lead_times`, first alarm) is unchanged.
+
+**Check.** `fa_check.py` (session scratchpad) on `20261111_125937_modified`: it19 CRNN colour s1, 100 % false-alarm threshold = 0.506, 275 drone rounds.
+- All rounds: mean 2.01 s, the same as entry 219's independent script. The old rule gave 5.65 s.
+- 73 % of rounds are above the threshold at impact; 34 % are above it at least 3 s before impact.
+- By speed, 80 / 105 / 130 / 155 / 180 km/h: 2.54 / 2.20 / 1.97 / 1.71 / 1.63 s.
+- By war soundscape level, 30 / 45 / 60 / 75 / 90 dB: 4.25 / 3.87 / 1.54 / 0.35 / 0.03 s.
+
+These are simulated modified drones on non-held-out sources: a tool check, not a detection result.
+
+## 221 - Complete test: the time before impact is where the mean confidence curve first reaches the threshold
+
+- Date: 2026-11-11
+- Type: Evaluation tooling (replaces entry 220's per-round rule)
+- Commit: as entry 217; uncommitted `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+The user asked for the time before impact to be read off the "confidence over time" graphs: the first moment the mean curve is at or above the threshold.
+
+**The new rule.**
+- `round_curves()` takes each drone round's confidence in the windows that are at least half drone and end no later than impact, keyed by hops before impact.
+- `curve_lead()` averages a group of rounds at each moment, the same mean as the graphs, and returns the earliest moment at or above the threshold. A moment counts only when at least half the group's rounds have a window there.
+- If the curve never reaches the threshold before impact, the group gets 0 s.
+
+**Effect on the section.**
+- The bars (all rounds, layer on/off) and the per-setting curves each compute one mean curve per group or setting value. There is no per-round average or miss share any more.
+- `leads_at`, `alarm_index` and `lead_summary` were removed.
+- The SNR section now reports every round's window SNR at the moment the all-rounds curve crosses.
+
+**Check.** `fa_check2.py` (session scratchpad) on `20261111_125937_modified`: it19 CRNN colour s1, 100 % false-alarm threshold = 0.506, 275 drone rounds.
+
+| Group | Seconds before impact |
+|---|---|
+| All rounds | 2.38 |
+| 80 km/h | 5.00 |
+| 105 km/h | 3.75 |
+| 130 km/h | 2.50 |
+| 155 km/h | 1.75 |
+| 180 km/h | 1.50 |
+| War soundscape 30 dB | 6.00 |
+| War soundscape 45 dB | 6.25 |
+| War soundscape 60 dB | 5.25 |
+| War soundscape 75 dB | 0.12 |
+| War soundscape 90 dB | 0.00 |
+
+- The speed values match the user's screenshots: 105 km/h crosses at 6.25 s into the file, 130 km/h at 7.5 s.
+- Drone start gives 2.9-7.9 s. Each start value has only about 25 rounds, so its mean curve is noisier and crosses earlier on a bump. **A first crossing of a mean curve depends on how many rounds are pooled: fewer rounds, more noise, earlier crossings.**
+- SNR at the all-rounds crossing: median -26.4 dB.
+
+These are simulated modified drones on non-held-out sources: a tool check, not a detection result.
+
+## 222 - Bug fix: entry 217's edit to Test.run broke rounds.csv writing
+
+- Date: 2026-11-11
+- Type: Bug fix (in entry 217's change)
+- Commit: as entry 217; uncommitted `scripts/complete_test_engine.py`, `docs/REPORT.md`
+
+A new run from the GUI stopped with `AttributeError: 'str' object has no attribute 'writerow'`. Entry 217's window-SNR block in `Test.run` had two faults:
+- **A name clash.** It looped with `for w, x in ...`, so `w`, the csv writer, became a string.
+- **A moved write.** It was inserted between the detector loop and its `writerow`, which left the write outside that loop. Each drone round wrote only its last detector's row, and no-drone rounds wrote none.
+
+Entry 217's checks redrew existing runs and never ran `Test.run`, so neither fault was caught. No run folder made before the fix is affected: the error stopped the run at its first drone round. Older folders such as 125937 were written before entry 217.
+
+**Fix.** The `writerow` is back inside the detector loop, and the SNR block comes after it with its own names (`win`, `n_grid`).
+
+**Check.** `run_check.py` (session scratchpad) ran `Test.run` on three rounds of `20261111_120310_modified`'s plan (four detectors; two drone rounds, one no-drone round). It wrote 12 rows to rounds.csv and `window_snr.npz` with keys `1|1`, `1|2`, `2|1`, `2|2` (153 windows each).
+
+## 223 - What a 99.9 % false-alarm threshold means per hour, and why the runs cannot set it yet
+
+- Date: 2026-11-11
+- Type: Analysis (no code change)
+- Commit: as entry 217
+
+**The question.** The user asked how many false alarms a 99.9 % threshold gives in 2 hours.
+
+**By definition.** 0.1 % of no-drone windows lie above the threshold. With 8 windows a second (hop 0.125 s), 2 hours is 57,600 windows, so about 58 windows above it. Neighbouring windows overlap by 7/8, so the windows above it come in clusters, and one cluster is one alarm.
+
+**Measured** (`fa_events.py` in the session scratchpad: windows above vs separate alarms, i.e. rising edges, in the no-drone rounds).
+- `20261111_125937_modified`, it19 CRNN colour s1: 765 no-drone windows, 1.6 min.
+- `20261111_120310_modified`, four models: 612 windows, 1.3 min.
+- At 95 %, an alarm lasted 3.9 windows (it19) and 10-15.5 windows (it9 / it21). At 99 % it lasted 1.4-7 windows.
+
+So the 58 windows above the threshold would be roughly 4-40 separate alarms in 2 hours.
+
+**Why this cannot be trusted yet.**
+- At 99.9 % only one window per run lies above the threshold, so the threshold is in practice the highest no-drone window.
+- Estimating a 99.9th percentile needs on the order of 10,000 or more no-drone windows (about 20 min or more of no-drone audio), against 612-765 here.
+- It holds only for the backgrounds in the test.
+- **A real false-alarm rate needs long no-drone recordings (hours, all distractors) with the alarms counted directly.**
+
+## 224 - Complete test: the war soundscape layer is now WarSoundScape.wav
+
+- Date: 2026-11-11
+- Type: Test data change (requested by Mads)
+- Commit: on branch `iteration-21-uav16`, 8560f9e plus the pulled commits 2b7b353 and 27c4672 (`WarSoundScape/`); uncommitted `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What changed.** The user pulled `WarSoundScape/WarSoundScape.wav` and asked for it to replace the war soundscape in the complete test.
+- **The file.** 38.5 s, 44.1 kHz, stereo, 24-bit, RMS -40.3 dBFS, peak 0.25.
+- **Its sources.** `WarSoundScape.RPP` (REAPER) lists only Soundly library effects: fireworks/explosion, footsteps, body drag, shotgun reload, cloth movement, a two-man conversation and shells in a container. None comes from ITU ARIS or anything derived from it.
+- **Code.** In `complete_test_engine`, the "war soundscape" layer now reads this file through `_war_track(path)`. The channels are averaged to mono, the file is resampled to 16 kHz and looped like before. The level rule is unchanged: a round's dB SPL sets the RMS of the whole 38.5 s.
+- **A new Plan field.** `war_file`, default `WarSoundScape/WarSoundScape.wav`, is written into every run's config.json.
+- **Old runs.** `Complete_Test_Gui.load_test` sets an older run (one without `war_file`) to the old 600 s `war_track.wav`. So Results, playback and the window-SNR rebuild of old runs still use the track they were made with.
+- **Saved plan files.** These hold no `war_file` and now run with the new soundscape.
+
+**Checks** (`war_check.py` in the session scratchpad).
+- The layer loads as available: 38.5 s at 16 kHz, mono.
+- Set to 60 dB SPL, the whole file measures 60.0 dB. A 14 s window from 30 s, which wraps past the end, measures 59.7 dB.
+- `20261111_125937_modified` reloads with `war_track.wav`.
+- A 3-round `Test.run` on that run's plan, without `war_file`, wrote 3 rows and config `war_file` = `WarSoundScape/WarSoundScape.wav`. With a 38.5 s source the drawn soundscape start was 8.0 s. It reloads with the new soundscape.
+
+**Consequences.**
+- Results with the war soundscape before and after this entry are not comparable: a 38.5 s effects mix is not the 600 s track with calm, normal and intense phases.
+- REQUIREMENTS.md names "the war soundscape" without naming a file, so nothing in it changes.
+- The 38.5 s loop repeats every 38.5 s in rounds longer than that.
+- `detect_gui.py` still uses the old track; not asked.
+- The server clone `~/ct_9_11` has neither this change nor the file.
+
+## 225 - Pull onto master with today's changes: conflicts resolved; the UAV16 entries keep numbers that master also uses
+
+- Date: 2026-11-11
+- Type: Infrastructure / report housekeeping
+- Commit: the commit that carries this entry, on `master` after d1dcc02
+
+**What happened.**
+- The user switched from `iteration-21-uav16` to `master` and brought this session's uncommitted changes along: entries 209-224, the Complete_Test_Gui and engine work, the it21 GUI entries. Because the switch carried the whole working-copy REPORT.md, the branch's report entries 200-208 (iterations 21 and 22 on UAV16) came along too.
+- `git pull --ff-only` was blocked by those changes. They were stashed, master was fast-forwarded to d1dcc02 (iteration 22 PCEN), and the stash was popped. The stash entry is kept.
+
+**Conflicts and how they were resolved.**
+- **`drone_war_grid.MODELS`.** Both sides added models at the same place, so both were kept: it21 CRNN uav16 s0-s2, then it22 CNN/CRNN pcen s0-s2.
+- **`Complete_Test_Gui.COLORS`.** Both sides gave the same three blues: upstream to it22 CNN pcen, this session to it21. it22 keeps them; it21 now has blue-greys `#263238`, `#607d8b`, `#b0bec5`.
+- **`detect_gui.MODEL_COLORS`.** Upstream added six it22 models to `MODELS` without colours, so the module's `assert` (one colour per model) would fail. The it21 and it22 colours were added: 33 colours for 33 models.
+- **REPORT.md** auto-merged. Git matched this session's entries 209-214 to master's 200-205 (the same text under other numbers, from the renumbering in entry 215) and kept only one copy, under 209-214. That copy was removed and master's 200-205 were put back verbatim from d1dcc02, after entry 199. A script checked that every line of master's REPORT.md is still there, in order.
+
+**What remains, by the user's choice.**
+- The user chose to keep the UAV16 entries on master, but not to merge the branch now ("just pull and commit").
+- So the report has two "Iteration 21" and two "Iteration 22" headings. The UAV16 entries 200-208 share numbers with master's 200-205 and 206-208.
+- Entry 215's note that 200-205 became 209-214 holds on the branch only. On master they are 200-205.
+- The branch also has commits master lacks: the it21 and it23 checkpoints, run files, and iteration 23 entries. Until it is merged, Complete_Test_Gui on master does not offer it21 (no checkpoints). `detect_gui` lists it21 but cannot load it.
+- **Renumbering and the iteration names are left for the merge of `iteration-21-uav16`.**
+
+**Checks.**
+- `uv run pytest`: all pass.
+- `drone_war_grid` has 33 models. `detect_gui` imports.
+- `Complete_Test_Gui.detector_names()` lists it22 PCEN and not it21.

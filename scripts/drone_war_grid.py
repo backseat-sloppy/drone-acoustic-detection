@@ -80,6 +80,10 @@ MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file
           **{f"it20 {name} bp s{s}": (ROOT / f"artifacts/runs/it20_bp_s{s}.json",
                                       MODEL_DIR / f"it20_bp_s{s}_none_simdist_{arch}.pt")
              for name, arch in (("CNN", "dscnn"), ("CRNN", "crnn")) for s in (0, 1, 2)},
+          # it19's colour recipe with UAV16 as a fifth rig in the pool (iteration 21, entries 200-208; fails on Lund).
+          # Only the CRNN checkpoints were committed; the run files (threshold, window) must be fetched (entry 215).
+          **{f"it21 CRNN uav16 s{s}": (ROOT / f"artifacts/runs/it21_uav16_s{s}.json",
+                                       MODEL_DIR / f"it21_uav16_s{s}_none_simdist_colour_crnn.pt") for s in (0, 1, 2)},
           # 600k with PCEN (T 60 ms) in place of the log (iteration 22, entry 211); model_cfg reads it from the run file
           **{f"it22 {name} pcen s{s}": (ROOT / f"artifacts/runs/it22_pcen_s{s}.json",
                                         MODEL_DIR / f"it22_pcen_s{s}_none_simdist_{arch}.pt")
