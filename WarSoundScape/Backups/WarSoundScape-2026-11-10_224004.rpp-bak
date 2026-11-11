@@ -1,0 +1,577 @@
+<REAPER_PROJECT 0.1 "7.84/macOS-arm64" 1794346803 0
+  <NOTES 0 2
+  >
+  RIPPLE 0 0
+  GROUPOVERRIDE 0 0 0 0
+  AUTOXFADE 129
+  ENVATTACH 3
+  POOLEDENVATTACH 0
+  TCPUIFLAGS 0
+  MIXERUIFLAGS 11 48 0
+  ENVFADESZ10 40
+  PEAKGAIN 1
+  FEEDBACK 0
+  PANLAW 1
+  PROJOFFS 0 0 0
+  MAXPROJLEN 0 0
+  GRID 3199 8 1 8 1 0 0 0
+  TIMEMODE 1 5 -1 30 0 0 -1 0
+  VIDEO_CONFIG 0 0 65792
+  PANMODE 3
+  PANLAWFLAGS 3
+  CURSOR 4.5
+  ZOOM 32.15367884914982 0 0
+  VZOOMEX 8.68897247 210
+  USE_REC_CFG 0
+  RECMODE 1
+  SMPTESYNC 0 30 100 40 1000 300 0 0 1 0 0
+  LOOP 0
+  LOOPGRAN 0 4
+  RECORD_PATH "Media" ""
+  <RECORD_CFG
+    ZXZhdxgAAQ==
+  >
+  <APPLYFX_CFG
+  >
+  RENDER_FILE ""
+  RENDER_PATTERN ""
+  RENDER_FMT 0 2 0
+  RENDER_1X 0 0
+  RENDER_RANGE 1 0 0 0 1000
+  RENDER_RESAMPLE 3 0 1
+  RENDER_ADDTOPROJ 0
+  RENDER_STEMS 0
+  RENDER_DITHER 0
+  RENDER_TRIM 0.000001 0.000001 0 0
+  TIMELOCKMODE 1
+  TEMPOENVLOCKMODE 1
+  ITEMMIX 1
+  DEFPITCHMODE 589824 0
+  TAKELANE 1
+  SAMPLERATE 44100 0 0
+  <RENDER_CFG
+    ZXZhdxgAAQ==
+  >
+  LOCK 1
+  <METRONOME 6 2
+    VOL 0.25 0.125
+    BEATLEN 4
+    FREQ 1760 880 1
+    SAMPLES "" "" "" ""
+    SPLIGNORE 0 0
+    SPLDEF 2 660 "" 0 ""
+    SPLDEF 3 440 "" 0 ""
+    PATTERN 0 169
+    PATTERNSTR ABBB
+    MULT 1
+  >
+  GLOBAL_AUTO -1
+  TEMPO 120 4 4 0
+  PLAYRATE 1 0 0.25 4
+  SELECTION 0 0
+  SELECTION2 0 0
+  MASTERAUTOMODE 0
+  MASTERTRACKHEIGHT 0 0
+  MASTERPEAKCOL 16576
+  MASTERMUTESOLO 0
+  MASTERTRACKVIEW 0 0.6667 0.5 0.5 0 0 0 0 0 0 0 0 0 0 1
+  MASTERHWOUT 0 0 1 0 0 0 0 -1
+  MASTER_NCH 2 2
+  MASTER_VOLUME 1 0 -1 -1 1
+  MASTER_PANMODE 3
+  MASTER_PANLAWFLAGS 3
+  MASTER_FX 1
+  MASTER_TRACKID {E471E19F-37A5-2D4D-8D69-EDB61F9EAAAB}
+  MASTER_SEL 0
+  <MASTERPLAYSPEEDENV
+    EGUID {D6245A6B-EC3F-4343-BF43-60A4D2C6295E}
+    ACT 0 -1
+    VIS 0 1 1
+    LANEHEIGHT 0 0
+    ARM 0
+    DEFSHAPE 0 -1 -1
+  >
+  <TEMPOENVEX
+    EGUID {3211983D-E511-C549-9653-58A844C6774E}
+    ACT 1 -1
+    VIS 1 0 1
+    LANEHEIGHT 0 0
+    ARM 0
+    DEFSHAPE 1 -1 -1
+  >
+  RULERHEIGHT 86 86
+  RULERLANE 1 4 "" 0 -1 0
+  RULERLANE 2 8 "" 0 -1 0
+  <PROJBAY
+  >
+  <TRACK {1663CEC4-33BF-2543-9812-5B6E5394B8DF}
+    NAME "Fireworks, Recreational, Shell, Cracker, Explosion, Shot, Bang, Medium Distance SND162366 1"
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 1 0 -1 -1 1
+    MUTESOLO 0 0 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {1663CEC4-33BF-2543-9812-5B6E5394B8DF}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 3.5
+      SNAPOFFS 0
+      LENGTH 9.30202083333333
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {2ABAE682-906F-7C42-B6F7-07B8C3561449}
+      IID 36
+      NAME "Fireworks, Recreational, Shell, Cracker, Explosion, Shot, Bang, Medium Distance SND162366 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {6EE52B50-0A98-CD4F-8463-C59628661556}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Fireworks, Recreational, Shell, Cracker, Explosion, Shot, Bang, Medium Distance SND162366 1.wav"
+      >
+    >
+  >
+  <TRACK {4345AEB2-8CA9-8B44-9551-3D5672B94B31}
+    NAME "Guns, Mechanism, Shotgun, Cock, Reload, Lock 'n Load SND6290 5"
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 1 0 -1 -1 1
+    MUTESOLO 0 0 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {4345AEB2-8CA9-8B44-9551-3D5672B94B31}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 2.5
+      SNAPOFFS 0
+      LENGTH 5.48833333333333
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {134388C2-0953-B943-9417-E5229AC2570C}
+      IID 38
+      NAME "Guns, Mechanism, Shotgun, Cock, Reload, Lock 'n Load SND6290 5.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {4C1FF04B-1FA5-6642-9DFD-C100A9083676}
+      <SOURCE WAVE
+        FILE "Guns, Mechanism, Shotgun, Cock, Reload, Lock 'n Load SND6290 5.wav"
+      >
+    >
+  >
+  <TRACK {F71D66F7-21AA-BA45-B0D9-DB2761CF4F7A}
+    NAME ""
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 1 0 -1 -1 1
+    MUTESOLO 0 2 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {F71D66F7-21AA-BA45-B0D9-DB2761CF4F7A}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 0
+      SNAPOFFS 0
+      LENGTH 20
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.1491205170249 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {5CE0921A-4C84-7B44-B560-6A9719B58901}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {D17C7557-83AC-924F-BE75-821FAA481C04}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+  >
+  <TRACK {265581ED-2766-F048-A219-AD58CCF0D62E}
+    NAME "Movement, Human, Body Drag, Drop, Fall, Forest, Dirt, Twig SND145654"
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 1 0 -1 -1 1
+    MUTESOLO 0 2 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 1
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {265581ED-2766-F048-A219-AD58CCF0D62E}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 7.5
+      SNAPOFFS 0
+      LENGTH 11.4705
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {78AE8532-3FF1-2A40-9508-F80FE8EC1C06}
+      IID 39
+      NAME "Movement, Human, Body Drag, Drop, Fall, Forest, Dirt, Twig SND145654.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {85038A2F-4151-AF49-9237-873790025557}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Drop, Fall, Forest, Dirt, Twig SND145654.wav"
+      >
+    >
+  >
+  <TRACK {DA22201C-88BB-4D4E-8A12-1DA4155B5EEE}
+    NAME ""
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 0.16829929582119 0 -1 -1 1
+    MUTESOLO 0 2 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {DA22201C-88BB-4D4E-8A12-1DA4155B5EEE}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 0.70800062385819
+      SNAPOFFS 0
+      LENGTH 0.49063201127015
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.49063201127015 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {A04D4CBA-F8A2-BA48-A0DA-4FF2704D6A5C}
+      IID 41
+      NAME "Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {486DB611-730B-E242-B608-DE20282F0F08}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      >
+    >
+    <ITEM
+      POSITION 1.42221177950462
+      SNAPOFFS 0
+      LENGTH 0.54031626557599
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.03105265894115 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.26705286689388 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {F5A8B779-6B6E-3645-A68C-29092F027363}
+      IID 41
+      NAME "Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 4.41264762148224
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {B9C7DD41-2532-5B4B-A61B-A3350D57A980}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      >
+    >
+    <ITEM
+      POSITION 2.02903568223002
+      SNAPOFFS 0
+      LENGTH 0.55260582390289
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {A190A558-FAEB-1544-9AA1-FA99C4D417D5}
+      IID 41
+      NAME "Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 6.72196184687419
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {B2BE0585-4260-1246-B622-EE59EE18B3B6}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      >
+    >
+    <ITEM
+      POSITION 2.63662558632344
+      SNAPOFFS 0
+      LENGTH 0.68510743581633
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.07228239816097 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {3D5A0458-1DDA-8645-A6E2-9ADFFB1C724E}
+      IID 41
+      NAME "Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.27456767077707
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {D4F43B48-F27E-574E-9BE6-6037ED218CCA}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      >
+    >
+    <ITEM
+      POSITION 3.2494506239788
+      SNAPOFFS 0
+      LENGTH 0.66496040873899
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.18330752475727 0.07228239816097 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {1D42A278-F2DF-AD43-A564-678A49B4BFA5}
+      IID 41
+      NAME "Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 8.56527917459433
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {3109DC52-17BE-AB46-B2DA-43DF64D1F253}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      >
+    >
+  >
+  <TRACK {BE098F2E-7C4D-114F-B813-4C74EAFBEAFA}
+    NAME ""
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 0.06736320042077 0 -1 -1 1
+    MUTESOLO 0 2 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {BE098F2E-7C4D-114F-B813-4C74EAFBEAFA}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 0.45143086240692
+      SNAPOFFS 0
+      LENGTH 1.04856913759308
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.18974944813602 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {FA6B63AA-CEFB-6941-B85A-85A69502B4BB}
+      IID 40
+      NAME "Movement, Human, Body Drag, Gravel, Short, Close SND145756.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {4E8F6E75-45C8-384A-84CC-44A70331E332}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, Close SND145756.wav"
+      >
+    >
+    <ITEM
+      POSITION 1.31025055186398
+      SNAPOFFS 0
+      LENGTH 0.41839933588934
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.18974944813602 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.5 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {0DC762F9-37D6-914B-8372-73BBD4B74334}
+      IID 40
+      NAME "Movement, Human, Body Drag, Gravel, Short, Close SND145756.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 1.04856913759308
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {093D6420-8E6F-7A4F-AC6B-BCF4180A93E8}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, Close SND145756.wav"
+      >
+    >
+    <ITEM
+      POSITION 3.5
+      SNAPOFFS 0
+      LENGTH 26.51702415154429
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {02735917-12D4-D44F-813D-0560B1D31775}
+      IID 40
+      NAME "Movement, Human, Body Drag, Gravel, Short, Close SND145756.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 3.10362168178905
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {270C8DBB-9BDA-6A4B-BA28-1824E48A67F1}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, Close SND145756.wav"
+      >
+    >
+  >
+  <TRACK {6B574D33-9F05-EB49-8BAF-5D3F3988C156}
+    NAME ""
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 1 0 -1 -1 1
+    MUTESOLO 1 0 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {6B574D33-9F05-EB49-8BAF-5D3F3988C156}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 0
+      SNAPOFFS 0
+      LENGTH 6.91895833333334
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {E3C872D4-2F1B-7347-BB49-713FBE40DC67}
+      IID 42
+      NAME "Movement, Human, Body Drag, Forest, Twig, No Clothing SND145768.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {0336F928-4E15-404A-BA24-01E00757680D}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Forest, Twig, No Clothing SND145768.wav"
+      >
+    >
+  >
+  <EXTENSIONS
+  >
+>
