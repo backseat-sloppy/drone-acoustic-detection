@@ -84,7 +84,9 @@ COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it
           "it17 CNN 2s 600k s2": "#81c784", "it17 CRNN 2s 600k s0": "#311b92", "it17 CRNN 2s 600k s1": "#5e35b1",
           "it17 CRNN 2s 600k s2": "#9575cd", "it20 CNN bp s0": "#006064", "it20 CNN bp s1": "#0097a7",
           "it20 CNN bp s2": "#4dd0e1", "it20 CRNN bp s0": "#3e2723", "it20 CRNN bp s1": "#6d4c41",
-          "it20 CRNN bp s2": "#a1887f", "comb": "#1baf7a"}   # it20: the same colours as detect_gui
+          "it20 CRNN bp s2": "#a1887f", "it22 CNN pcen s0": "#1a237e", "it22 CNN pcen s1": "#3949ab",
+          "it22 CNN pcen s2": "#7986cb", "it22 CRNN pcen s0": "#b71c1c", "it22 CRNN pcen s1": "#e53935",
+          "it22 CRNN pcen s2": "#ef9a9a", "comb": "#1baf7a"}   # it20: the same colours as detect_gui
 PD_CONTROLS = {"wind (Pd)": ("wind", (("speed_ms", "speed (m/s, assumed)", "quiet: 1  ·  storm: 25"),
                                       ("reso", "resonance (0-127)", "open field: 10  ·  city: 90"))),
                "cars": ("cars", (("speed_kmh", "speed (km/h)", "town: 50  ·  motorway: 130"),
