@@ -23,7 +23,7 @@ nav_order: 1
 
 ---
 
-This is an introduction ddsds
+This page contains documentation for a project on acoustic drone detection developed as a semester project in the 7th semester of Medialogy at Aalborg University in Copenhagen. For a full overview of the project, please see the bottom of this page for the paper written as part of the project.
 
 ---
 
