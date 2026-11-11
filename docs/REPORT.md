@@ -38,7 +38,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 19 | 169 to 171 | Pink (-3 dB/oct) and brown (-6 dB/oct) noise as 15% of the no-drone training windows, on the `600k` arm of iteration 16 | Mads's request; the networks alarm on pink and brown noise, which no planned test contains; iteration 11's broader steady noise fixed it but halved Lund recall | **Fails narrowly on Lund recall.** Pink and brown alarms to 0% for both networks (DS-CNN was 74% on pink), mower false alarms down (CRNN 0.171 to 0.112, DS-CNN 0.149 to 0.053), validation unchanged, but Lund recall -0.04 (limit -0.03). `it19 CRNN colour s1` pushed for the virtual tests. 2 s models now usable in Complete_Test_Gui (entry 170). |
 | Iteration 20 | 172 to 173, 192 to 193 | Optional bandpass (Butterworth 80 Hz - 6 kHz) and Wiener gain (noise median across frequency) on the power spectrum before the mel bank; CPU gates before any training | Mads asked for a bandpass and a Wiener filter; the frontend has no noise suppression, and steady noise reads as drone | **Both fail; the frozen frontend stays.** Council (entry 172): Wiener against best practice, tried only as a gated ablation. Wiener fails its CPU gate (entry 173): 66% of drone line bins kept at 0 dB SNR (80% required), 34% at -10 dB; rig background only 2.3 dB lower. The bandpass mainly removes 6-8 kHz; trained on the `600k` arm, three seeds (entry 192): Lund recall DS-CNN +0.058, CRNN +0.028 (bar +0.07), but mower false alarms 0.149 to 0.395 and 0.171 to 0.357, brown noise alarms up. The 6-8 kHz band seems to trade range against confuser rejection (untested). PCEN is the next frontend candidate. The six bandpass models are in the test GUIs for the virtual tests (entry 193). |
 | Iteration 21 | 206 to 208 | A development copy of test 1 from Lund and Halmstad drones (`scripts/dev_test.py`), with a pinned comparison and an AUC; then road vehicles from FSD50K dev as 25% of the negatives and under 30% of the drones, on the `600k` arm | Test 1 fails on cars (entry 179), iterations 16-20 were judged on proxies of deleted requirements, and ITU ARIS may not steer design | **Fails its box.** Council (entry 206). The copy reproduces the car failure (it9 CRNN 76.6 % on cars alone) but not the CRNN's lead over the DS-CNN on ITU ARIS (entry 207). Vehicle negatives cut confidence on cars alone from 64 to 36 % (CRNN, pinned), but "with cars" only by 6.9 points (10 required), and the CRNN's AUC in war falls 0.930 to 0.916 (entry 208). Found on the way: the car layer renders without its engines silently, and the sealed car's manifest row stopped every run on the server. |
-| Iteration 22 | 210 to 212 | Two frontend probes on `600k`: PCEN (T 60 ms) in place of the log, three seeds; and whether 8-11 kHz adds drone information, on raw Nightjar and FPV before any store rebuild | Mads asked for both; PCEN has been the named next frontend since entry 095; the microphone samples at 42 kHz | **In progress.** Council (entry 210). PCEN passes its CPU gate at T 60 ms only; the band probe is inconclusive (+0.018 AUC in grouped CV; transfer AUCs at chance) (entry 211). PCEN models trained and in Complete_Test_Gui (entry 212); development-test verdict pending. |
+| Iteration 22 | 210 to 212 | Two frontend probes on `600k`: PCEN (T 60 ms) in place of the log, three seeds; and whether 8-11 kHz adds drone information, on raw Nightjar and FPV before any store rebuild | Mads asked for both; PCEN has been the named next frontend since entry 095; the microphone samples at 42 kHz | **PCEN fails; the frozen frontend stays.** Council (entry 210). PCEN passes its CPU gate at T 60 ms only; the band probe is inconclusive (+0.018 AUC in grouped CV; transfer AUCs at chance) (entry 211). On the development test PCEN loses 0.008 AUC in war for both networks, and wind alone without a drone gives 37-50 % confidence against 1-3 %; the CRNN's cars-alone confidence falls 64 to 47 % (entry 213). The six models are in Complete_Test_Gui as a failed arm (entry 212). |
 
 ## Templates
 
@@ -12450,3 +12450,52 @@ two synthetic signals that is a warning to watch in the GUI, not a measure. `pyt
 server. Validation-threshold Lund recall in the run files is about 0.22-0.24 for the models read so far,
 against 0.40 for the `600k` CRNN, which may mean PCEN loses distant drones; the development test decides.
 Scoring these models on ITU ARIS in the GUI is scoring finished models and must not decide iteration 22.
+
+## 213 - Iteration 22 result: PCEN fails its box, and the models take wind for a drone
+
+- Date: 2026-11-11
+- Iteration: 22
+- Type: Evaluation
+- Commit: the commit that carries this entry, on `master` after 14973b0; scores on the server only
+
+**How.** On the server, the six checkpoints of entry 212 through the development test, tune half (entry 207),
+then the judge against the `600k` CRNNs:
+```
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=$PWD/src .venv/bin/python -u artifacts/dev_test/score_it22.py
+PYTHONPATH=$PWD/src .venv/bin/python scripts/dev_test.py judge gate --ref 'it16 CRNN 600k'
+```
+`score_it22.py` registers the six models and asserts that `model_cfg` gives each PCEN with T 0.06 s.
+
+**Result.** Mean confidence in %, seed means (s0 / s1 / s2 for the PCEN arms), unpinned unless marked.
+
+| | `600k` CRNN | PCEN CRNN | `600k` DS-CNN | PCEN DS-CNN |
+|---|---|---|---|---|
+| Drone in war | 59.0 | 61.8 (61.5 / 61.6 / 62.2) | 60.7 | 60.8 (61.6 / 61.1 / 59.6) |
+| same, 60-70 dB SPL | 40.4 | 43.4 | 40.9 | 41.5 |
+| No drone: war alone | 2.9 | 2.0 | 1.0 | 1.0 |
+| No drone: **wind alone** | 3.4 | **37.4** (38.6 / 39.9 / 33.6) | 1.1 | **50.1** (50.9 / 54.0 / 45.3) |
+| No drone: cars alone | 64.0 | 46.8 (47.8 / 49.2 / 43.5) | 65.3 | 61.6 |
+| No drone with cars | 34.2 | 27.7 | 30.6 | 29.6 |
+| Helicopter | 23.8 | 30.1 | 26.7 | 33.8 |
+| AUC, drone in war against war alone | 0.930 | **0.922** (0.924 / 0.922 / 0.920) | 0.944 | **0.936** (0.935 / 0.936 / 0.936) |
+| AUC, all drone hops against all no-drone hops | 0.799 | 0.777 | 0.798 | 0.755 |
+| Pinned: no drone with cars / cars alone | 34.3 / 64.0 | 23.6 / 40.5 | 28.5 / 62.2 | 27.3 / 58.0 |
+
+**Verdict: fails, for both networks.** The box's fail rule is a loss of more than 0.006 AUC in war: the CRNN
+loses 0.008 and the DS-CNN 0.008, every seed below every reference seed.
+- **Wind.** Wind alone, without a drone, gives 37 % (CRNN) and 50 % (DS-CNN) against 1-3 %. Wind is the
+  requirements' second background. This is the white-noise warning of entry 212, measured: PCEN with
+  T 60 ms divides each band by its own recent level, so a broadband noise that fluctuates in every band
+  looks like the band-wise modulation a drone gives. It also explains the lower AUC over all hops.
+- **Cars.** The CRNN's confidence on cars alone falls from 64 to 47 % (41 % pinned), close to what the
+  vehicle negatives of iteration 21 bought, without new data; the DS-CNN's barely moves.
+- The drone in war rises 1-3 points, and the helicopter 6-7 points.
+
+**What it means.** Per-window PCEN trades wind for cars and loses separation in war. The gate of entry 211
+measured that the drone survives PCEN; it did not measure what PCEN does to noise, and that is where it
+fails. These six models are on `master` and in `Complete_Test_Gui` (entry 212) at Mads's request: they are a
+failed arm, not a candidate, and must not be used where wind is present.
+
+**Next.** Iteration 22 closes on PCEN. The frozen frontend stays. The open lead is the CRNN's car gain:
+PCEN with a longer context (a stream-state smoother, as the Scholar of entry 210 described) or a two-channel
+input (log-mel and PCEN) would need its own council. The 8-11 kHz question stays open (entry 211).
