@@ -13,3 +13,6 @@ exclude:
   - sound_taxonomy.md
   - supervisor_notes.md
   - war_shaped_noise.md
+  - Gemfile
+  - Gemfile.lock
+  - vendor
