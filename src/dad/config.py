@@ -47,6 +47,15 @@ class FrontendConfig:
     wiener_hz: float = 400.0
     wiener_floor: float = 0.1
 
+    # Iteration 22, off by default. `pcen`: per-channel energy normalisation (Wang et al. 2017) on the mel
+    # energies after level normalisation, in place of the log: (E / M^alpha + delta)^r - delta^r, M a
+    # one-pole smoother of E over frames with time constant `pcen_t` s, started at each window's first frame.
+    pcen: bool = False
+    pcen_t: float = 0.4
+    pcen_alpha: float = 0.98
+    pcen_delta: float = 2.0
+    pcen_r: float = 0.5
+
     @property
     def frames_per_window(self) -> int:
         return int(round(self.window_seconds * self.sample_rate / self.hop_length))
@@ -74,6 +83,12 @@ class FrontendConfig:
         return 2 * int(round(self.wiener_hz / 2 / (self.sample_rate / self.n_fft))) + 1
 
     @property
+    def pcen_s(self) -> float:
+        """PCEN smoother weight per frame."""
+        import math
+        return 1.0 - math.exp(-self.hop_length / self.sample_rate / self.pcen_t)
+
+    @property
     def n_bands(self) -> int:
         """Rows of the feature image the network gets."""
         return {"mfe": self.n_mels, "mfcc": self.n_mfcc, "linear": len(self.linear_bins())}[self.kind]
@@ -83,6 +98,8 @@ class FrontendConfig:
                 "linear": f"{self.n_bands} linear log-power bins"}[self.kind]
         if self.bandpass:
             feat += f" | bandpass {self.bandpass[0]:g}-{self.bandpass[1]:g} Hz order {self.bandpass_order}"
+        if self.pcen:
+            feat += f" | PCEN (T {self.pcen_t:g} s, alpha {self.pcen_alpha:g}, delta {self.pcen_delta:g}, r {self.pcen_r:g})"
         if self.wiener:
             feat += f" | Wiener (median over {self.wiener_hz:g} Hz, floor {self.wiener_floor:g})"
         return (

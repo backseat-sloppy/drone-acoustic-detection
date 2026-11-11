@@ -125,3 +125,16 @@ def test_bandpass_and_wiener_match_numpy():
     want = np.stack([LogMel(cfg).frames(a) for a in x])
     got = GpuFrontend(cfg, "cpu").logbands(torch.from_numpy(x)).numpy()
     np.testing.assert_allclose(got, want, atol=2e-4)
+
+
+def test_pcen_matches_numpy_and_flattens_a_steady_tone():
+    # Iteration 22: PCEN on the torch path gives realrun.pcen's numbers, and as designed it removes a steady
+    # band's own level (the stationary-target warning of entries 095 and 172).
+    cfg = FrontendConfig(pcen=True)
+    x = _audio(4, 7)[:, :N_OUT]
+    want = rr.featurise(x, rr.VARIANTS["level"], LogMel(cfg))
+    got = GpuFrontend(cfg, "cpu").features(x).numpy()
+    np.testing.assert_allclose(got, want, atol=1e-4)
+    assert np.isfinite(want).all() and want.shape[:2] == (4, cfg.n_mels)
+    loud = rr.featurise(10 * x, rr.VARIANTS["level"], LogMel(cfg))
+    np.testing.assert_allclose(loud, want, atol=1e-3)   # level-normalised, then near scale-free

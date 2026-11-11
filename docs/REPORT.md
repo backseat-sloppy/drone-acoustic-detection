@@ -38,6 +38,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 19 | 169 to 171 | Pink (-3 dB/oct) and brown (-6 dB/oct) noise as 15% of the no-drone training windows, on the `600k` arm of iteration 16 | Mads's request; the networks alarm on pink and brown noise, which no planned test contains; iteration 11's broader steady noise fixed it but halved Lund recall | **Fails narrowly on Lund recall.** Pink and brown alarms to 0% for both networks (DS-CNN was 74% on pink), mower false alarms down (CRNN 0.171 to 0.112, DS-CNN 0.149 to 0.053), validation unchanged, but Lund recall -0.04 (limit -0.03). `it19 CRNN colour s1` pushed for the virtual tests. 2 s models now usable in Complete_Test_Gui (entry 170). |
 | Iteration 20 | 172 to 173, 192 to 193 | Optional bandpass (Butterworth 80 Hz - 6 kHz) and Wiener gain (noise median across frequency) on the power spectrum before the mel bank; CPU gates before any training | Mads asked for a bandpass and a Wiener filter; the frontend has no noise suppression, and steady noise reads as drone | **Both fail; the frozen frontend stays.** Council (entry 172): Wiener against best practice, tried only as a gated ablation. Wiener fails its CPU gate (entry 173): 66% of drone line bins kept at 0 dB SNR (80% required), 34% at -10 dB; rig background only 2.3 dB lower. The bandpass mainly removes 6-8 kHz; trained on the `600k` arm, three seeds (entry 192): Lund recall DS-CNN +0.058, CRNN +0.028 (bar +0.07), but mower false alarms 0.149 to 0.395 and 0.171 to 0.357, brown noise alarms up. The 6-8 kHz band seems to trade range against confuser rejection (untested). PCEN is the next frontend candidate. The six bandpass models are in the test GUIs for the virtual tests (entry 193). |
 | Iteration 21 | 206 to 208 | A development copy of test 1 from Lund and Halmstad drones (`scripts/dev_test.py`), with a pinned comparison and an AUC; then road vehicles from FSD50K dev as 25% of the negatives and under 30% of the drones, on the `600k` arm | Test 1 fails on cars (entry 179), iterations 16-20 were judged on proxies of deleted requirements, and ITU ARIS may not steer design | **Fails its box.** Council (entry 206). The copy reproduces the car failure (it9 CRNN 76.6 % on cars alone) but not the CRNN's lead over the DS-CNN on ITU ARIS (entry 207). Vehicle negatives cut confidence on cars alone from 64 to 36 % (CRNN, pinned), but "with cars" only by 6.9 points (10 required), and the CRNN's AUC in war falls 0.930 to 0.916 (entry 208). Found on the way: the car layer renders without its engines silently, and the sealed car's manifest row stopped every run on the server. |
+| Iteration 22 | 210 to 212 | Two frontend probes on `600k`: PCEN (T 60 ms) in place of the log, three seeds; and whether 8-11 kHz adds drone information, on raw Nightjar and FPV before any store rebuild | Mads asked for both; PCEN has been the named next frontend since entry 095; the microphone samples at 42 kHz | **In progress.** Council (entry 210). PCEN passes its CPU gate at T 60 ms only; the band probe is inconclusive (+0.018 AUC in grouped CV; transfer AUCs at chance) (entry 211). PCEN models trained and in Complete_Test_Gui (entry 212); development-test verdict pending. |
 
 ## Templates
 
@@ -12294,3 +12295,158 @@ Iteration 21 was written on one PC as entries 194-196 while the other PC pushed 
 them inside iteration 21, the "Iterations at a glance" row, and the comments in `tests/test_steady.py` and
 `scripts/dev_test.py`. Entries 194-196 elsewhere in the report mean the other PC's entries. Text is otherwise
 unchanged.
+
+# Iteration 22 - Two frontend probes: PCEN, and the band above 8 kHz
+
+> **Changed from iteration 21:** the frontend, one change per arm, on branch `frontend-probes`. Arm P: PCEN
+> on the 64 mel energies in place of the log, everything else as `it16_600k`. Probe B: whether 8-11 kHz adds
+> drone / no-drone information to the 64 log-mel bands, measured on raw recordings before any data rebuild.
+> **Why:** Mads asked for small tests of both (2026-11-11). PCEN has been the named next frontend candidate
+> since entry 095 and again in entries 172 and 192. The frontend stops at 8 kHz, iteration 20 found the
+> networks lean on 6-8 kHz to reject a mower (entry 192), the deployed microphone samples at 42 kHz (Mads,
+> 2026-11-11), and the ITU ARIS excerpts on this PC (`sealed_peek`) are 22.05 kHz files, so test 1 holds at
+> most about 11 kHz.
+> **Kept the same:** `simdist` recipe, 600,000 windows, speed 0.8-1.25, CRNN and DS-CNN, seeds 0-2, 1 s
+> window, 16 kHz store; `it16_600k` is the reference; the development test of entry 207 is the yardstick.
+> ITU ARIS is not scored.
+> **Hypothesis:** (P) PCEN removes slow background level per band and lowers no-drone confidence in war and
+> with cars without losing the drone; (B) 8-11 kHz carries drone information the 8 kHz frontend misses.
+> **Judged by**, fixed before any number (entry 210):
+> - P, CPU gate first (`scripts/it22_pcen_gate.py`): the drone's footprint in the standardised features
+>   (mean |features(background + drone) - features(background)|, sigma) must be at least 0.8 of log-mel's at
+>   0 and -10 dB in-band SNR for some T in {0.06, 0.4, 2} s; the T with the largest footprint at 0 dB is
+>   trained. Then the arm on the development test, tune half, seed means against `it16_600k`: **pass** if
+>   AUC drone-in-war against war-alone is at least +0.015 for both networks and cars-alone confidence is not
+>   higher; **fail** if either network loses more than 0.006 AUC or the gain is under 0.010; inconclusive
+>   in between. Pinned no-drone confidences (war, wind, cars, helicopter) are reported beside it.
+> - B (`scripts/it22_band_probe.py`): a LightGBM on per-band means and standard deviations, trained on one
+>   of Nightjar and FPV (the two training sources with drone and no-drone audio from the same devices) and
+>   scored on the other. 8-11 kHz is worth a GPU arm only if adding it raises AUC by at least 0.01 in both
+>   directions. A 22.05 kHz arm needs a rebuilt store and would itself come back to the council.
+
+## 210 - Council: PCEN, a higher sample rate, both, or keep the frontend
+
+- Date: 2026-11-11
+- Iteration: 22
+- Type: Council
+- Commit: uncommitted, branch `frontend-probes` on top of 7242462 (iteration 21's changes in the working tree)
+
+**Question.** Try (a) PCEN in place of the log of the 64 mel bands, (b) a higher sample rate (22.05 or 24
+kHz, mel bands to about 11 kHz), (c) both, or (d) keep the frozen frontend?
+
+**Devil's Advocate.** Decisive: (b) confounds source with label, because d3set (1.84 h of drone) exists only
+at 16 kHz and would have an empty top band; the store rebuild costs much against no evidence of gain; the
+baselines would lose parity. Decisive for (c): two changes at once. Serious: PCEN removes level, which the
+graded drone levels test; two earlier councils flagged PCEN's suppression of stationary targets; every
+frontend change so far (128 mel, bandpass, Wiener) was flat or negative while data changes moved the
+number; the development copy is weak evidence. *Answered:* (c) is rejected. (b) gets no GPU arm now: a
+probe on raw Nightjar and FPV, where both labels come from the same devices and d3set plays no part, must
+show information first, and any arm comes back to the council. The stationary-target objection is built
+into P's CPU gate. The level objection stands as a risk; PCEN here runs after the per-window level
+normalisation, which already removes the overall level, so what PCEN adds is a per-band, per-time gain.
+"Frontends have not helped" is noted and is why both are probes with fixed bars.
+
+**Scholar** (context-free). PCEN is standard and defensible for noisy-event detection, with large false
+alarm reductions in bioacoustics (Wang et al. 2017, arXiv:1607.05666; Lostanlen et al., IEEE SPL 2019;
+arXiv:1911.00417; checked by the Scholar), unsettled for stationary tonal targets; the smoother's start
+must be the same in training and inference. No checked standard exists for the bandwidth of drone
+detection; above 8 kHz is a defensible variation with no checked evidence of benefit, and mixing sources of
+different bandwidth risks a bandwidth shortcut; accepted practice is to band-limit all to the common band
+or to augment the bandwidth (unverified). Changing both at once is against practice. *Departure:* none.
+The smoother starts at each window's first frame in training, scoring and the stream alike, because every
+path computes features per 1 s window.
+
+**Problem Solver.** (a) try a modified, window-local PCEN, with a CPU check first; (b) probe first, then a
+like-for-like 16 against 24 kHz arm on the same subset, and the development test must then render at that
+rate or it cannot show a benefit; (c) no; (d) stays the default. Pass bars: +0.015 AUC on both networks,
+fail below +0.010 or a loss over 0.006. Confidence moderate that PCEN gives no gain.
+
+**Decision.** Iteration 22 as boxed: (a) behind its CPU gate, (b) as a CPU probe only, (c) rejected, (d) the
+default until something passes.
+
+## 211 - Iteration 22 CPU checks: PCEN keeps the drone at T = 60 ms; the band probe passes its bar on transfer AUCs at chance
+
+- Date: 2026-11-11
+- Iteration: 22
+- Type: Evaluation
+- Commit: uncommitted, branch `frontend-probes`: PCEN in `src/dad/config.py` (`pcen`, `pcen_t`, `pcen_alpha`,
+  `pcen_delta`, `pcen_r`), `realrun.pcen` and `to_model`, `gpufront.GpuFrontend.finish`, `--pcen T` in
+  `scripts/run_range.py`, `drone_war_grid.model_cfg` reads it from a run file; new `scripts/it22_pcen_gate.py`
+  and `scripts/it22_band_probe.py`; test `test_pcen_matches_numpy_and_flattens_a_steady_tone`
+  (`tests/test_gpufront.py`, 13 pass on this PC and on the server).
+
+**PCEN.** α 0.98, δ 2, r 0.5 (the Wang et al. values), on the mel energies after the per-window level
+normalisation and the training EQ; the smoother starts at each window's first frame on every path.
+
+**Gate A, PCEN footprint** (`uv run python -I scripts/it22_pcen_gate.py`, this PC, 300 near drones in rig
+backgrounds, training sources only). Mean |standardised features of background + drone minus background|,
+sigma:
+
+| Frontend | -10 dB | 0 dB | +5 dB | ratio to log-mel at -10 / 0 dB |
+|---|---|---|---|---|
+| log-mel | 0.485 | 0.868 | 1.016 | |
+| PCEN T = 0.06 s | 0.457 | 0.732 | 0.850 | 0.94 / 0.84 |
+| PCEN T = 0.4 s | 0.330 | 0.560 | 0.666 | 0.68 / 0.65 |
+| PCEN T = 2 s | 0.277 | 0.470 | 0.557 | 0.57 / 0.54 |
+
+**Passes with T = 0.06 s**, which is trained. The longer the time constant, the less of the drone survives:
+with the smoother started at the window's first frame, a long T holds every band near its opening level, so
+whatever is steady through the window, the drone included, is divided away. T = 0.4 s, the librosa default
+in seconds, fails.
+
+**Probe B, 8-11 kHz** (`uv run python -I scripts/it22_band_probe.py`, this PC, raw files at 44.1/48 kHz).
+8,517 windows: Nightjar 1,031 no drone / 941 drone, FPV 2,844 / 3,701.
+
+| | A: 64 log-mel to 8 kHz | B: A + 12 bands 8-11 kHz | B - A |
+|---|---|---|---|
+| Train Nightjar, score FPV | 0.453 | 0.543 | +0.090 |
+| Train FPV, score Nightjar | 0.459 | 0.501 | +0.042 |
+| 5-fold grouped by session, mean | 0.741 | 0.759 | +0.018 (per fold -0.004 to +0.045) |
+
+The bar of the box (+0.01 in both transfer directions) is met, and the result is weak anyway:
+- **The transfer readout does not work as an instrument.** With the 8 kHz features the classifier transfers
+  at or below chance in both directions (0.45, 0.46), and with the extra bands it reaches chance (0.54,
+  0.50). A rise from below chance to chance is not drone information. A per-band summary and a tree model
+  learn the device, not the drone, and the bar was set without checking that A transfers at all.
+- The grouped cross-validation, which mixes sources, is the readable part: +0.018 on average, four folds of
+  five up. That hints that 8-11 kHz carries some drone information near the microphone (Nightjar drones are
+  6-11 m away, FPV close too); it says nothing about range.
+- Not checked: whether the FPV phones low-pass near 8 kHz; the per-device bandwidth was not measured.
+
+**Assessment.** PCEN goes to the GPU (three seeds running on the server). Probe B is inconclusive. Formally
+it passes, but on a measure that cannot tell a drone from a device, and its readable part is small. A
+22.05 kHz arm needs a rebuilt store, a 22.05 kHz development test and a council (entry 210); it is not
+started. A better probe would use the network: train the frozen CRNN on the near-drone pool at 16 and at
+22.05 kHz from the same raw files.
+
+## 212 - The six PCEN models of iteration 22 copied to this PC and added to Complete_Test_Gui, before their verdict
+
+- Date: 2026-11-11
+- Iteration: 22 (follow-up)
+- Type: Infrastructure
+- Commit: the commit that carries this entry, on `frontend-probes`, merged into `master` at Mads's request
+
+**What changed.** The arm of entry 211 finished on the server (`it22_pcen_s{0,1,2}`, 2,996 s for seed 0 with
+the GPUs shared with another user's six jobs). Mads asked for the models so Nicolai can try them.
+- Checkpoints `artifacts/models/it22_pcen_s*_none_simdist_{dscnn,crnn}.pt` and run files
+  `artifacts/runs/it22_pcen_s*.json` came over in one zip (MD5 fe79494af51b8bf3167a76a90bcd4cfd on the
+  server and on this PC). The run files are git-ignored and are force-added, as for it17 and it19.
+- `drone_war_grid.MODELS` gets `it22 CNN pcen s0-s2` and `it22 CRNN pcen s0-s2`; `Complete_Test_Gui.COLORS`
+  gets six colours. `model_cfg` reads `pcen` (0.06) from the run file, so the GUIs feed these models PCEN
+  features. `live.py` does not list them, as for it17 and it20.
+
+**Checked.** `complete_test_engine.load_detectors` loads all six with `cfg.pcen` true and T 0.06 s. A smoke
+test on two synthetic 1 s signals (white noise, and the same with a five-line 180 Hz comb), not a result:
+| Model | Frozen threshold | White noise | Noise + comb |
+|---|---|---|---|
+| it22 CRNN pcen s1 | 0.647 | 0.637 | 0.219 |
+| it22 CNN pcen s1 | 0.737 | 0.523 | 0.176 |
+| it16 CRNN 600k s1 | 0.528 | 0.052 | 0.018 |
+
+The PCEN models score plain white noise just under their thresholds where the `600k` CRNN gives 0.05. On
+two synthetic signals that is a warning to watch in the GUI, not a measure. `pytest`: 168 pass.
+
+**Not yet known.** The arm's verdict: the development test (entry 207's tune half) is being scored on the
+server. Validation-threshold Lund recall in the run files is about 0.22-0.24 for the models read so far,
+against 0.40 for the `600k` CRNN, which may mean PCEN loses distant drones; the development test decides.
+Scoring these models on ITU ARIS in the GUI is scoring finished models and must not decide iteration 22.
