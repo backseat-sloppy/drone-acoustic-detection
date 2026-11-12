@@ -6,12 +6,21 @@ Three pages, a slide show (the arrows at the top, the page names, or Ctrl+Left /
 
     Real drone test       real drone recordings (WAV files you add), each cut to its first 10 s
                           (a file of 5-10 s is used whole)
-    Synthetic drone test  Pure Data drones, one per speed, 10 s from start to impact (as drone_war_gui)
     Modified drone test   real drone recordings treated as a steady drone heard at 1 m and flown
                           straight at the microphone: the file's last 10 s (or all of a 5-10 s file),
                           its last sample the impact. Per speed (km/h) the drone is v/3.6 x the time
                           left before impact away; the level falls with that distance (spherical
                           spreading and air absorption, optional Doppler). Each file at each speed.
+    Live demo test        the modified drone test in real time, out loud (scripts/live_test_engine.py):
+                          one soundscape that loops from Play to the end. Source: virtual (scored on
+                          the mix) or microphone (played out of the speaker, scored on what the
+                          microphone hears). Drones: automatic (the plan's rounds one after the
+                          other) or manual (Send drone flies in the next drone of the plan). A live
+                          view (spectrogram, every detector's confidence, level) runs while it
+                          plays; the results are a run folder like the other pages'.
+
+The Synthetic drone test page (Pure Data drones) was replaced by the Live demo test on 2026-11-12; its runs
+still open with "Open results...", and the engine still runs synthetic plans.
 
 On each page:
 
@@ -56,6 +65,7 @@ from tkinter import filedialog, messagebox, ttk
 
 sys.path.insert(0, str(Path(__file__).parent))
 import complete_test_engine as E  # noqa: E402
+import live_test_engine as L  # noqa: E402
 
 import matplotlib  # noqa: E402
 matplotlib.use("TkAgg") if os.environ.get("MPLBACKEND", "").lower() != "agg" else None
@@ -70,8 +80,11 @@ from dad.features import LogMel, hz_to_mel, mel_to_hz  # noqa: E402
 from dad.realrun import featurise  # noqa: E402
 
 TITLE = "Complete Test"
-PAGES = [("real", "Real drone test"), ("synthetic", "Synthetic drone test"), ("modified", "Modified drone test")]
+PAGES = [("real", "Real drone test"), ("modified", "Modified drone test"), ("live", "Live demo test")]   # the synthetic
+# page was replaced by the live page on 2026-11-12 (Nicolai); synthetic runs still open with "Open results..."
 SUBTITLES = {"real": "Real drone recordings mixed into chosen background layers at real levels.",
+             "live": "The modified drone test in real time, out loud: one soundscape that loops until the test is over, "
+                     "drones flown in by the plan or by you, scored on the mix or on what a microphone hears.",
              "synthetic": "Pure Data drones flying at the microphone, mixed into chosen background layers.",
              "modified": "Real drone recordings flown at the microphone: the end of each file is the impact, and the "
                          "level follows the distance at each moment for the chosen speed."}
@@ -251,6 +264,8 @@ def approach_preview(speeds: list[float], closest_m: float, length_s: float = E.
 
 class Page(ttk.Frame):
     """All controls of one test kind. plan() turns them into an engine Plan (ValueError if unusable)."""
+    START_LABEL = "soundscape start in the war track (s):"
+    START_NOTE = "blank = drawn once per batch (seed 1000); every round uses the same stretch"
 
     def __init__(self, master, app, kind: str, title: str):
         super().__init__(master, style="Page.TFrame", padding=(18, 10))
@@ -441,11 +456,10 @@ class Page(ttk.Frame):
         r += 1
         st = ttk.Frame(g)
         st.grid(row=r, column=1, columnspan=7, sticky="w", padx=4, pady=(6, 0))
-        ttk.Label(st, text="soundscape start in the war track (s):").pack(side="left")
+        ttk.Label(st, text=self.START_LABEL).pack(side="left")
         self.v_sc_start = tk.StringVar(value="")
         ttk.Entry(st, textvariable=self.v_sc_start, width=8).pack(side="left", padx=6)
-        ttk.Label(st, text="blank = drawn once per batch (seed 1000); every round uses the same stretch",
-                  style="Muted.TLabel").pack(side="left")
+        ttk.Label(st, text=self.START_NOTE, style="Muted.TLabel").pack(side="left")
         r += 1
         final = ttk.Frame(g)
         final.grid(row=r, column=1, columnspan=7, sticky="w", padx=4, pady=(8, 0))
@@ -666,7 +680,7 @@ class Page(ttk.Frame):
         if self.kind == "modified":
             self.l_approach.configure(text=approach_preview(p.speeds, p.approach["closest_m"]))
         c, probs = p.count(), p.check()
-        self.l_count.configure(text=f"{c['total']:,} test rounds".replace(",", " "))
+        self.l_count.configure(text=f"{c['total']:,} test round{'s' * (c['total'] != 1)}".replace(",", " "))
         n_f, n_v, n_p = len(p.drones), len(p.speeds or []), len(p.pitches or [1.0])
         drones_txt = (f"{n_f} file{'s' * (n_f != 1)} × {n_v} speed{'s' * (n_v != 1)} × {n_p} pitch{'es' * (n_p != 1)}"
                       if self.kind == "modified"
@@ -763,6 +777,481 @@ class Page(ttk.Frame):
             Results(self.app, self.test)
 
 
+# ------------------------------------------------------------------ the live page
+
+LIVE_SPAN_S = 30.0                                           # seconds shown in the live view
+LIVE_MODES = {("virtual", "automatic"): "The plan's rounds play one after the other in real time, out loud, over a war "
+                                        "soundscape that loops. Each round is scored on the mix it played.",
+              ("virtual", "manual"): "The soundscape loops; each press of Send drone flies in the next drone of the plan. "
+                                     "Each round is scored on the mix it played.",
+              ("microphone", "automatic"): "The plan's rounds play one after the other out of the speaker; the detectors "
+                                           "score what the microphone hears.",
+              ("microphone", "manual"): "The soundscape loops out of the speaker; each press of Send drone flies in the "
+                                        "next drone of the plan. The detectors score what the microphone hears."}
+LIVE_UNTIL_STOP = ("The test ends when the plan's last round has played, or when you press Stop; then the Results "
+                   "window opens once, with every finished round.")
+DRONE_SPAN = "#f9d5d1"
+
+
+def audio_devices(kind: str) -> list[tuple[str, int | None]]:
+    """(label, index) of every input or output device, the system default first."""
+    try:
+        import sounddevice as sd
+        devs, apis = sd.query_devices(), sd.query_hostapis()
+    except Exception:                                        # noqa: BLE001  (no audio system: the default only)
+        return [("system default", None)]
+    key = "max_output_channels" if kind == "output" else "max_input_channels"
+    return [("system default", None)] + [(f"{i}: {d['name']} ({apis[d['hostapi']]['name']}, {d[key]} ch)", i)
+                                         for i, d in enumerate(devs) if d[key] > 0]
+
+
+class LivePage(Page):
+    """The Live page: the modified drone test's settings, played out loud in real time on one continuous
+    soundscape (scripts/live_test_engine.py). Source: virtual (scored on the mix) or microphone (scored on
+    what the microphone hears); trigger: automatic (the plan's rounds one after the other) or manual (Send
+    drone flies in the next drone round). Everything is set before Play and locked while it runs; then only
+    Send drone and Stop act. The results are a run folder like the other pages', for Results and Conclusions."""
+
+    def __init__(self, master, app, kind: str, title: str):
+        self.run = None
+        super().__init__(master, app, "modified", title)    # the modified page's settings and plan
+
+    # ---------- layout
+    START_LABEL = "where the war soundscape starts (s):"
+    START_NOTE = "blank = drawn once (seed 1000); from there it loops without a break until the test is over"
+
+    def _build(self):
+        """Top to bottom in the order of use: how it runs, what it plays, Play, and the live view."""
+        self.columnconfigure(0, weight=1)
+        ttk.Label(self, text=self.title, style="H1.TLabel", font=("Segoe UI", 18, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Label(self, text=SUBTITLES["live"], style="Sub.TLabel").grid(row=1, column=0, sticky="w", pady=(0, 10))
+        self.f_modes = self._section(2, "1  ·  Source and drones")
+        self.setup = [self._section(3, "2  ·  Drones"), self._section(4, "3  ·  Background layers"),
+                      self._section(5, "4  ·  Test rounds"), self._section(6, "5  ·  Detectors")]
+        self.f_play = self._section(7, "6  ·  Play")
+        self.f_view = self._section(8, "Live view")
+        self._build_modes(self.f_modes)
+        self._build_drones(self.setup[0])
+        self._build_layers(self.setup[1])
+        self._build_rounds(self.setup[2])
+        self._build_detectors(self.setup[3])
+        self._build_play(self.f_play)
+        self._build_view(self.f_view)
+        self._mode_changed()
+
+    def _build_modes(self, f):
+        f.columnconfigure(1, weight=1)
+        self.v_source, self.v_trigger = tk.StringVar(value="virtual"), tk.StringVar(value="automatic")
+        for row, (label, var, opts) in enumerate((("source", self.v_source, L.SOURCES), ("drones", self.v_trigger, L.TRIGGERS))):
+            ttk.Label(f, text=label).grid(row=row, column=0, sticky="w", pady=2)
+            box = ttk.Frame(f)
+            box.grid(row=row, column=1, sticky="w", padx=8, pady=2)
+            for o in opts:
+                tk.Radiobutton(box, text=o.capitalize(), value=o, variable=var, indicatoron=False, width=12,
+                               font=("Segoe UI", 10, "bold"), selectcolor="#cfe0f7", bg=PANEL, relief="ridge",
+                               command=self._mode_changed).pack(side="left")
+        self.l_mode = ttk.Label(f, text="", wraplength=950, justify="left")
+        self.l_mode.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 10))
+        self.outs, self.ins = audio_devices("output"), audio_devices("input")
+        self.v_out, self.v_in = tk.StringVar(value=self.outs[0][0]), tk.StringVar(value=self.ins[0][0])
+        self.v_play_gain, self.v_in_ch, self.v_mic_gain = tk.StringVar(value="0"), tk.StringVar(value="0"), tk.StringVar(value="0")
+        dev = ttk.Frame(f)
+        dev.grid(row=3, column=0, columnspan=2, sticky="w")
+        ttk.Label(dev, text="speaker").grid(row=0, column=0, sticky="w")
+        ttk.Combobox(dev, textvariable=self.v_out, values=[a for a, _ in self.outs], state="readonly", width=60).grid(
+            row=0, column=1, sticky="w", padx=8)
+        ttk.Label(dev, text="playback gain (dB)").grid(row=0, column=2, sticky="e", padx=(12, 4))
+        ttk.Entry(dev, textvariable=self.v_play_gain, width=6).grid(row=0, column=3, sticky="w")
+        self.mic_widgets = [ttk.Label(dev, text="microphone"),
+                            ttk.Combobox(dev, textvariable=self.v_in, values=[a for a, _ in self.ins], state="readonly", width=60),
+                            ttk.Label(dev, text="mic gain (dB)"), ttk.Entry(dev, textvariable=self.v_mic_gain, width=6),
+                            ttk.Label(dev, text="channel"), ttk.Entry(dev, textvariable=self.v_in_ch, width=6)]
+        places = [("w", 0), ("w", (8, 0)), ("e", (12, 4)), ("w", 0), ("e", (12, 4)), ("w", 0)]   # (sticky, padx) per column
+        for col, (w, (sticky, padx)) in enumerate(zip(self.mic_widgets, places)):
+            w.grid(row=1, column=col, sticky=sticky, padx=padx, pady=(6, 0))
+        ttk.Label(f, text="Full scale is 110 dB SPL in every file. Playback gain changes only what goes to the speaker "
+                          "(not the virtual scores); mic gain scales the recording before the detectors hear it. A speaker "
+                          "and a microphone are not calibrated, so with the microphone the detectors do not hear the plan's "
+                          "dB SPL. The microphone delay is measured each round; use a microphone without echo "
+                          "cancellation (a laptop's built-in array removes the speaker's sound).",
+                  style="Muted.TLabel", wraplength=950, justify="left").grid(row=4, column=0, columnspan=2, sticky="w",
+                                                                            pady=(8, 0))
+
+    def _build_rounds(self, f):
+        """The modified page's round settings, in live terms: a round is a stretch of the one soundscape."""
+        self.v_len, self.v_step, self.v_nodrone = tk.StringVar(value="20"), tk.StringVar(value="1"), tk.BooleanVar(value=True)
+        ttk.Label(f, text="Round length (s):").grid(row=0, column=0, sticky="w")
+        ttk.Spinbox(f, from_=10, to=600, increment=1, textvariable=self.v_len, width=8,
+                    command=self.update_count).grid(row=0, column=1, sticky="w", padx=8)
+        ttk.Label(f, text="the drone (up to 10 s, ending in its impact) starts at 0 s, then every").grid(row=0, column=2, sticky="w")
+        self.e_step = ttk.Entry(f, textvariable=self.v_step, width=5)
+        self.e_step.grid(row=0, column=3, sticky="w", padx=4)
+        ttk.Label(f, text="s, as long as it fits in the round: one round per start").grid(row=0, column=4, sticky="w")
+        self.l_step_note = ttk.Label(f, text="", style="Muted.TLabel")
+        self.l_step_note.grid(row=1, column=0, columnspan=5, sticky="w")
+        ttk.Checkbutton(f, text="add one no-drone round per background (false alarms; they play after the drone rounds)",
+                        variable=self.v_nodrone, command=self.update_count).grid(row=2, column=0, columnspan=5, sticky="w",
+                                                                                pady=(6, 0))
+        fa = ttk.Frame(f)
+        fa.grid(row=3, column=0, columnspan=5, sticky="w", pady=(4, 0))
+        ttk.Label(fa, text="false alarms:").pack(side="left")
+        self.v_fa = tk.StringVar(value="95")
+        ttk.Entry(fa, textvariable=self.v_fa, width=5).pack(side="left", padx=4)
+        ttk.Label(fa, text="%  of the no-drone windows lie below the threshold; Conclusions gives the threshold and the "
+                           "time before impact at it", style="Muted.TLabel").pack(side="left")
+        for v in (self.v_len, self.v_step, self.v_fa):
+            v.trace_add("write", lambda *_: self.update_count())
+
+    def _build_play(self, f):
+        f.columnconfigure(0, weight=1)
+        self.l_count = ttk.Label(f, text="", style="Count.TLabel")
+        self.l_count.grid(row=0, column=0, sticky="w")
+        self.l_count_detail = ttk.Label(f, text="", style="Muted.TLabel")
+        self.l_count_detail.grid(row=1, column=0, sticky="w")
+        self.l_duration = ttk.Label(f, text="", style="Muted.TLabel")
+        self.l_duration.grid(row=2, column=0, sticky="w", pady=(0, 8))
+        bar = ttk.Frame(f)
+        bar.grid(row=3, column=0, sticky="ew")
+        bar.columnconfigure(5, weight=1)
+        self.b_start = ttk.Button(bar, text="▶  Play", style="Accent.TButton", command=self.start)
+        self.b_start.grid(row=0, column=0, padx=(0, 4))
+        self.b_stop = ttk.Button(bar, text="■  Stop", command=self.stop, state="disabled")
+        self.b_stop.grid(row=0, column=1, padx=4)
+        self.b_send = tk.Button(bar, text="✈  Send drone", command=self.send, fg="white", disabledforeground="#f5f5f5",
+                                activebackground="#b3261e", activeforeground="white", relief="flat",
+                                font=("Segoe UI", 11, "bold"), padx=16, pady=3)
+        self.b_send.grid(row=0, column=2, padx=4)               # manual only: _mode_changed hides it otherwise
+        self._send_ready(False)
+        self.b_results = ttk.Button(bar, text="Results window", command=self.open_results, state="disabled")
+        self.b_results.grid(row=0, column=3, padx=4)
+        ttk.Button(bar, text="Save plan...", command=self.save_plan).grid(row=0, column=4, padx=4)
+        self.pb = ttk.Progressbar(bar, mode="determinate")
+        self.pb.grid(row=0, column=5, sticky="ew", padx=(10, 0))
+        self.l_status = ttk.Label(f, text="Set up 1-5 above, then Play. While it plays, only Stop (and Send drone) act; "
+                                          "the Results window opens once, when the plan is done or you press Stop.",
+                                  style="Muted.TLabel", wraplength=1000, justify="left")
+        self.l_status.grid(row=4, column=0, sticky="w", pady=(6, 0))
+
+    def _send_ready(self, ready: bool):
+        """Send drone: red when a press would fly a drone in now, grey otherwise."""
+        if str(self.b_send.cget("state")) != ("normal" if ready else "disabled") or not hasattr(self, "_send_set"):
+            self.b_send.configure(state="normal" if ready else "disabled", bg="#d93025" if ready else "#c4c7cc")
+            self._send_set = True
+
+    def _build_view(self, f):
+        f.columnconfigure(0, weight=1)
+        self.l_round = ttk.Label(f, text="", style="Bold.TLabel")
+        self.l_round.grid(row=0, column=0, sticky="w")
+        self.fig = Figure(figsize=(11, 5.4), dpi=90)
+        self.fig.subplots_adjust(left=0.07, right=0.985, top=0.98, bottom=0.08)
+        gs = self.fig.add_gridspec(4, 1, height_ratios=[0.55, 1.6, 1.3, 0.55], hspace=0.12)
+        self.ax_ban = self.fig.add_subplot(gs[0])
+        self.ax_spec = self.fig.add_subplot(gs[1])
+        self.ax_score = self.fig.add_subplot(gs[2], sharex=self.ax_spec)
+        self.ax_level = self.fig.add_subplot(gs[3], sharex=self.ax_spec)
+        self.ax_ban.set_axis_off()
+        from matplotlib.patches import Rectangle
+        self.ban_box = self.ax_ban.add_patch(Rectangle((0, 0), 1, 1, transform=self.ax_ban.transAxes, color="#bbbbbb"))
+        self.ban_text = self.ax_ban.text(0.015, 0.5, "press Play", fontsize=22, weight="bold", color="white", va="center",
+                                         transform=self.ax_ban.transAxes)
+        self.det_text = self.ax_ban.text(0.985, 0.5, "", fontsize=9, family="monospace", color="white", va="center",
+                                         ha="right", transform=self.ax_ban.transAxes, linespacing=1.3)
+        self.n_cols = int(round(LIVE_SPAN_S * DEFAULT.sample_rate / DEFAULT.hop_length))
+        self.spec = np.full((DEFAULT.n_mels, self.n_cols), np.nan, np.float32)
+        cmap = matplotlib.colormaps["magma"].with_extremes(bad="#000004")
+        self.img = self.ax_spec.imshow(self.spec, origin="lower", aspect="auto", cmap=cmap, interpolation="nearest",
+                                       extent=(-LIVE_SPAN_S, 0, 0, DEFAULT.n_mels), vmin=-100, vmax=-20)
+        ticks = [0, 16, 32, 48, 63]
+        self.ax_spec.set_yticks([t + 0.5 for t in ticks], [f"{BAND_HZ[t]:.0f}" for t in ticks])
+        self.ax_spec.set_ylabel("Hz", fontsize=8)
+        self.ax_spec.tick_params(labelbottom=False, labelsize=7)
+        self.ax_score.set(ylim=(0, 1.02))
+        self.ax_score.set_ylabel("confidence", fontsize=8)
+        self.ax_score.grid(color="#e5e5e5", lw=0.5)
+        self.ax_score.tick_params(labelbottom=False, labelsize=7)
+        (self.level_line,) = self.ax_level.plot([], [], color="#777777", lw=1.0)
+        self.ax_level.set(ylim=(-100, 0), xlim=(0, LIVE_SPAN_S))
+        self.ax_level.set_ylabel("dBFS", fontsize=8)
+        self.ax_level.set_xlabel("seconds since Play  (shaded: a drone is flying; with the microphone, moved by its delay)",
+                                 fontsize=8)
+        self.ax_level.grid(color="#e5e5e5", lw=0.5)
+        self.ax_level.tick_params(labelsize=7)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=f)
+        self.canvas.get_tk_widget().grid(row=1, column=0, sticky="ew")
+        self.l_log = tk.Label(f, text="", bg=PANEL, fg="#333333", font=("Consolas", 9), justify="left", anchor="w")
+        self.l_log.grid(row=2, column=0, sticky="ew", pady=(4, 0))
+        self.lines, self.thr_lines, self.view_extra = {}, [], []
+        self._reset_view([])
+        self.canvas.draw_idle()
+
+    def _reset_view(self, detectors: list[str]):
+        self.spec[:] = np.nan
+        self.vt, self.vlevel, self.vconf = [], [], {d: [] for d in detectors}
+        self.spans, self.bounds, self.log = [], [], []
+        self.lag_s, self.thr_view, self.cols_shown, self.t_now = 0.0, {}, 0, 0.0
+        for ln in list(self.lines.values()) + self.thr_lines:
+            ln.remove()
+        self.lines = {d: self.ax_score.plot([], [], color=COLORS.get(d, "#333333"), lw=1.3, label=d)[0] for d in detectors}
+        self.thr_lines = []
+        if self.ax_score.get_legend():
+            self.ax_score.get_legend().remove()
+        if detectors:
+            self.ax_score.legend(loc="upper left", fontsize=7.5, frameon=False, ncol=len(detectors))
+        self.l_log.configure(text="")
+        self.l_round.configure(text="")
+        self.dirty = True
+
+    # ---------- modes and plan
+    def _mode_changed(self):
+        mic = self.v_source.get() == "microphone"
+        manual = self.v_trigger.get() == "manual"
+        for w in self.mic_widgets:
+            w.state(["!disabled"] if mic else ["disabled"])
+        self.e_step.state(["disabled"] if manual else ["!disabled"])
+        self.l_step_note.configure(text="manual: the drone always starts at the round's start (when you press Send drone), "
+                                        "so there is one start" if manual else "")
+        (self.b_send.grid if manual else self.b_send.grid_remove)()
+        self.l_mode.configure(text=LIVE_MODES[self.v_source.get(), self.v_trigger.get()] + " " + LIVE_UNTIL_STOP)
+        self.update_count()
+
+    def plan(self) -> E.Plan:
+        p = super().plan()
+        p.live = dict(source=self.v_source.get(), trigger=self.v_trigger.get())
+        if p.live["trigger"] == "manual":                    # the drone at the round's start: one start, 0 s
+            p.step_s = p.length_s
+        return p
+
+    def update_count(self, *_):
+        super().update_count()
+        if not hasattr(self, "l_duration") or not hasattr(self, "v_source"):
+            return
+        try:
+            p = self.plan()
+        except ValueError:
+            self.l_duration.configure(text="")
+            return
+        if p.check():                                        # the line above says what is wrong
+            self.l_duration.configure(text="")
+            return
+        c = p.count()
+        if p.live["trigger"] == "automatic":
+            s = c["total"] * p.length_s
+            self.l_duration.configure(text=f"plays for about {s / 60:.1f} min: {c['total']} rounds × {p.length_s:g} s, "
+                                           f"after {L.LEAD_IN_S:g} s of background")
+        else:
+            n, b = c["drone_rounds"], c["backgrounds"]
+            self.l_duration.configure(text=f"{n} drone{'s' * (n != 1)} to send, one round of {p.length_s:g} s each "
+                                           f"(Send drone lights up again when the round is over)"
+                                           + (f"; then {b} no-drone round{'s' * (b != 1)} by {'itself' if b == 1 else 'themselves'}"
+                                              if p.no_drone_rounds else ""))
+
+    # ---------- run
+    def _devices(self):
+        out = dict(self.outs)[self.v_out.get()]
+        inp = dict(self.ins)[self.v_in.get()]
+        try:
+            play, mic, ch = float(self.v_play_gain.get()), float(self.v_mic_gain.get()), int(self.v_in_ch.get())
+        except ValueError:
+            raise ValueError("playback gain and mic gain must be numbers of dB, the channel a whole number") from None
+        if not (-60 <= play <= 40 and -60 <= mic <= 60):
+            raise ValueError("playback gain from -60 to 40 dB, mic gain from -60 to 60 dB")
+        return out, inp, ch, play, mic
+
+    def _lock(self, on: bool):
+        """While playing, every setting is locked; unlocking leaves what was disabled before (unavailable layers,
+        the microphone boxes in virtual mode) disabled."""
+        if on:
+            self._was_off = set()
+        for f in [self.f_modes, *self.setup]:
+            self._set_state(f, on)
+
+    def _set_state(self, w, locked: bool):
+        for c in w.winfo_children():
+            try:
+                if isinstance(c, ttk.Widget):
+                    if locked:
+                        if c.instate(["disabled"]):
+                            self._was_off.add(str(c))
+                        c.state(["disabled"])
+                    elif str(c) not in self._was_off:
+                        c.state(["!disabled"])
+                elif isinstance(c, (tk.Checkbutton, tk.Radiobutton, tk.Button, tk.Entry, tk.Listbox, tk.Spinbox)):
+                    if locked:
+                        if str(c.cget("state")) == "disabled":
+                            self._was_off.add(str(c))
+                        c.configure(state="disabled")
+                    elif str(c) not in self._was_off:
+                        c.configure(state="normal")
+            except tk.TclError:
+                pass
+            self._set_state(c, locked)
+
+    def start(self):
+        p = self.checked_plan()
+        if p is None:
+            return
+        try:
+            out, inp, ch, play, mic = self._devices()
+        except ValueError as e:
+            messagebox.showerror(TITLE, str(e), parent=self)
+            return
+        self.events = queue.Queue()
+        self.run = L.LiveRun(p, self.events, out_dev=out, in_dev=inp, in_channel=ch, play_gain_db=play, mic_gain_db=mic)
+        self.test = self.run.test
+        self._reset_view(p.detectors)
+        self.pb.configure(maximum=len(self.run.order), value=0)
+        self.b_start.state(["disabled"])
+        self.b_stop.state(["!disabled"])
+        self.b_results.state(["disabled"])
+        self._lock(True)
+        self.l_status.configure(text="preparing: drones, layers and detectors...")
+        self.error = None
+        self.run.start()
+        self.after(50, self._show_play)
+        self.after(100, self._poll)
+
+    def _show_play(self):
+        """Scroll the page so Play and the live view are in sight."""
+        self.app.update_idletasks()
+        h = self.app.inner.winfo_height()
+        if h > 0:
+            self.app.page_canvas.yview_moveto(max(0.0, (self.winfo_y() + self.f_play.winfo_y() - 10) / h))
+
+    def _after_run(self):
+        """When a run has ended: its Results window, or why there is none."""
+        if self.test and self.test.results:
+            self.b_results.state(["!disabled"])
+            self.open_results()
+        elif self.error:
+            messagebox.showerror(TITLE, f"The test stopped with an error, before any round was scored:\n\n{self.error}",
+                                 parent=self)
+        else:
+            messagebox.showinfo(TITLE, "No round was finished, so there are no results: a round is scored when it has "
+                                       "played to its end (Stop drops the round that is playing).", parent=self)
+
+    def stop(self):
+        if self.run:
+            self.run.stop()
+            self.l_status.configure(text="stopping: the round that is playing is dropped; finished rounds are kept...")
+
+    def send(self):
+        if self.run and self.run.send_drone():
+            self._send_ready(False)
+
+    def _poll(self):
+        done = False
+        while not self.events.empty():
+            kind, x = self.events.get()
+            if kind == "dec":
+                self._on_dec(x)
+            elif kind == "round_start":
+                self.spans.append(x)
+                lvl = "" if x["level"] is None else f" at {x['level']:g} dB SPL at 1 m"
+                bg = "  ·  ".join(f"{k} {v:g} dB" for k, v in x["background"].items()) or "no background"
+                self.l_round.configure(text=f"round {x['index']} of {x['total']}: {x['label']}{lvl}  ·  {bg}")
+            elif kind == "round_done":
+                self.pb.configure(value=x["scored"])
+                bits = "   ".join(f"{k}: " + (f"drone {a:.2f}" if a is not None else "") + (" / " if a is not None and b is not None else "")
+                                   + (f"no drone {b:.2f}" if b is not None else "") for k, (a, b) in x["conf"].items())
+                self.log = (self.log + [f"round {x['round']:>4}  {x['label'][:48]:<48}  mean confidence  {bits}"])[-5:]
+                self.l_log.configure(text="\n".join(self.log))
+            elif kind == "lag":
+                self.lag_s = x / 1000
+                self.dirty = True
+            elif kind == "warn":
+                self.l_status.configure(text=f"note: {x}")
+            elif kind == "status":
+                self.l_status.configure(text=x)
+            else:                                            # done, error
+                self.l_status.configure(text=x if kind == "done" else f"error: {x}")
+                if kind == "error":
+                    self.error = x
+                done = True
+        if self.dirty:
+            self._redraw()
+        running = self.run is not None and not done
+        self._send_ready(running and self.run.can_send())
+        if done:
+            self._lock(False)
+            self.b_start.state(["!disabled"])
+            self.b_stop.state(["disabled"])
+            self.dirty = True
+            self._redraw()
+            self.after(200, self._after_run)
+        else:
+            self.after(100, self._poll)
+
+    def _on_dec(self, d: dict):
+        if d["cols"] is not None:
+            c = min(d["cols"].shape[1], self.n_cols)
+            self.spec[:, :-c] = self.spec[:, c:]
+            self.spec[:, -c:] = d["cols"][:, -c:]
+        self.cols_shown = d["t"]
+        self.vt.append(d["t"])
+        self.vlevel.append(d["level_dbfs"])
+        for k, v in d["conf"].items():
+            self.vconf.setdefault(k, []).append(v)
+        keep = int(LIVE_SPAN_S / (DEFAULT.samples_per_hop / E.SR)) + 4
+        del self.vt[:-keep], self.vlevel[:-keep]
+        for k in self.vconf:
+            del self.vconf[k][:-keep]
+        self.t_now = d["t"]
+        self.dirty = True
+
+    def _thresholds(self) -> dict:
+        thr = getattr(self.run.test, "thr", None) if self.run else None
+        return {} if not thr else {k: 0.5 if k == "comb" else float(v) for k, v in thr.items()}
+
+    def _redraw(self):
+        self.dirty = False
+        t_now = self.t_now
+        x0, x1 = max(t_now, LIVE_SPAN_S) - LIVE_SPAN_S, max(t_now, LIVE_SPAN_S)
+        self.img.set_extent((t_now - LIVE_SPAN_S, t_now, 0, DEFAULT.n_mels))
+        if np.isfinite(self.spec).any():
+            lo, top = (float(v) for v in np.nanpercentile(self.spec, [2, 99.5]))
+            self.img.set_clim(max(lo, top - 80), top)
+        self.img.set_data(self.spec)
+        thr = self._thresholds()
+        if thr and not self.thr_lines:
+            self.thr_lines = [self.ax_score.axhline(v, color=COLORS.get(k, "#333333"), lw=0.8, ls="--")
+                              for k, v in thr.items() if k in self.lines]
+        t = np.asarray(self.vt)
+        for k, ln in self.lines.items():
+            y = np.asarray(self.vconf.get(k, []), dtype=float)
+            ln.set_data(t[:len(y)], np.clip(y, 0, 1.02))
+        self.level_line.set_data(t, self.vlevel)
+        for a in self.view_extra:
+            a.remove()
+        self.view_extra = []
+        lag = self.lag_s if self.run and self.run.mic else 0.0
+        for s in self.spans:
+            if s["drone"] is not None:
+                a, b = s["drone"][0] + lag, s["drone"][1] + lag
+                if b >= x0 and a <= x1:
+                    self.view_extra += [ax.axvspan(a, b, color=DRONE_SPAN, alpha=0.6, lw=0, zorder=0)
+                                        for ax in (self.ax_score, self.ax_level)]
+            if x0 <= s["t0"] + lag <= x1:
+                self.view_extra += [ax.axvline(s["t0"] + lag, color="#555555", lw=0.8, ls=":")
+                                    for ax in (self.ax_score, self.ax_level)]
+        self.ax_spec.set_xlim(x0, x1)
+        running = self.run is not None and self.run.running
+        last = {k: v[-1] for k, v in self.vconf.items() if v and np.isfinite(v[-1])}
+        on = [k for k, v in last.items() if k in thr and v >= thr[k]]
+        self.ban_box.set_color("#c0392b" if running and on else "#1e8449" if running else "#999999")
+        self.ban_text.set_text("DRONE" if running and on else "listening" if running else
+                               "press Play" if self.run is None else
+                               "stopped" if self.run.stop_flag.is_set() else "finished")
+        self.det_text.set_text("\n".join(f"{k[:22]:<22} {v:5.2f}" + (f" / {thr[k]:.2f}" if k in thr else "")
+                                         + ("  DRONE" if k in on else "       ") for k, v in last.items()))
+        self.canvas.draw_idle()
+
+    def open_results(self):
+        if self.test and self.test.results:
+            w = Results(self.app, self.test)
+            w.lift()                                         # in front of the main window, which had the focus
+            w.focus_force()
+
+
 # ------------------------------------------------------------------ results window
 
 class Results(tk.Toplevel):
@@ -792,8 +1281,11 @@ class Results(tk.Toplevel):
         top = ttk.Frame(self, padding=(12, 8))
         top.pack(fill="x")
         c = self.test.plan.count()
-        ttk.Label(top, text=f"{self.test.plan.kind} drone test · {len(self.test.results)} of {c['total']} rounds · "
-                            f"soundscape {self.test.plan.length_s:g} s from {self.test.start_s:g} s in the war track",
+        lv = self.test.plan.live
+        ttk.Label(top, text=(f"live demo test ({lv['source']}, {lv['trigger']}) · {len(self.test.results)} of {c['total']} "
+                             f"rounds · {self.test.plan.length_s:g} s each, one continuous soundscape" if lv else
+                             f"{self.test.plan.kind} drone test · {len(self.test.results)} of {c['total']} rounds · "
+                             f"soundscape {self.test.plan.length_s:g} s from {self.test.start_s:g} s in the war track"),
                   style="H2.TLabel").pack(side="left")
         ttk.Button(top, text="Open folder", command=lambda: os.startfile(self.test.out)).pack(side="right")
         ttk.Button(top, text="Conclusions", style="Accent.TButton",
@@ -924,6 +1416,10 @@ class Results(tk.Toplevel):
     def show_round(self, rnd: int):
         r = self.by_round[rnd]
         m = self.test.rebuild(r)
+        heard = getattr(self.test, "heard", None)            # a live microphone run: the mix is what the microphone heard
+        h = heard(r) if heard else None
+        if h is not None:
+            m = {**m, "mix": h}
         self.cur = (rnd, m)
         n = len(m["mix"])
         starts = np.arange(0, n - DEFAULT.samples_per_window + 1, DEFAULT.samples_per_hop)
@@ -2067,9 +2563,11 @@ def load_test(folder: Path) -> E.Test:
     p = cfg["plan"]
     plan = E.Plan(**{k: p[k] for k in ("kind", "length_s", "drones", "drone_levels", "layers", "detectors", "step_s",
                                        "no_drone_rounds", "soundscape_start_s", "synth")},
-                  **{k: p[k] for k in ("speeds", "approach", "pitches", "pitch_random", "pd_settings", "also_without", "final_evaluation", "car_engines", "car_once", "fa_percentile") if k in p},   # not in every run's config
+                  **{k: p[k] for k in ("speeds", "approach", "pitches", "pitch_random", "pd_settings", "also_without", "final_evaluation", "car_engines", "car_once", "fa_percentile", "live") if k in p},   # not in every run's config
                   war_file=p.get("war_file", str(E.WAR_TRACK)))   # a run from before WarSoundScape.wav used the 600 s track
-    t = E.Test(plan, folder)
+    t = L.LiveTest(plan, folder) if plan.live else E.Test(plan, folder)
+    if plan.live:
+        t.load_live()                                        # each round's place in the one continuous soundscape
     t.start_s = cfg["soundscape_start_s"]
     t.prepare(progress=lambda s: None)
     t.results = E.read_results(folder)
@@ -2109,7 +2607,7 @@ class App(tk.Tk):
 
         holder = ttk.Frame(self, style="Page.TFrame")
         holder.pack(fill="both", expand=True)
-        canvas = tk.Canvas(holder, bg=BG, highlightthickness=0)
+        canvas = self.page_canvas = tk.Canvas(holder, bg=BG, highlightthickness=0)
         sb = ttk.Scrollbar(holder, orient="vertical", command=canvas.yview)
         canvas.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
@@ -2120,7 +2618,7 @@ class App(tk.Tk):
         canvas.bind("<Configure>", lambda e: canvas.itemconfigure(win, width=e.width))
         canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-e.delta / 120), "units")
                         if str(e.widget).startswith(str(self)) and not isinstance(e.widget, (tk.Listbox,)) else None)
-        self.pages = [Page(self.inner, self, kind, title) for kind, title in PAGES]
+        self.pages = [(LivePage if kind == "live" else Page)(self.inner, self, kind, title) for kind, title in PAGES]
         self.cur = 0
         self.show(0)
         self.bind("<Control-Left>", lambda e: self.go(-1))
