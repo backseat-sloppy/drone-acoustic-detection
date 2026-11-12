@@ -1,0 +1,3080 @@
+<REAPER_PROJECT 0.1 "7.84/macOS-arm64" 1794400912 0
+  <NOTES 0 2
+  >
+  RIPPLE 0 0
+  GROUPOVERRIDE 0 0 0 0
+  AUTOXFADE 129
+  ENVATTACH 3
+  POOLEDENVATTACH 0
+  TCPUIFLAGS 0
+  MIXERUIFLAGS 11 48 0
+  ENVFADESZ10 40
+  PEAKGAIN 1
+  FEEDBACK 0
+  PANLAW 1
+  PROJOFFS 0 0 0
+  MAXPROJLEN 0 0
+  GRID 3199 8 1 8 1 0 0 0
+  TIMEMODE 1 5 -1 30 0 0 -1 0
+  VIDEO_CONFIG 0 0 65792
+  PANMODE 3
+  PANLAWFLAGS 3
+  CURSOR 7.5
+  ZOOM 42.26710850989455 0 0
+  VZOOMEX 4.02661467 36
+  USE_REC_CFG 0
+  RECMODE 1
+  SMPTESYNC 0 30 100 40 1000 300 0 0 1 0 0
+  LOOP 0
+  LOOPGRAN 0 4
+  RECORD_PATH "Media" ""
+  <RECORD_CFG
+    ZXZhdxgAAQ==
+  >
+  <APPLYFX_CFG
+  >
+  RENDER_FILE ""
+  RENDER_PATTERN ""
+  RENDER_FMT 0 2 0
+  RENDER_1X 0 0
+  RENDER_RANGE 1 0 0 0 1000
+  RENDER_RESAMPLE 3 0 1
+  RENDER_ADDTOPROJ 0
+  RENDER_STEMS 0
+  RENDER_DITHER 0
+  RENDER_TRIM 0.000001 0.000001 0 0
+  TIMELOCKMODE 1
+  TEMPOENVLOCKMODE 1
+  ITEMMIX 1
+  DEFPITCHMODE 589824 0
+  TAKELANE 1
+  SAMPLERATE 44100 0 0
+  <RENDER_CFG
+    ZXZhdxgAAQ==
+  >
+  LOCK 1
+  <METRONOME 6 2
+    VOL 0.25 0.125
+    BEATLEN 4
+    FREQ 1760 880 1
+    SAMPLES "" "" "" ""
+    SPLIGNORE 0 0
+    SPLDEF 2 660 "" 0 ""
+    SPLDEF 3 440 "" 0 ""
+    PATTERN 0 169
+    PATTERNSTR ABBB
+    MULT 1
+  >
+  GLOBAL_AUTO -1
+  TEMPO 120 4 4 0
+  PLAYRATE 1 0 0.25 4
+  SELECTION 15 28
+  SELECTION2 15 28
+  MASTERAUTOMODE 0
+  MASTERTRACKHEIGHT 0 0
+  MASTERPEAKCOL 16576
+  MASTERMUTESOLO 0
+  MASTERTRACKVIEW 0 0.6667 0.5 0.5 0 0 0 0 0 0 0 0 0 0 1
+  MASTERHWOUT 0 0 1 0 0 0 0 -1
+  MASTER_NCH 2 2
+  MASTER_VOLUME 1 0 -1 -1 1
+  MASTER_PANMODE 3
+  MASTER_PANLAWFLAGS 3
+  MASTER_FX 1
+  MASTER_TRACKID {E471E19F-37A5-2D4D-8D69-EDB61F9EAAAB}
+  MASTER_SEL 0
+  <MASTERPLAYSPEEDENV
+    EGUID {D6245A6B-EC3F-4343-BF43-60A4D2C6295E}
+    ACT 0 -1
+    VIS 0 1 1
+    LANEHEIGHT 0 0
+    ARM 0
+    DEFSHAPE 0 -1 -1
+  >
+  <TEMPOENVEX
+    EGUID {3211983D-E511-C549-9653-58A844C6774E}
+    ACT 0 -1
+    VIS 1 0 1
+    LANEHEIGHT 0 0
+    ARM 0
+    DEFSHAPE 1 -1 -1
+  >
+  RULERHEIGHT 86 86
+  RULERLANE 1 4 "" 0 -1 0
+  RULERLANE 2 8 "" 0 -1 0
+  <PROJBAY
+  >
+  <TRACK {1663CEC4-33BF-2543-9812-5B6E5394B8DF}
+    NAME "Fireworks, Recreational, Shell, Cracker, Explosion, Shot, Bang, Medium Distance SND162366 1"
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 1 0 -1 -1 1
+    MUTESOLO 0 2 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    LANEREC -1 -1 -1 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {1663CEC4-33BF-2543-9812-5B6E5394B8DF}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 5.5
+      SNAPOFFS 0
+      LENGTH 2
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {2ABAE682-906F-7C42-B6F7-07B8C3561449}
+      IID 36
+      NAME "Fireworks, Recreational, Shell, Cracker, Explosion, Shot, Bang, Medium Distance SND162366 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {6EE52B50-0A98-CD4F-8463-C59628661556}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Fireworks, Recreational, Shell, Cracker, Explosion, Shot, Bang, Medium Distance SND162366 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 8.5
+      SNAPOFFS 0
+      LENGTH 4.5
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {630548BB-7788-304E-9726-BBEEF8F8EAB3}
+      IID 36
+      NAME "Fireworks, Recreational, Shell, Cracker, Explosion, Shot, Bang, Medium Distance SND162366 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 2
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {797BF65C-EF3D-AD4C-8ED1-E4B04B585A30}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Fireworks, Recreational, Shell, Cracker, Explosion, Shot, Bang, Medium Distance SND162366 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 13
+      SNAPOFFS 0
+      LENGTH 2.80202083333333
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {9CC1CACF-C699-C944-AEA9-8FCCB05C106F}
+      IID 36
+      NAME "Fireworks, Recreational, Shell, Cracker, Explosion, Shot, Bang, Medium Distance SND162366 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 6.5
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {7C49FE65-83CA-9E48-948B-128604DB8A7E}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Fireworks, Recreational, Shell, Cracker, Explosion, Shot, Bang, Medium Distance SND162366 1.wav"
+      >
+    >
+  >
+  <TRACK {4345AEB2-8CA9-8B44-9551-3D5672B94B31}
+    NAME "Guns, Mechanism, Shotgun, Cock, Reload, Lock 'n Load SND6290 5"
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 1 0 -1 -1 1
+    MUTESOLO 0 2 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    LANEREC -1 -1 -1 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {4345AEB2-8CA9-8B44-9551-3D5672B94B31}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 6.44095714880021
+      SNAPOFFS 0
+      LENGTH 1.05904285119979
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {134388C2-0953-B943-9417-E5229AC2570C}
+      IID 38
+      NAME "Guns, Mechanism, Shotgun, Cock, Reload, Lock 'n Load SND6290 5.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {4C1FF04B-1FA5-6642-9DFD-C100A9083676}
+      <SOURCE WAVE
+        FILE "Guns, Mechanism, Shotgun, Cock, Reload, Lock 'n Load SND6290 5.wav"
+      >
+    >
+    <ITEM
+      POSITION 9.15660185438213
+      SNAPOFFS 0
+      LENGTH 1.34339814561787
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {32EB03AF-9924-0945-AC40-CC14ECD8B87F}
+      IID 38
+      NAME "Guns, Mechanism, Shotgun, Cock, Reload, Lock 'n Load SND6290 5.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 1.05904285119979
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {98B61E2E-A6C1-A445-8AFE-0F211B52D7AB}
+      <SOURCE WAVE
+        FILE "Guns, Mechanism, Shotgun, Cock, Reload, Lock 'n Load SND6290 5.wav"
+      >
+    >
+  >
+  <TRACK {F71D66F7-21AA-BA45-B0D9-DB2761CF4F7A}
+    NAME ""
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 1 0 -1 -1 1
+    MUTESOLO 0 2 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    LANEREC -1 -1 -1 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {F71D66F7-21AA-BA45-B0D9-DB2761CF4F7A}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 0
+      SNAPOFFS 0
+      LENGTH 4.5
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.1491205170249 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {5CE0921A-4C84-7B44-B560-6A9719B58901}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {D17C7557-83AC-924F-BE75-821FAA481C04}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 10.5
+      SNAPOFFS 0
+      LENGTH 0.5
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.2550290721028 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {978263CA-2E8D-CA43-9877-824FCA6C6EFA}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 4.5
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {19257F90-388A-4C4B-ADFE-9489D0E6737B}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 10.74497092794627
+      SNAPOFFS 0
+      LENGTH 0.73294503443516
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.2550290721028 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.23751406933538 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {F587EA32-9351-354C-BC5F-68D3BD7715C0}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 5
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {7D85AE1C-265C-2247-B172-ACE6662BD41E}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 11.24040189303923
+      SNAPOFFS 0
+      LENGTH 0.6906462521626
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.23751406933538 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.31214930367022 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {5B688CC5-3590-B04E-A89F-988810FA0397}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 5.73294503443516
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {0051C9FE-39CF-EB4B-B6C4-67E83381A038}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 11.61889884143602
+      SNAPOFFS 0
+      LENGTH 0.70627941155089
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.31214930367022 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.14314980525736 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {883DD53B-E163-B048-AEDA-3FB6168CA5BE}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 6.42359128659777
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {4904E855-DC95-9749-BF1E-642BCBD64F51}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 12.18202844774351
+      SNAPOFFS 0
+      LENGTH 0.50357894507074
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.14314980525736 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.12508199657836 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {BF1D078E-598E-6A48-A6A0-BBDB9EE74AEF}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.12987069814868
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {6E3315E9-E561-4348-96A9-DBFFBA1C9FA3}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 12.56052539625671
+      SNAPOFFS 0
+      LENGTH 0.65848411368538
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.12508199657836 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.19690246918248 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {2FBD18A4-1310-5449-988D-76D8C8B4C5E8}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.73601998427599
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {CFC58405-38D4-D044-906D-F4F61FB064BD}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 13.02210704074241
+      SNAPOFFS 0
+      LENGTH 0.60572897555077
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.19690246918248 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.15645617490128 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {A02E7F87-49AA-C540-BE65-179E9F8AFA42}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 8.39450409796136
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {C562623D-4CBB-5942-B266-A37069584022}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 13.47137984144501
+      SNAPOFFS 0
+      LENGTH 0.65148917253472
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.15645617490128 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.09759119913124 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {20DFD2BB-7640-C245-96A1-D06E25786937}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 9.00023307351213
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {3E6B53BC-F0EA-7346-A9FE-5DC429A4AA0F}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 14.02527781482786
+      SNAPOFFS 0
+      LENGTH 0.64098026333335
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.09759119913124 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.12708603245346 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {9F8DC83A-F036-0548-8A9E-8C77E5F054F9}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 9.65172224604684
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {C3787504-00DA-1F44-9C68-868302B211BC}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 14.53917204565369
+      SNAPOFFS 0
+      LENGTH 0.57845816521091
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.12708603245346 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.12353458849152 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {21769D9D-FDF9-584D-B024-8C7353E87B19}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 10.29270250938021
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {F02DEC1B-5176-2C41-B7F4-D8B92A495A75}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 14.99409562244546
+      SNAPOFFS 0
+      LENGTH 0.62883932540889
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.12353458849152 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {C4AC3395-4FF3-C747-99DB-AC996CBAF55C}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 10.87116067459111
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {A98F67DF-F6AE-5F4E-ABB1-32BA42B73E7F}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 21
+      SNAPOFFS 0
+      LENGTH 8.5
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {158E620F-C4B3-EE4E-85CD-145913ED7E5A}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 11.5
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {D41E7FF9-F3C9-5345-AD8E-E9BACDF94E3E}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 31.50590437756959
+      SNAPOFFS 0
+      LENGTH 0.5
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.2550290721028 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {350F8E30-72A3-2440-B4A2-553E707F7A05}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 4.5
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {B12FA599-2520-9D4F-9311-AE0C9FB28E77}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 31.75087530546678
+      SNAPOFFS 0
+      LENGTH 0.73294503443516
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.2550290721028 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.23751406933538 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {40DA5F89-6F48-894D-9DC4-3F8B320855A1}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 5
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {B445BAD1-9FD6-0840-A1D1-F60F6F196DC6}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 32.24630627056656
+      SNAPOFFS 0
+      LENGTH 0.69064625216259
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.23751406933538 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.31214930367022 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {2152AB7A-63DE-6940-8A17-7EFCC4144F70}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 5.73294503443516
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {F732430A-458F-6143-BCE0-CA5C0206091D}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 32.62480321905893
+      SNAPOFFS 0
+      LENGTH 0.70627941155089
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.31214930367022 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.14314980525736 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {CFBDA694-8FB9-7343-BA69-A6E5D83EF0C8}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 6.42359128659777
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {A0B6B2F9-CE29-7746-AE40-A17060C007EE}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 33.18793282535248
+      SNAPOFFS 0
+      LENGTH 0.50357894507074
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.14314980525735 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.12508199657836 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {6463A2F7-69DA-0844-A4BB-D61564FD4064}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.12987069814868
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {C05B1D40-BF9A-5041-A69D-E809384EE385}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 33.56642977384486
+      SNAPOFFS 0
+      LENGTH 0.65848411368538
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.12508199657836 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.19690246918248 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {D7A0B5C8-2F28-7C4B-84A8-7E3AC8BB0EC7}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.73601998427599
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {2B97C36F-10A2-F14E-89A4-06565B38D06A}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 34.02801141834776
+      SNAPOFFS 0
+      LENGTH 0.60572897555077
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.19690246918248 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.15645617490128 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {150DAF37-DA81-2D48-AC56-20A90695FBA2}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 8.39450409796136
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {9E3CC5AD-BEAF-7244-93E6-2B906374AD7F}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 34.47728421899724
+      SNAPOFFS 0
+      LENGTH 0.65148917253472
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.15645617490129 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.09759119913124 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {0343A9DD-8293-5C43-8C6C-3A5BD1E33BA4}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 9.00023307351213
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {02CB8413-F074-1847-AD3D-68944F0C7DD2}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 35.03118219240072
+      SNAPOFFS 0
+      LENGTH 0.64098026333335
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.09759119913124 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.12708603245346 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {B1E12BEF-AD45-A640-872C-99251380B6AF}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 9.65172224604684
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {5A6EE2D6-8E03-874B-9E75-B88652CEB1DF}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 35.54507642328062
+      SNAPOFFS 0
+      LENGTH 0.5784581652109
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.12708603245345 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.12353458849152 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {ADEF22FB-1617-0746-9B10-8218F2E702AF}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 10.29270250938021
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {08F76254-59E8-A742-BCE8-5BDC46CDB030}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+    <ITEM
+      POSITION 36
+      SNAPOFFS 0
+      LENGTH 0.62883932540889
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.12353458849152 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {80C347EF-205A-5A49-8CBF-96EEFD661C48}
+      IID 17
+      NAME "Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 10.87116067459111
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {59FF6402-C8F5-1D4A-8558-E1C0BEB0BD59}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Footsteps, Human, Boots, Dirt, Walk, Close SND125790 1.wav"
+      >
+    >
+  >
+  <TRACK {BD7C6495-9360-0F4E-B036-8D507109B134}
+    NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134"
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 0.03560056607585 0 -1 -1 1
+    MUTESOLO 0 2 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {BD7C6495-9360-0F4E-B036-8D507109B134}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 0.37697646327499
+      SNAPOFFS 0
+      LENGTH 0.80376079896132
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {6B21E56B-CBC2-FA4D-97AE-470FB301DEDE}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {DDBC0CD6-7231-A540-B303-5ED049E4CEF5}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 1.21205090723856
+      SNAPOFFS 0
+      LENGTH 0.60717013143792
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {FA6527F6-3397-F84E-9DBC-E0F5ACC8D006}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0.80376079896132
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {3EFF04A2-E5E6-1446-BDB2-310946B40177}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 1.942144563961
+      SNAPOFFS 0
+      LENGTH 0.51424288543142
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {D6E5F1C4-170B-BB46-AD76-3541EF7ADCD7}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 1.41093093039924
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {A270EEE9-595E-4F46-A6CF-F36E4546715F}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 2.52431074775275
+      SNAPOFFS 0
+      LENGTH 0.62777702896822
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {C97A024D-3694-7840-8018-8325FDF834D3}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 1.92517381583065
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {B1F45C58-A53B-A046-B873-6B646E119B73}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 3.1828265949926
+      SNAPOFFS 0
+      LENGTH 0.56099223865245
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {9B5F9522-C70F-FF40-AE06-9A8250643849}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 2.55295084479887
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {030B9193-46F1-4547-83C3-8049428988F9}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 3.8795172739565
+      SNAPOFFS 0
+      LENGTH 0.58770615477876
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {8A037F99-8FD4-F243-ACD0-0D0A841F12B1}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 3.11394308345133
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {5F796B34-3A90-8A48-8933-B94920CF28B0}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 10.5
+      SNAPOFFS 0
+      LENGTH 0.52841445676048
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.1536228554462 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {6D72AF2C-2B24-A54E-ADF8-0B93B55D7D7D}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 3.72087006205891
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {8F0390F7-87AE-C049-AC8D-24D30459527D}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 10.87479160132352
+      SNAPOFFS 0
+      LENGTH 0.52759984349458
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.1536228554462 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.11219469748834 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {2E93C0C2-C39D-E547-9974-B51A79BE5671}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 4.24928451881939
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {6E44962D-FE49-984B-B9BE-0165E123D7DC}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 11.29019674728625
+      SNAPOFFS 0
+      LENGTH 0.56099223865246
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.11219469748834 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.24196108651966 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {904859B3-C1A1-0746-9E85-495237315F15}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 4.77688436231396
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {12F0363E-3CAC-BB4F-857E-8B5866170ABA}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 11.60922789946198
+      SNAPOFFS 0
+      LENGTH 0.48851645170334
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.24196108651966 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {37638EEA-DD38-1B4E-AB91-BE14F776E867}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 5.33787660096641
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {D906BF21-DDFA-0247-8248-473199EC68D2}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 12.0977443511365
+      SNAPOFFS 0
+      LENGTH 0.54828574174413
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.11958763106569 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {D5FF38AA-DEB2-AB4F-A89E-657204FD81B9}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 5.87786291225863
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {64B7284D-532B-064D-98E6-54CD1F205372}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 12.52644246187992
+      SNAPOFFS 0
+      LENGTH 0.6315696518825
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.11958763106569 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.11274405093494 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {E6BD4A7C-50CD-2041-BC30-9D20B3A9CCAA}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 6.42614865400276
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {B024FC95-03B0-CA4E-9CE9-13ACDE85CC4D}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 13.04526806273498
+      SNAPOFFS 0
+      LENGTH 0.54828574174413
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.11274405093494 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.07146627926689 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {53DC6441-3AC5-964C-BFF3-9C80092C01AA}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.05771830588523
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {5B959405-09D0-344F-A659-A32F9AE4B281}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 13.52208752522711
+      SNAPOFFS 0
+      LENGTH 0.52052443836468
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.07146627926689 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.03852215564312 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {8DC6445E-D79E-4A4C-8E58-E7DA7958A80B}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.60600404762936
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {A70274E9-0053-F842-AC4D-DC5845DEC8C9}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 14.00408980797511
+      SNAPOFFS 0
+      LENGTH 0.58298737096844
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.03852215564312 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.06988816678097 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {DFC73CCF-89DF-D143-AED9-30B7BE702517}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 8.12652848599404
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {2BD3AA0A-6C26-AA47-82AC-5E40F5708B1D}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 14.5171890121419
+      SNAPOFFS 0
+      LENGTH 0.53440509005438
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.06988816678097 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.08349972879873 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {D9456F85-7CBD-DC48-9989-DBBAFDAB321A}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 8.70951585696248
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {994E4F4B-F8B9-9843-ADB7-130E1BB9EABF}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 14.9680943734711
+      SNAPOFFS 0
+      LENGTH 0.54134541589925
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.08349972879873 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {90317D81-28D9-094A-B7A5-7443556E885D}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 9.24392094701689
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {60F42E77-3874-A744-B1D3-2B006F1738AA}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 21.09776493248177
+      SNAPOFFS 0
+      LENGTH 0.53440509005441
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {A9E6969F-7523-9A4A-B61F-44E4D94A1BBD}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 9.78526636291615
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {0FA8F5F1-399B-5147-A1F0-ED0DFCF4E509}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 21.69004769714689
+      SNAPOFFS 0
+      LENGTH 0.58457864876937
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {FBC0D514-87F5-AA49-8081-C0290B400F7E}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 10.31967145297056
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {73C48E47-81A7-9B4F-BEF2-FA109CE80FD5}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 22.31430015072021
+      SNAPOFFS 0
+      LENGTH 0.55011139801225
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {CA074FF4-5685-9449-B941-076B46B1C331}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 10.90425010173989
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {069E4D25-AAB7-C04A-AC76-447D3CF855B7}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 22.8963733844575
+      SNAPOFFS 0
+      LENGTH 0.57957043689942
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {CD89A8C1-6BCD-DB46-BC99-3E29098F6BDA}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 11.45436149975216
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {440F0497-92D8-204F-B690-5FAF1FF68BCE}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 23.56280505786687
+      SNAPOFFS 0
+      LENGTH 0.52746476420955
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {59798D1A-0E79-D140-BDD4-D09C89C436DF}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 12.03393193665157
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {3367DF84-A120-0F4E-884F-7F7A7114EE5B}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 24.17862166747299
+      SNAPOFFS 0
+      LENGTH 0.56910671927871
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {2EAE568B-32BA-1242-BA87-BA4ED86BAB48}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 12.56139670086111
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {3E483BEC-6AFF-6F42-A3AE-AEB327FFFDF2}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 24.86192502881675
+      SNAPOFFS 0
+      LENGTH 0.52052443836465
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {7F7858E8-BA57-9947-B567-33EFF582DEC8}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 13.13050342013982
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {C6B9E628-C1EF-5B40-B8AF-9B938C08B07A}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 25.45243410652125
+      SNAPOFFS 0
+      LENGTH 0.5413454158993
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {5F9AB006-6E5C-9541-B179-339A6A6CC905}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 13.6510278585045
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {AC5D7517-0A9F-4F42-BB3C-83825222C7F8}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 26.14417331183224
+      SNAPOFFS 0
+      LENGTH 0.52052443836467
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {03B19E72-233B-6345-A776-1D01B0B8AA15}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 14.19237327440377
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {C8A5FE77-B30A-D44D-8B95-68A1CA114067}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 26.67563148176627
+      SNAPOFFS 0
+      LENGTH 0.59686802265818
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {9D844BFE-04A3-E944-9EFB-AAA01162E9E2}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 14.71289771276845
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {3F911DEA-195A-0B4A-BB3D-9AF93610C1DE}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 27.35893484311005
+      SNAPOFFS 0
+      LENGTH 0.54001036153485
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {0BDBC77D-0675-3A49-ADB4-4B5EE619CAE2}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 15.30976573542661
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {2025D425-A788-1544-9940-CD825C26D999}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 28.00005898461778
+      SNAPOFFS 0
+      LENGTH 0.58432242533286
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {6A7DC94E-9408-2E45-A87D-8C3251D31279}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 15.84977609696146
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {5C72F81F-A64D-2C42-87BF-E2C8B39EE6F4}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 28.71710572183039
+      SNAPOFFS 0
+      LENGTH 0.57276413567572
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {539BB405-A015-1E44-B718-F85F3CDDD201}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 16.43409852229432
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {431EB38F-6E22-DA4E-8116-116932B88F7A}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 31.50590437756959
+      SNAPOFFS 0
+      LENGTH 0.52841445676048
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.1536228554462 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {FD37BBBC-DC8B-EE43-BB2F-828AD0BA897E}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 3.72087006205891
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {B82E4DA6-CAD9-E34E-9545-41F5C421BF92}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 31.88069597888386
+      SNAPOFFS 0
+      LENGTH 0.52759984349458
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.1536228554462 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.11219469748833 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {4F9CE365-D46A-D14B-A05E-F167525CEA90}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 4.24928451881939
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {413F726E-18E7-5249-B1C3-326519BCA50E}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 32.29610112489011
+      SNAPOFFS 0
+      LENGTH 0.56099223865246
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.11219469748833 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.24196108651966 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {649197C0-F08E-6248-9398-58A0601B7F0A}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 4.77688436231396
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {F06E11C4-BD34-3D4E-9B02-77C248DFAC88}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 32.61513227702292
+      SNAPOFFS 0
+      LENGTH 0.48851645170334
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.24196108651966 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {DCF47BF4-7F90-B048-A003-3024FAE33BCD}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 5.33787660096641
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {01460C5D-FA98-7443-AD14-AD86C9F11C20}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 33.10364872872626
+      SNAPOFFS 0
+      LENGTH 0.54828574174413
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.11958763106569 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {EE691DD8-3959-9B4A-AD99-1D396716FF25}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 5.87786291225863
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {92DEF673-6E8D-1243-AF9D-D7D65FF026B9}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 33.5323468394047
+      SNAPOFFS 0
+      LENGTH 0.6315696518825
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.11958763106569 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.11274405093494 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {F72739E2-1114-5A4D-BBF5-A98939A1FEDF}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 6.42614865400276
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {560EB149-8B3C-154D-911C-71B43FA88404}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 34.05117244035226
+      SNAPOFFS 0
+      LENGTH 0.54828574174413
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.11274405093494 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.07146627926689 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {11D723B1-6183-3B44-AECC-3D3BE37E6A90}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.05771830588523
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {C56834E2-D2E8-194A-977A-19B6685D4C62}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 34.52799190282951
+      SNAPOFFS 0
+      LENGTH 0.52052443836469
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.07146627926689 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.03852215564313 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {0FB85C05-2B98-AF4F-8403-129EACC94DA6}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.60600404762936
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {CBF39A51-F663-AB4E-B4D9-5E0238F77723}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 35.00999418555107
+      SNAPOFFS 0
+      LENGTH 0.58298737096845
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.03852215564313 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.06988816678098 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {BF692B8E-E1B8-8C44-9912-B018D2821C1E}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 8.12652848599404
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {ECA516F4-39E9-0A4A-9417-30B87FF27B40}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 35.52309338973853
+      SNAPOFFS 0
+      LENGTH 0.53440509005438
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.06988816678098 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.08349972879871 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {37D603A8-8EE7-6C4F-ADC9-3CBEA7723B8E}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 8.70951585696248
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {E83F7F21-33E8-F549-9E30-BD2024D8695C}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+    <ITEM
+      POSITION 35.97399875099419
+      SNAPOFFS 0
+      LENGTH 0.54134541589925
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.08349972879871 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {E64F3183-C5BD-604B-BDEF-29763ABD89B7}
+      IID 50
+      NAME "Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 9.24392094701689
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {C12C1677-C913-FD49-B07B-3350072551D5}
+      <SOURCE WAVE
+        FILE "Media/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Cloth, Movement, Cotton, Walk, Close Up Perspective SND129134.wav"
+      >
+    >
+  >
+  <TRACK {4D69DC4D-63CC-454C-9836-8811329C76D2}
+    NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227"
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 0.06229132251349 0 -1 -1 1
+    MUTESOLO 0 2 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {4D69DC4D-63CC-454C-9836-8811329C76D2}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 1.3060707015681
+      SNAPOFFS 0
+      LENGTH 0.5
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {CD5433C3-760E-3D42-A7A1-8B5D1DD8A4DB}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {EAFC909E-C9E5-A94A-A989-1DF5AEBC3082}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 2.55243531392166
+      SNAPOFFS 0
+      LENGTH 0.55228132523451
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.15672848418817 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {57023407-11B8-9846-B8EB-5016FD117C0D}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0.92555987434076
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {BFA2409D-B129-0E4D-96A1-D7A413BF0AA9}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 3.90328558240066
+      SNAPOFFS 0
+      LENGTH 0.61198741444905
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.09702239497363 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {3B421EBD-18B7-BA4F-9EF3-D883D5D75580}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 2.40328558240066
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {9A09DEE6-EDA6-B644-A2DE-8A823881BD42}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 10.5
+      SNAPOFFS 0
+      LENGTH 0.92361539945674
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.46408757520324 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.11156984893591 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {7FB880D1-F1FE-9C48-B08E-E062A8CD8BCA}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 4.98561243810138
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {4D370A29-ACF4-4744-91EA-910B2A877E25}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 11.63271270424488
+      SNAPOFFS 0
+      LENGTH 0.36728729575512
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.08187246478061 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.14896072300682 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {3CC12D51-4FC7-7E4A-8165-64A81C0D774E}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 6.45835907945248
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {C225D9D6-5647-D442-9878-9C6F34FED4D3}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 12.19832035183369
+      SNAPOFFS 0
+      LENGTH 0.24291595964362
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.15756710895802 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {64F8D7F2-F860-424E-8E47-3B0D73F70701}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 6.94382170692612
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {EE25A331-319A-D94E-9AE4-1C3AFCCE0AAA}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 12.82858878766579
+      SNAPOFFS 0
+      LENGTH 0.17141121233421
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.0926276578552 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {A781C83B-08A1-8D40-9916-6737799E548C}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.31771961336485
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {0C9D83F2-25AA-1244-93ED-56FC98E2FA75}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 13.16998419040817
+      SNAPOFFS 0
+      LENGTH 0.36284229062475
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.07221825827243 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.10574225701302 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {B09E36BE-588C-1C41-8171-E08F8C1DBD83}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.48913082569906
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {B71FB55B-3BD1-2043-9EA5-F0433250D3E6}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 13.78186490473588
+      SNAPOFFS 0
+      LENGTH 0.22158816695242
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.07831135358636 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {1BB13B7F-7642-4E4F-B289-3C381BFCF56D}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.89267306067868
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {9B320CD8-8388-234D-BDCF-8AE47571130C}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 14.17725824200216
+      SNAPOFFS 0
+      LENGTH 0.39103121388064
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.13241892602373 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.11779942210529 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {4105A19C-7DEE-7F46-AF98-5C259F2377B5}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 9.32297435507106
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {6E49028A-C5CC-1747-A014-06C7207A6E29}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 15.0658235387413
+      SNAPOFFS 0
+      LENGTH 0.6498462617943
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.09283518025633 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.2281285462037 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {B2CA5C3D-96E8-CA4D-9894-D3A6B702196E}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 10.21066270540265
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {A0B22D1C-681D-A748-8A9B-8B29AA522063}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 21.71283987328733
+      SNAPOFFS 0
+      LENGTH 0.5
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {DA0113A4-A5CD-354A-A00B-EA3C0F8BAA24}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {219EA70D-7FD2-714F-8DB2-CC08FEF385C6}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 22.86449945831036
+      SNAPOFFS 0
+      LENGTH 0.55228132523452
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.15672848418817 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {FAD0679F-9F86-E84D-AEEF-B4CD81B9E465}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0.92555987434076
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {2DC1ADD1-7BF7-9D4F-B601-7B4142A25D47}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 24.09566481375784
+      SNAPOFFS 0
+      LENGTH 0.90433518624216
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.09702239497362 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {2FBE4717-8542-4B4E-88AE-01D3C6B51D0E}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 2.40328558240066
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {6C387206-0E14-1443-BB1C-11162986BD22}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 25.5288745175084
+      SNAPOFFS 0
+      LENGTH 0.44702841977725
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.32124161565433 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.34213319833909 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {F98BF392-A91A-7144-9C32-1E65D135109A}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 9.36059234886557
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {97F221D9-258A-2045-ADF4-A048E18E5A1F}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 26.67188900009295
+      SNAPOFFS 0
+      LENGTH 0.5
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {D2E744D7-77E3-874E-91B4-FD95A7481145}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 11.30762076864282
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {F12B221D-EF3C-C84F-B596-93CD37C94C29}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 28.05453444319823
+      SNAPOFFS 0
+      LENGTH 0.50472179007771
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.05925623327594 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.07017607938748 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {4D9B78D5-1846-DC4D-94F1-1E5A8A5638D9}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 12.53844764571276
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {D82BE5E6-925B-F749-9734-31E85C0E1776}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 31.5
+      SNAPOFFS 0
+      LENGTH 0.92361539945674
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.46408757520324 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.11156984893591 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {F13761AD-8938-A44E-A0CA-0381A17DA962}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 4.98561243810138
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {69AFBDA1-68C6-8445-9575-1E68E25CBD3F}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 32.63271270424593
+      SNAPOFFS 0
+      LENGTH 0.36728729575511
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.08187246478061 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.14896072300682 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {D4FB1AF9-C2F8-F24E-86F2-80471279F154}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 6.45835907945248
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {5680A669-763A-D843-97F3-2E890C9E6897}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 33.19832035189029
+      SNAPOFFS 0
+      LENGTH 0.24291595964362
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.15756710895802 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {09245E0C-3468-134E-A987-F2F16A452C55}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 6.94382170692612
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {CD31E96E-248D-2D4F-8BA9-FE42D61C1FD1}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 33.82858878769912
+      SNAPOFFS 0
+      LENGTH 0.17141121233421
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.0926276578552 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {C4CB1315-7971-2B40-8456-BAB717A6B6AF}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.31771961336485
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {D23A6C4B-B6B4-654D-A303-092F6AFB9EA4}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 34.16998419037554
+      SNAPOFFS 0
+      LENGTH 0.36284229062475
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.07221825827243 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.10574225701302 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {55E3387C-E7F8-8F49-A0E5-BC0F42D8D11A}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.48913082569906
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {0081B3D4-D215-5147-B633-952256BFBCFF}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 34.78186490468215
+      SNAPOFFS 0
+      LENGTH 0.22158816695242
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.07831135358636 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {86D1E391-85BF-5F40-9DA8-CB58B4581985}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.89267306067868
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {5832D77F-11B9-3B4A-8BC4-7401339C9A65}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 35.17725824203808
+      SNAPOFFS 0
+      LENGTH 0.39103121388064
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.13241892602373 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.11779942210529 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {A39C822A-2540-7240-97B0-23F658D8A8AB}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 9.32297435507106
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {76064AFD-5D4B-524D-8536-6F69509C97C6}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+    <ITEM
+      POSITION 36.06582353869453
+      SNAPOFFS 0
+      LENGTH 0.6498462617943
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.09283518025633 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.2281285462037 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {AFF72011-F93B-364A-A3EE-F50E5864A152}
+      IID 148
+      NAME "Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 10.21066270540265
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {9F5D81B8-5351-834F-84A0-8CDA6EDD75B9}
+      <SOURCE WAVE
+        FILE "Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav"
+      >
+    >
+  >
+  <TRACK {DA22201C-88BB-4D4E-8A12-1DA4155B5EEE}
+    NAME ""
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 0.12205972716544 0 -1 -1 1
+    MUTESOLO 0 2 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    LANEREC -1 -1 -1 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {DA22201C-88BB-4D4E-8A12-1DA4155B5EEE}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 0.70800062385819
+      SNAPOFFS 0
+      LENGTH 0.49063201127015
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.49063201127015 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {A04D4CBA-F8A2-BA48-A0DA-4FF2704D6A5C}
+      IID 41
+      NAME "Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {486DB611-730B-E242-B608-DE20282F0F08}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      >
+    >
+    <ITEM
+      POSITION 1.42221177950462
+      SNAPOFFS 0
+      LENGTH 0.54031626557599
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.03105265894115 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.26705286689388 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {F5A8B779-6B6E-3645-A68C-29092F027363}
+      IID 41
+      NAME "Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 4.41264762148224
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {B9C7DD41-2532-5B4B-A61B-A3350D57A980}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      >
+    >
+    <ITEM
+      POSITION 2.02903568223002
+      SNAPOFFS 0
+      LENGTH 0.55260582390289
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {A190A558-FAEB-1544-9AA1-FA99C4D417D5}
+      IID 41
+      NAME "Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 6.72196184687419
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {B2BE0585-4260-1246-B622-EE59EE18B3B6}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      >
+    >
+    <ITEM
+      POSITION 2.63662558632344
+      SNAPOFFS 0
+      LENGTH 0.68510743581633
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.07228239816097 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {3D5A0458-1DDA-8645-A6E2-9ADFFB1C724E}
+      IID 41
+      NAME "Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 7.27456767077707
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {D4F43B48-F27E-574E-9BE6-6037ED218CCA}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      >
+    >
+    <ITEM
+      POSITION 3.2494506239788
+      SNAPOFFS 0
+      LENGTH 0.66496040873899
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.18330752475727 0.07228239816097 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {1D42A278-F2DF-AD43-A564-678A49B4BFA5}
+      IID 41
+      NAME "Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 8.56527917459433
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {3109DC52-17BE-AB46-B2DA-43DF64D1F253}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, No Clothing SND145755.wav"
+      >
+    >
+  >
+  <TRACK {6B574D33-9F05-EB49-8BAF-5D3F3988C156}
+    NAME ""
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 0.04465546296716 0 -1 -1 1
+    MUTESOLO 0 2 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    LANEREC -1 -1 -1 0
+    SEL 1
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {6B574D33-9F05-EB49-8BAF-5D3F3988C156}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 0.43053460073343
+      SNAPOFFS 0
+      LENGTH 2.48753324868202
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.81323202360758 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {E3C872D4-2F1B-7347-BB49-713FBE40DC67}
+      IID 42
+      NAME "Movement, Human, Body Drag, Forest, Twig, No Clothing SND145768.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {0336F928-4E15-404A-BA24-01E00757680D}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Forest, Twig, No Clothing SND145768.wav"
+      >
+    >
+    <ITEM
+      POSITION 2.10483582580787
+      SNAPOFFS 0
+      LENGTH 2.39516417419213
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.81323202360758 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {261B32D6-AAD6-E543-BF6E-DCF193282EAA}
+      IID 42
+      NAME "Movement, Human, Body Drag, Forest, Twig, No Clothing SND145768.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 2.48753324868202
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {6E58C0A2-55D2-FF4F-A58F-B2DDF9912B37}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Forest, Twig, No Clothing SND145768.wav"
+      >
+    >
+    <ITEM
+      POSITION 10.50462204898784
+      SNAPOFFS 0
+      LENGTH 2.03626091045918
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 1
+      IGUID {3C089627-7CAF-5D41-930C-CAFB3441711D}
+      IID 42
+      NAME "Movement, Human, Body Drag, Forest, Twig, No Clothing SND145768.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 4.88269742287416
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {F9D54461-C392-F542-82D5-17BD6CA315EF}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Forest, Twig, No Clothing SND145768.wav"
+      >
+    >
+  >
+  <TRACK {61E605A3-6535-7B4E-A4B2-8002B85C0855}
+    NAME "Glass, Handle, Touch, Vase, Hollow, Hand, Fingers, Tap 01 SND120705"
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 1 0 -1 -1 1
+    MUTESOLO 0 0 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {61E605A3-6535-7B4E-A4B2-8002B85C0855}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 1.5
+      SNAPOFFS 0
+      LENGTH 3.12911458333333
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {434DE818-4B18-5E4D-ABA0-112086F87DD2}
+      IID 145
+      NAME "Glass, Handle, Touch, Vase, Hollow, Hand, Fingers, Tap 01 SND120705.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {D2BEAA4F-C46B-DB47-B726-93FA208ADCC5}
+      <SOURCE WAVE
+        FILE "Media/Glass, Handle, Touch, Vase, Hollow, Hand, Fingers, Tap 01 SND120705.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Glass, Handle, Touch, Vase, Hollow, Hand, Fingers, Tap 01 SND120705.wav"
+      >
+    >
+    <ITEM
+      POSITION 5.12911458336748
+      SNAPOFFS 0
+      LENGTH 3.31939583333333
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {0A0F9918-B3BC-1C41-8857-6440F7F41AD8}
+      IID 146
+      NAME "Glass, Handle, Touch, Vase, Hollow, Hand, Fingers, Tap 02 SND120704.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {9D8D94AA-21B1-1D4B-86B2-2C3285D89486}
+      <SOURCE WAVE
+        FILE "Media/Glass, Handle, Touch, Vase, Hollow, Hand, Fingers, Tap 02 SND120704.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Glass, Handle, Touch, Vase, Hollow, Hand, Fingers, Tap 02 SND120704.wav"
+      >
+    >
+  >
+  <TRACK {76F00BFE-8D67-FE46-ADA0-8AEDEEB0726F}
+    NAME "Equipment, Recreational, Tent, Pole Bag, Empty, Movement SND19398"
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 1 0 -1 -1 1
+    MUTESOLO 0 0 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {76F00BFE-8D67-FE46-ADA0-8AEDEEB0726F}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 1
+      SNAPOFFS 0
+      LENGTH 8.95814583333333
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {5A920E44-998D-0B48-98AF-A1D96A498BA7}
+      IID 147
+      NAME "Equipment, Recreational, Tent, Pole Bag, Empty, Movement SND19398.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {7174CDE0-7F45-F04C-8981-90BC8A232799}
+      <SOURCE WAVE
+        FILE "Media/Equipment, Recreational, Tent, Pole Bag, Empty, Movement SND19398.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Equipment, Recreational, Tent, Pole Bag, Empty, Movement SND19398.wav"
+      >
+    >
+  >
+  <TRACK {95BF0670-B991-C94F-8286-B3D8CEB135E8}
+    NAME "Crowds, Conversation, Two Males, Australia SND148301"
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 1 0 -1 -1 1
+    MUTESOLO 0 0 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {95BF0670-B991-C94F-8286-B3D8CEB135E8}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 0.5
+      SNAPOFFS 0
+      LENGTH 158.32539583333335
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {B93B2DBD-8750-3442-B5DD-933798AB80BF}
+      IID 101
+      NAME "Crowds, Conversation, Two Males, Australia SND148301.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {F9BF5070-4569-F640-9892-F1E226AE5CB5}
+      <SOURCE WAVE
+        FILE "Media/Crowds, Conversation, Two Males, Australia SND148301.wav"
+      >
+      <EXT
+        ORIGINAL_FILENAME "/Users/pedrolira/Documents/Soundly Audio/Crowds, Conversation, Two Males, Australia SND148301.wav"
+      >
+    >
+  >
+  <TRACK {265581ED-2766-F048-A219-AD58CCF0D62E}
+    NAME "Movement, Human, Body Drag, Drop, Fall, Forest, Dirt, Twig SND145654"
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 1 0 -1 -1 1
+    MUTESOLO 0 0 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    LANEREC -1 -1 -1 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {265581ED-2766-F048-A219-AD58CCF0D62E}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 7.5
+      SNAPOFFS 0
+      LENGTH 11.4705
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {78AE8532-3FF1-2A40-9508-F80FE8EC1C06}
+      IID 39
+      NAME "Movement, Human, Body Drag, Drop, Fall, Forest, Dirt, Twig SND145654.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {85038A2F-4151-AF49-9237-873790025557}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Drop, Fall, Forest, Dirt, Twig SND145654.wav"
+      >
+    >
+  >
+  <TRACK {BE098F2E-7C4D-114F-B813-4C74EAFBEAFA}
+    NAME ""
+    PEAKCOL 16576
+    BEAT -1
+    AUTOMODE 0
+    PANLAWFLAGS 3
+    VOLPAN 0.06736320042077 0 -1 -1 1
+    MUTESOLO 0 0 0
+    IPHASE 0
+    PLAYOFFS 0 1
+    ISBUS 0 0
+    BUSCOMP 0 0 0 0 0
+    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0 0
+    FIXEDLANES 9 0 0 0 0
+    LANEREC -1 -1 -1 0
+    SEL 0
+    REC 0 0 1 0 0 0 0 0
+    VU 64
+    TRACKHEIGHT 0 0 0 0 0 0 0
+    INQ 0 0 0 0.5 100 0 0 100
+    NCHAN 2
+    FX 1
+    TRACKID {BE098F2E-7C4D-114F-B813-4C74EAFBEAFA}
+    PERF 0
+    MIDIOUT -1 -1
+    MAINSEND 1 0
+    <ITEM
+      POSITION 0.45143086240692
+      SNAPOFFS 0
+      LENGTH 1.04856913759308
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1.1 0.01 0.18974944813602 1 1 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {FA6B63AA-CEFB-6941-B85A-85A69502B4BB}
+      IID 40
+      NAME "Movement, Human, Body Drag, Gravel, Short, Close SND145756.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 0
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {4E8F6E75-45C8-384A-84CC-44A70331E332}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, Close SND145756.wav"
+      >
+    >
+    <ITEM
+      POSITION 1.31025055186398
+      SNAPOFFS 0
+      LENGTH 0.41839933588934
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1.1 0.01 0.18974944813602 1 1 0 0 1 0 0 1 0 0
+      FADEOUT 1 0.41839933588934 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {0DC762F9-37D6-914B-8372-73BBD4B74334}
+      IID 40
+      NAME "Movement, Human, Body Drag, Gravel, Short, Close SND145756.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 1.04856913759308
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {093D6420-8E6F-7A4F-AC6B-BCF4180A93E8}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, Close SND145756.wav"
+      >
+    >
+    <ITEM
+      POSITION 3.5
+      SNAPOFFS 0
+      LENGTH 26.51702415154429
+      LOOP 1
+      ALLTAKES 0
+      FADEIN 1 0.01 0 1 0 0 0 1 0 0 1 0 0
+      FADEOUT 1 0 0 1 0 0 0 1 0 0 1 0 0
+      MUTE 0 0
+      SEL 0
+      IGUID {02735917-12D4-D44F-813D-0560B1D31775}
+      IID 40
+      NAME "Movement, Human, Body Drag, Gravel, Short, Close SND145756.wav"
+      VOLPAN 1 0 1 -1
+      SOFFS 3.10362168178905
+      PLAYRATE 1 1 0 -1 0 0.0025
+      CHANMODE 0
+      GUID {270C8DBB-9BDA-6A4B-BA28-1824E48A67F1}
+      <SOURCE WAVE
+        FILE "/Users/pedrolira/Documents/Soundly Audio/Movement, Human, Body Drag, Gravel, Short, Close SND145756.wav"
+      >
+    >
+  >
+  <EXTENSIONS
+  >
+>

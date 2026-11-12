@@ -136,10 +136,25 @@ VARIANTS = {
 def to_model(L: np.ndarray, cfg: FrontendConfig) -> np.ndarray:
     """Last frontend step: for `kind="mfcc"` the DCT-II (orthonormal) over the log-mel bands, first n_mfcc kept.
     After level normalisation and the training EQ, both of which act on log-mel bands."""
+    if cfg.pcen:
+        return pcen(L, cfg)
     if cfg.kind != "mfcc":
         return L
     from scipy.fft import dct
     return dct(L, type=2, axis=-2, norm="ortho")[..., : cfg.n_mfcc, :].astype(np.float32)
+
+
+def pcen(L: np.ndarray, cfg: FrontendConfig) -> np.ndarray:
+    """(..., bands, frames) log energies -> PCEN of exp(L) (config.FrontendConfig.pcen); the smoother starts at
+    each window's first frame, so every window is normalised on its own, as in training."""
+    E = np.exp(L.astype(np.float64))
+    M = np.empty_like(E)
+    M[..., 0] = E[..., 0]
+    s = cfg.pcen_s
+    for t in range(1, E.shape[-1]):
+        M[..., t] = (1.0 - s) * M[..., t - 1] + s * E[..., t]
+    out = (E / (1e-6 + M) ** cfg.pcen_alpha + cfg.pcen_delta) ** cfg.pcen_r - cfg.pcen_delta ** cfg.pcen_r
+    return out.astype(np.float32)
 
 
 def featurise(audio: np.ndarray, variant: Variant, fe: LogMel) -> np.ndarray:

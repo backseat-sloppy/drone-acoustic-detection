@@ -1,0 +1,10 @@
+﻿# Local preview of the GitHub Pages site. Matches the gems GitHub Pages uses.
+# From docs/:  bundle install   then   bundle exec jekyll serve --livereload
+source "https://rubygems.org"
+
+gem "github-pages", ">= 232", group: :jekyll_plugins
+gem "webrick"
+
+# Windows
+gem "tzinfo-data", platforms: [:windows]
+gem "wdm", ">= 0.1.0", platforms: [:windows]

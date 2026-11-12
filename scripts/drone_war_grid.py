@@ -79,6 +79,14 @@ MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file
           # model_cfg reads the bandpass from the run file. Complete_Test_Gui and detect_gui only
           **{f"it20 {name} bp s{s}": (ROOT / f"artifacts/runs/it20_bp_s{s}.json",
                                       MODEL_DIR / f"it20_bp_s{s}_none_simdist_{arch}.pt")
+             for name, arch in (("CNN", "dscnn"), ("CRNN", "crnn")) for s in (0, 1, 2)},
+          # it19's colour recipe with UAV16 as a fifth rig in the pool (iteration 21, entries 200-208; fails on Lund).
+          # Only the CRNN checkpoints were committed; the run files (threshold, window) must be fetched (entry 215).
+          **{f"it21 CRNN uav16 s{s}": (ROOT / f"artifacts/runs/it21_uav16_s{s}.json",
+                                       MODEL_DIR / f"it21_uav16_s{s}_none_simdist_colour_crnn.pt") for s in (0, 1, 2)},
+          # 600k with PCEN (T 60 ms) in place of the log (iteration 22, entry 211); model_cfg reads it from the run file
+          **{f"it22 {name} pcen s{s}": (ROOT / f"artifacts/runs/it22_pcen_s{s}.json",
+                                        MODEL_DIR / f"it22_pcen_s{s}_none_simdist_{arch}.pt")
              for name, arch in (("CNN", "dscnn"), ("CRNN", "crnn")) for s in (0, 1, 2)}}
 OFF = float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
 NO_DRONE = 0.0                                               # drone "speed" of the no-drone row (war only)
@@ -281,7 +289,8 @@ def model_cfg(model: str):
     w = a.get("window_s", 1.0) if "models" in run else a.get("window_seconds", 1.0)
     bp = a.get("bandpass")   # iteration 20: a filtered model must be fed filtered features
     return dataclasses.replace(DEFAULT, window_seconds=float(w), bandpass=tuple(bp) if bp else None,
-                               wiener=bool(a.get("wiener", False)))
+                               wiener=bool(a.get("wiener", False)),
+                               pcen=a.get("pcen") is not None, pcen_t=float(a.get("pcen") or 0.4))
 
 
 def _detectors(model="it6 CNN", device="cpu"):

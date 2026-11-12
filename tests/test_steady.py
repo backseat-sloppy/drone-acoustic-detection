@@ -107,3 +107,29 @@ def test_colour_recipe_draws_only_pink_and_brown_slopes_and_never_masks_a_drone(
         rg.RangeSampler.steady(s, rng)
         assert np.allclose(s.positive(rng), tone)
     assert set(drawn) == {-3.0, -6.0} and 0.35 < np.mean(np.array(drawn) == -3.0) < 0.65
+
+
+def test_vehicle_recipe_shares_snr_and_no_test_clip():
+    # Iteration 21 (entry 206): road vehicles as negatives and under drones; never a clip a test plays.
+    r = rg.RECIPES["simdist_veh"]
+    assert r.veh_neg == 0.25 and r.veh_mask == 0.30 and not r.steady_neg
+    rec = lambda i, labels: types.SimpleNamespace(recording_id=i, labels=labels)   # noqa: E731
+    fsd, veh = rg.vehicle_pools([rec("369049", "Idling,Car,Vehicle"), rec("101961.wav", "Gunshot_and_gunfire"),
+                                 rec("7", "Car,Vehicle"), rec("8", "Bird"), rec("9", "Engine")])
+    assert [x.recording_id for x in fsd] == ["7", "8", "9"] and [x.recording_id for x in veh] == ["7", "9"]
+
+    rng = np.random.default_rng(7)
+    s, tone = _stub(rg.Recipe("t", {(0, 50): 1.0}, near_bury=False, veh_neg=0.25, veh_mask=0.30))
+    s.variant = rr.Variant("t", mix=True, mix_prob_neg=0.0, snr_db=(-5.0, 15.0))   # no second FSD50K clip
+    car = np.full(FS, 7.0, np.float32)
+    s.veh = types.SimpleNamespace(_background=lambda rng: (car, 49.0))
+    is_car = lambda x: abs(np.mean(x)) > 2e-3   # noqa: E731  the constant, scaled to at least 0.005
+    neg = [s.negative(rng) for _ in range(4000)]
+    assert abs(np.mean([is_car(x) for x in neg]) - 0.25) < 0.02       # white backgrounds have a mean near 0
+    pos = [s.positive(rng) for _ in range(4000)]
+    masked = [x for x in pos if not np.allclose(x, tone)]
+    assert abs(len(masked) / len(pos) - 0.30) < 0.03
+    snr = [10 * np.log10(rr.inband_power(tone) / np.mean((x - tone) ** 2)) for x in masked]
+    assert -5.0 - 1e-6 <= min(snr) and max(snr) <= 15.0 + 1e-6
+    old = rg.RECIPES["simdist"]                                       # other recipes draw no vehicle
+    assert not old.veh_neg and not old.veh_mask

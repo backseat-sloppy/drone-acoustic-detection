@@ -16,5 +16,13 @@ data/*
 *.wav
 # recorded drone clips are versioned
 !data/recordedDroneClipped/**/*.wav
+# Pedro Soundscape wavs should be pushed
+!WarSoundscape/**/*.wav
 # drone_only/ sidecars, ignored for now
 Pure-data+Script/EnviromentTest/drone_only/*.json
+
+# Jekyll local preview (docs/)
+docs/_site/
+docs/.jekyll-cache/
+docs/.jekyll-metadata
+docs/Gemfile.lock
