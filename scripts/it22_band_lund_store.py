@@ -43,6 +43,7 @@ def main() -> None:
                 x, sr, _ = _read_pcm_channel(z, f"ljungbyhed_audio_dataset/{sess}/sound.wav", LUND_CHANNEL)
                 g = math.gcd(sr, SR)
                 raw = {sess: (resample_poly(x.astype(np.float64), SR // g, sr // g).astype(np.float32), SR)}
+                print(f"{sess}: {len(x) / sr:.0f} s read, {len(meta)} windows so far", flush=True)
             y = raw[sess][0]
             a0 = int(round(r.attributes["parent_start_s"] * SR))
             seg = y[a0:a0 + int(r.seconds * SR)]

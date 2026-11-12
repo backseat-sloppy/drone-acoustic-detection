@@ -87,8 +87,13 @@ MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file
           # 600k with PCEN (T 60 ms) in place of the log (iteration 22, entry 211); model_cfg reads it from the run file
           **{f"it22 {name} pcen s{s}": (ROOT / f"artifacts/runs/it22_pcen_s{s}.json",
                                         MODEL_DIR / f"it22_pcen_s{s}_none_simdist_{arch}.pt")
-             for name, arch in (("CNN", "dscnn"), ("CRNN", "crnn")) for s in (0, 1, 2)}}
-OFF = float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
+             for name, arch in (("CNN", "dscnn"), ("CRNN", "crnn")) for s in (0, 1, 2)},
+          # it16 600k and it19 colour CRNNs, seed 1, with Nightjar segments Mads heard as drones relabelled (iteration 23, entries 228-230)
+          "it23 CRNN relabel 600k s1": (ROOT / "artifacts/runs/it23_relabel_600k_s1.json",
+                                        MODEL_DIR / "it23_relabel_600k_s1_none_simdist_crnn.pt"),
+          "it23 CRNN relabel colour s1": (ROOT / "artifacts/runs/it23_relabel_colour_s1.json",
+                                          MODEL_DIR / "it23_relabel_colour_s1_none_simdist_colour_crnn.pt")}
+OFF =float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
 NO_DRONE = 0.0                                               # drone "speed" of the no-drone row (war only)
 
 

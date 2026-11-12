@@ -46,7 +46,7 @@ def feats(x: np.ndarray) -> dict[str, np.ndarray]:
     return out
 
 
-def train_score(Xtr, ytr, Xte, seed: int, dev) -> np.ndarray:
+def train_score(Xtr, ytr, Xte, seed: int, dev, save: Path | None = None) -> np.ndarray:
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     mu, sd = Xtr.mean(axis=(0, 2), keepdims=True), Xtr.std(axis=(0, 2), keepdims=True) + 1e-5
@@ -62,6 +62,8 @@ def train_score(Xtr, ytr, Xte, seed: int, dev) -> np.ndarray:
             torch.nn.functional.cross_entropy(net(xb), yb).backward()
             opt.step()
     net.eval()
+    if save is not None:   # weights plus the per-band standardisation the network expects
+        torch.save(dict(state=net.state_dict(), mu=mu, sd=sd, n_bands=Xtr.shape[1]), save)
     with torch.no_grad():
         return np.concatenate([torch.softmax(net(torch.from_numpy(((Xte[j] - mu) / sd).astype(np.float32)[:, None]).to(dev)),
                                              dim=1)[:, 1].cpu().numpy()
