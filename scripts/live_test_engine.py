@@ -12,10 +12,14 @@ layers, detectors) and the same rounds, in the same order. What differs:
     real time      the stream goes to the speakers as it is made, and every detector scores it hop by hop
                    for the live display (LiveScorer). The first LEAD_IN_S seconds are background only.
     the trigger    automatic: each round follows the one before, with its drone at the plan's start in
-                   it. manual: between rounds only the background plays; send_drone() starts the next
-                   drone round at once, with its drone at the round's start (Plan.step_s = length_s, so
-                   one start: 0 s), and the next press is taken when that round has ended. After the
-                   last drone round the no-drone rounds (if any) play by themselves.
+                   it, and the test ends with the plan (or Stop). manual: there is no plan of rounds; the
+                   settings give the drones (files x speeds x pitches x levels x backgrounds), and each
+                   press of send_drone() flies in the next of them, in turn and over again. A round runs
+                   from where the last one ended to this drone's impact + Plan.buffer_after_s, so the wait
+                   before the drone (background only) is its no-drone part; its length and the drone's
+                   start in it are the round's own (r["length_s"], r["start_s"]). The next press is taken
+                   when the round is over. The test runs until Stop: a drone still flying then is dropped,
+                   and a wait of 2 s or more becomes a last, no-drone round.
     the end        a test ends when the plan's last round has played, or when Stop is pressed. On Stop a
                    round that has played to its end is still scored; the round that is playing is
                    dropped. Either way the GUI opens the Results window once, at the end.
@@ -28,6 +32,10 @@ layers, detectors) and the same rounds, in the same order. What differs:
 Results go where the offline test's go, in the same files (rounds.csv, scores.npz, window_snr.npz,
 summary.csv, config.json), so Results and Conclusions open them; plus live.json (per round: where it
 sat on the timeline, the soundscape offset, the microphone delay and how well it was found).
+
+The alarm threshold: blank on the page, each detector alarms at its own frozen threshold; set (a
+confidence, 0-1, Plan.live["threshold"]), every detector alarms at that confidence, in the live view and
+in the alarm numbers of rounds.csv (column alarm_threshold); the confidences themselves do not change.
 
 The SNRs in rounds.csv and window_snr.npz come from the digital parts (what was sent to the speakers),
 also in microphone mode: the room and the microphone are not in them. Levels are the plan's dB SPL in
@@ -63,7 +71,8 @@ TAIL_S = 0.5                                                 # background after 
 MAX_LAG_S = 2.0                                             # microphone mode: the longest delay searched (device
                                                              # latencies, the gap between the two streams' starts, air)
 MIN_CORR = 0.05                                              # below this the delay is not trusted: the last good one is kept
-RING_S = 120.0                                               # how much of the stream is kept in memory
+RING_S = 600.0                                               # how much of the stream is kept in memory (2 x 38 MB): a
+                                                             # manual round (its wait included) must fit
 HOP = DEFAULT.samples_per_hop
 LOGMEL = LogMel(DEFAULT)
 SOURCES = ("virtual", "microphone")
@@ -93,6 +102,9 @@ class LiveTest(E.Test):
         f = self.out / "live.json"
         info = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
         self.offset_s = {int(k): v["offset_s"] for k, v in info.get("rounds", {}).items()}
+        if info.get("trigger") == "manual" and all("round" in v for v in info["rounds"].values()):
+            # manual rounds were made as they happened: they are in live.json (manual runs before entry 235 are not)
+            self.rounds = [v["round"] for _, v in sorted(info["rounds"].items(), key=lambda kv: int(kv[0]))]
         return info
 
 
@@ -281,7 +293,15 @@ class LiveRun:
         self.play_gain = 10 ** (play_gain_db / 20)
         self.mic_gain = 10 ** (mic_gain_db / 20)
         self.test = LiveTest(plan, out_folder(plan))
-        self.order = list(self.test.rounds)                  # drone rounds, then the no-drone rounds
+        self.manual = self.trigger == "manual"
+        # automatic: the plan's rounds in order (drone rounds, then no-drone rounds). manual: the plan's drone settings,
+        # flown in turn by Send drone and over again; its rounds are made as they happen (test.rounds grows)
+        self.templates = [r for r in self.test.rounds if r["drone"] is not None]
+        self.order = [] if self.manual else list(self.test.rounds)
+        if self.manual:
+            self.test.rounds = []
+        self.k_tpl = 0                                       # manual: the next drone setting
+        self.R0 = int(LEAD_IN_S * SR)                        # manual: where the current round began (timeline sample)
         self.end_pos = None                                  # timeline sample where the stream ends (plan done)
         self.L = int(round(plan.length_s * SR))
         self.stop_flag = threading.Event()
@@ -304,11 +324,10 @@ class LiveRun:
         self.stop_flag.set()
 
     def can_send(self) -> bool:
-        """Manual mode: a press now would start a drone (lead-in over, no round playing, a drone round next)."""
+        """Manual mode: a press now would start a drone (lead-in over, no drone flying or in its buffer)."""
         with self.lock:
-            return (self.trigger == "manual" and self.running and self.current is None and not self.request.is_set()
-                    and not self.stop_flag.is_set() and self.next_i < len(self.order)
-                    and self.order[self.next_i]["drone"] is not None and self.pos >= LEAD_IN_S * SR)
+            return (self.manual and self.running and self.current is None and not self.request.is_set()
+                    and not self.stop_flag.is_set() and bool(self.templates) and self.pos >= LEAD_IN_S * SR)
 
     def send_drone(self) -> bool:
         if not self.can_send():
@@ -318,41 +337,89 @@ class LiveRun:
 
     # ---------- the timeline
     def _bg_round(self) -> dict:
-        """The round whose background plays between rounds: the next one, or the last."""
+        """The round whose background plays between rounds: the next one (manual: the next drone setting's)."""
+        if self.manual:
+            return self.templates[self.k_tpl % len(self.templates)]
         return self.order[min(self.next_i, len(self.order) - 1)]
 
     def _idle(self, t: int, n: int) -> np.ndarray:
-        """Background only, timeline samples t..t+n: the looped layers at the next round's levels."""
+        """Background only, timeline samples t..t+n, at the next round's levels: the looped layers, and in manual
+        mode a layer that plays once (the car) from the current round's start, as mix_round will rebuild it."""
         r = self._bg_round()
         layers = self.test.layers_for(r)
         out = np.zeros(n)
         for name, lv in r["background"].items():
             if not layers[name].once:
                 out += layers[name].window(n, (self.s0 + t) / SR, lv)
+            elif self.manual and t >= self.R0:
+                out += layers[name].window(t - self.R0 + n, 0.0, lv)[t - self.R0:]
         return out
+
+    def _place(self, r: dict, t: int) -> None:
+        """Round r starts at timeline sample t: mix it and make it the round that plays."""
+        offset = (self.s0 + t) / SR
+        m = E.mix_round(r, self.plan, self.test.layers_for(r), self.test.drones, offset)
+        with self.lock:
+            self.test.offset_s[r["round"]] = offset
+            self.current = dict(r=r, T=t, m=m, n=len(m["mix"]), done=False)
+            self.placed.append(self.current)
+            if self.manual:
+                self.test.rounds.append(r)
+            else:
+                self.next_i += 1
+            self.request.clear()
+
+    def _manual_round(self, t: int, drone: bool) -> dict:
+        """A manual round from the current round's start R0. With a drone (the next setting) flown in at t, it
+        ends at impact + buffer; without (Stop between drones), it is R0 to t, background only."""
+        tpl = self.templates[self.k_tpl % len(self.templates)]
+        r = dict(tpl, round=len(self.test.rounds) + 1)
+        if drone:
+            imp = self.test.drones.span[tpl["drone"]][2]
+            end = t + int(round((imp + self.plan.buffer_after_s) * SR))
+            r.update(start_s=(t - self.R0) / SR, length_s=(end - self.R0) / SR)
+            self.k_tpl += 1
+        else:
+            r.update(drone=None, drone_level_db=None, start_s=None, length_s=(t - self.R0) / SR)
+        return r
+
+    def _stop_round(self, t: int) -> None:
+        """Manual, Stop between drones: R0 to t (already played as background) becomes a no-drone round."""
+        r = self._manual_round(t, drone=False)
+        offset = (self.s0 + self.R0) / SR
+        m = E.mix_round(r, self.plan, self.test.layers_for(r), self.test.drones, offset)
+        with self.lock:
+            self.test.offset_s[r["round"]] = offset
+            self.placed.append(dict(r=r, T=self.R0, m=m, n=len(m["mix"]), done=False))
+            self.test.rounds.append(r)
 
     def _maybe_start_round(self, t: int) -> None:
         if t < LEAD_IN_S * SR or self.stop_flag.is_set():
+            return
+        if self.manual:                                      # until Stop: a round per press of Send drone
+            if self.request.is_set():
+                r = self._manual_round(t, drone=True)
+                self._place(r, self.R0)
+                self._announce(r, self.R0)
             return
         if self.next_i >= len(self.order):                   # the plan is done: a short tail, then the end
             if self.end_pos is None:
                 self.end_pos = t + int((TAIL_S + (MAX_LAG_S if self.mic else 0.0)) * SR)
             return
         r = self.order[self.next_i]
-        if self.trigger == "manual" and r["drone"] is not None and not self.request.is_set():
-            return
-        offset = (self.s0 + t) / SR
-        m = E.mix_round(r, self.plan, self.test.layers_for(r), self.test.drones, offset)
-        with self.lock:
-            self.test.offset_s[r["round"]] = offset
-            self.current = dict(r=r, T=t, m=m, done=False)
-            self.placed.append(self.current)
-            self.next_i += 1
-            self.request.clear()
+        self._place(r, t)
+        self._announce(r, t)
+
+    def _announce(self, r: dict, t: int) -> None:
+        m = self.current["m"]
         span = m["truth"].drones[0] if m["truth"].drones else None
         self.events.put(("round_start", dict(
-            round=r["round"], index=self.next_i, total=len(self.order), t0=t / SR, t1=(t + self.L) / SR,
+            round=r["round"], index=r["round"] if self.manual else self.next_i, total=None if self.manual else len(self.order),
+            t0=t / SR, t1=(t + self.current["n"]) / SR,
             drone=None if span is None else (t / SR + span["start_s"], t / SR + span["end_s"]),
+            impact=None if span is None or "impact_s" not in span else t / SR + span["impact_s"],   # the distance
+            speed_kmh=None if r["drone"] is None else E.split_modified(r["drone"])[1],              # shown live:
+            closest_m=float(self.plan.approach.get("closest_m", 1.0)),                             # approach_distance
             label=E.drone_label(r["drone"]) if r["drone"] is not None else "no drone",
             level=r["drone_level_db"], background=dict(r["background"]))))
 
@@ -362,15 +429,16 @@ class LiveRun:
         while i < n:
             t = pos + i
             cur = self.current
-            if cur is not None and t >= cur["T"] + self.L:
+            if cur is not None and t >= cur["T"] + cur["n"]:
                 with self.lock:
                     self.current = None
+                    self.R0 = cur["T"] + cur["n"]            # manual: the next round starts where this one ended
                 cur = None
             if cur is None:
                 self._maybe_start_round(t)
                 cur = self.current
             if cur is not None:
-                k = min(n - i, cur["T"] + self.L - t)
+                k = min(n - i, cur["T"] + cur["n"] - t)
                 out[i:i + k] = cur["m"]["mix"][t - cur["T"]:t - cur["T"] + k]
             else:
                 k = n - i                                    # idle to the end of the block: a press waits for the next one
@@ -441,7 +509,7 @@ class LiveRun:
         self.plan.live.update(sample_rate=sr, input_sample_rate=in_sr, device=name)
         out_lat = float(out_stream.latency)
 
-        fields = E.row_fields(self.plan) + ["timeline_s", "mic_lag_ms", "mic_corr"]
+        fields = E.row_fields(self.plan) + ["alarm_threshold", "round_length_s", "timeline_s", "mic_lag_ms", "mic_corr"]
         scores, snrs = {}, {}
         jobs: queue.Queue = queue.Queue()
         fh = open(t.out / "rounds.csv", "w", newline="", encoding="utf-8")
@@ -492,7 +560,7 @@ class LiveRun:
                 for p in list(self.placed):
                     if p["done"]:
                         continue
-                    need = p["T"] + self.L + (int(MAX_LAG_S * SR) if self.mic else 0)
+                    need = p["T"] + p["n"] + (int(MAX_LAG_S * SR) if self.mic else 0)
                     if have >= need:
                         p["done"] = True
                         jobs.put(self._round_job(p))
@@ -511,7 +579,11 @@ class LiveRun:
                             self.current = None
                         if dropped is not None and dropped in self.placed and not dropped["done"]:
                             self.placed.remove(dropped)
-                    if all(p["done"] for p in self.placed) or time.time() - stopped_at > MAX_LAG_S + 1.0:
+                            if self.manual:
+                                self.test.rounds.remove(dropped["r"])
+                        elif dropped is None and self.manual and produced - self.R0 >= 2 * SR:
+                            self._stop_round(produced)        # Stop between drones: the wait is a no-drone round
+                    if all(p["done"] for p in self.placed) or time.time() - stopped_at > MAX_LAG_S + AHEAD_S + 1.5:
                         break
                 time.sleep(0.02)
         jobs.put(None)
@@ -530,8 +602,9 @@ class LiveRun:
                     wall_s=round(time.time() - t_wall, 1), rounds={str(k): v for k, v in self.info_rounds.items()})
         (t.out / "live.json").write_text(json.dumps(live, indent=1), encoding="utf-8")
         n = len(t.results)
-        self.events.put(("done", f"{'stopped' if self.stop_flag.is_set() else 'plan done'}: {n} of {len(self.order)} "
-                                 f"round{'s' * (len(self.order) != 1)} scored. Results in {t.out}" + (f"  ·  {self.fifo.underflows} speaker underflow(s)"
+        self.events.put(("done", (f"stopped: {n} round{'s' * (n != 1)} scored" if self.manual else
+                                  f"{'stopped' if self.stop_flag.is_set() else 'plan done'}: {n} of {len(self.order)} "
+                                  f"round{'s' * (len(self.order) != 1)} scored") + f". Results in {t.out}" + (f"  ·  {self.fifo.underflows} speaker underflow(s)"
                                                           if self.fifo.underflows else "")))
 
     def _display(self, x16: np.ndarray) -> None:
@@ -543,7 +616,7 @@ class LiveRun:
         r, T, m = p["r"], p["T"], p["m"]
         job = dict(r=r, T=T, m=m, heard=None, lag=None, corr=None)
         if self.mic:
-            rec = self.heard.read(T, T + self.L + int(MAX_LAG_S * SR))
+            rec = self.heard.read(T, T + p["n"] + int(MAX_LAG_S * SR))
             j, c = estimate_lag(m["mix"].astype(np.float32), rec, int(MAX_LAG_S * SR))
             if c >= MIN_CORR or self.lag is None:
                 if c < MIN_CORR:
@@ -553,9 +626,18 @@ class LiveRun:
             else:
                 self.events.put(("warn", f"round {r['round']}: correlation {c:.2f}, kept the last delay "
                                          f"{1000 * self.lag / SR:.0f} ms"))
-            job.update(heard=rec[self.lag:self.lag + self.L].astype(np.float64), lag=self.lag, corr=c)
+            job.update(heard=rec[self.lag:self.lag + p["n"]].astype(np.float64), lag=self.lag, corr=c)
             self.events.put(("lag", 1000 * self.lag / SR))
         return job
+
+    def _false_alarms(self, det: str, v: dict) -> int:
+        """How many false alarms detector `det` gave in a round: separate stretches of alarming no-drone windows
+        (an alarm that lasts several hops is one alarm), at the alarm threshold in force (the tester's, or the
+        detector's own: comb's own is 0.5 on its confidence)."""
+        alarm = self.plan.live.get("threshold")
+        thr = alarm if alarm is not None else 0.5 if det == "comb" else self.test.thr[det]
+        fa = (np.asarray(v["conf"]) >= thr) & (v["labels"] == 0)
+        return int(np.sum(fa & ~np.concatenate([[False], fa[:-1]])))
 
     def _scorer(self, jobs: queue.Queue, w, fh, scores: dict, snrs: dict) -> None:
         t = self.test
@@ -566,7 +648,7 @@ class LiveRun:
             try:
                 r, m = job["r"], job["m"]
                 ms = m if job["heard"] is None else dict(parts=m["parts"], mix=job["heard"], truth=m["truth"])
-                res = E.score_round(ms, t.thr, t.scorers)
+                res = E.score_round(ms, t.thr, t.scorers, self.plan.buffer_after_s, self.plan.live.get("threshold"))
                 q = E.snr(m)                                 # the digital parts: what was sent
                 for v in res.values():
                     v["row"].update(q)
@@ -577,7 +659,9 @@ class LiveRun:
                                     drone=E.drone_label(r["drone"]) if r["drone"] is not None else "none",
                                     drone_level_db=r["drone_level_db"], start_s=r["start_s"],
                                     **{f"{n}_db": r["background"].get(n, "off") for n in self.plan.layers}, **r["pd"],
-                                    detector=k, threshold=t.thr[k], **v["row"], timeline_s=round(job["T"] / SR, 3),
+                                    detector=k, threshold=t.thr[k], alarm_threshold=self.plan.live.get("threshold"),
+                                    round_length_s=round(len(m["mix"]) / SR, 3),
+                                    **v["row"], timeline_s=round(job["T"] / SR, 3),
                                     mic_lag_ms=None if job["lag"] is None else round(1000 * job["lag"] / SR, 1),
                                     mic_corr=None if job["corr"] is None else round(job["corr"], 3)))
                 if r["drone"] is not None and res:
@@ -592,12 +676,13 @@ class LiveRun:
                 self.info_rounds[r["round"]] = dict(
                     timeline_s=round(job["T"] / SR, 4), offset_s=t.offset_s[r["round"]],
                     mic_lag_ms=None if job["lag"] is None else round(1000 * job["lag"] / SR, 2),
-                    mic_corr=None if job["corr"] is None else round(job["corr"], 4))
+                    mic_corr=None if job["corr"] is None else round(job["corr"], 4),
+                    round=r)                                 # the round itself: manual rounds exist only here
                 self.scored += 1
-                self.events.put(("round_done", dict(round=r["round"], scored=self.scored,
+                self.events.put(("round_done", dict(round=r["round"], scored=self.scored, drone=r["drone"] is not None,
                                                     label=E.drone_label(r["drone"]) if r["drone"] is not None else "no drone",
-                                                    conf={k: (v["row"]["mean_conf_drone"], v["row"]["mean_conf_no_drone"])
-                                                          for k, v in res.items()})))
+                                                    sums={k: dict(false_alarms=self._false_alarms(k, v),
+                                                                  lead_s=v["row"]["lead_s"]) for k, v in res.items()})))
             except Exception as e:                           # noqa: BLE001  (one round lost, the run goes on)
                 import traceback
                 traceback.print_exc()

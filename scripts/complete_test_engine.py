@@ -27,7 +27,9 @@ Each round is scored by every chosen detector hop by hop (dad.wavio.stream: the 
 1 s or 2 s, and a 0.125 s hop; scores.npz puts every detector on the 1 s time axis, NaN before a 2 s
 model's first window). Windows that lie inside the drone's sound are drone, windows that lie wholly outside are no
 drone, and windows that straddle its start or end are left out, as in dad.wavio.window_labels
-(requirement R2's reading, entry 039). Per round and detector: recall, false-positive rate,
+(requirement R2's reading, entry 039). For these labels the drone phase lasts Plan.buffer_after_s
+seconds (default 1 s) past the drone's end, the impact: the detectors' cooling after the drone has gone
+counts with the drone, not as a false alarm (entries 229, 231). Per round and detector: recall, false-positive rate,
 precision, first alarm (from a window at least half drone) and its delay after the drone starts,
 lead before impact (synthetic), mean confidence in drone and in no-drone windows.
 
@@ -62,7 +64,7 @@ from scipy.signal import istft, stft  # noqa: E402
 
 from dad import propagation as prop  # noqa: E402
 from dad.config import DEFAULT  # noqa: E402
-from dad.wavio import Clip, lead_times, load_scorer, read_wav, stream, window_labels, Truth  # noqa: E402
+from dad.wavio import Clip, Decisions, lead_times, load_scorer, read_wav, stream, window_labels, Truth  # noqa: E402
 
 SR = DEFAULT.sample_rate
 FULL_SCALE_DB = dwg.es.FULL_SCALE_DB                         # 1.0 in a WAV = 110 dB SPL
@@ -330,6 +332,9 @@ class Plan:
                                                              # run without it used the 600 s track (load_test sets that)
     live: dict | None = None                                 # Live page (live_test_engine): source, trigger, devices;
                                                              # None for every offline run
+    buffer_after_s: float = 1.0                              # seconds the drone phase lasts past the drone's end
+                                                             # (impact), for the window labels (with_buffer);
+                                                             # runs before 2026-11-12 had none (load_test sets 0)
 
     def __post_init__(self):
         """Every Pure Data setting as a list of values (a plan may hold single values); an older plan's
@@ -406,6 +411,8 @@ class Plan:
             out.append(f"soundscape length must be at least the drone's {DRONE_S:g} s")
         if self.step_s <= 0:
             out.append("start step must be above 0 s")
+        if not 0 <= self.buffer_after_s <= 10:
+            out.append("the buffer after impact must be from 0 to 10 s")
         if not self.drones:
             out.append("give at least one drone speed" if self.kind == "synthetic" else "add at least one drone file")
         if self.kind in ("real", "modified") and self.drone_levels is None:
@@ -614,8 +621,9 @@ def load_detectors(names: list[str], device: str = "cpu") -> tuple[dict, dict]:
 # ------------------------------------------------------------------ a round
 
 def mix_round(r: dict, plan: Plan, layers: dict[str, Layer], drones: Drones, start_s: float) -> dict:
-    """The parts of round r at 16 kHz: each background layer, the drone, the mix; and its truth."""
-    n = int(round(plan.length_s * SR))
+    """The parts of round r at 16 kHz: each background layer, the drone, the mix; and its truth. A round is
+    plan.length_s long, or r["length_s"] when it has one (a manual live round, live_test_engine)."""
+    n = int(round(r.get("length_s", plan.length_s) * SR))
     parts = {name: layers[name].window(n, start_s, lv) for name, lv in r["background"].items()}
     truth = Truth([])
     if r["drone"] is not None:
@@ -640,34 +648,50 @@ def on_grid(score: np.ndarray, cfg) -> np.ndarray:
     return np.concatenate([np.full(lead, np.nan), score])
 
 
-def score_round(m: dict, thr: dict, scorers: dict) -> dict:
+def with_buffer(truth: Truth, buffer_s: float) -> Truth:
+    """The truth for labelling windows: each drone's phase lasts `buffer_s` seconds longer than its sound (past
+    the impact for modified and synthetic drones, past the end of a real file). The detectors take a moment to
+    come down after the drone has gone; that cooling belongs to the drone, not to the false alarms (Nicolai,
+    2026-11-12, report entries 229 and 231). Windows inside the longer phase are drone; windows straddling its
+    new end are left out, as at any end. The first alarm, the lead and the SNRs keep the real impact."""
+    if buffer_s <= 0:
+        return truth
+    return Truth([{**k, "end_s": k["end_s"] + buffer_s} for k in truth.drones], truth.meta)
+
+
+def score_round(m: dict, thr: dict, scorers: dict, buffer_s: float = 0.0, alarm: float | None = None) -> dict:
     """Every detector over a mixed round, each at its own window (sc.cfg: 1 s or 2 s): decisions,
-    labels and the round's numbers."""
+    labels and the round's numbers. `buffer_s`: the seconds the drone phase lasts past the drone's end,
+    for the window labels (with_buffer). `alarm`: a confidence (0-1) at or above which every detector
+    alarms, set by the tester (the Live demo page); None: each detector's own frozen threshold. It moves
+    only the alarm numbers (tp/fp, recall, false-positive rate, first alarm, lead), not the confidences:
+    comb's confidence stays squashed by its own threshold."""
     clip = Clip("round", m["mix"].astype(np.float32), SR, 1, "FLOAT")
     out = {}
     for k, sc in scorers.items():
         win = sc.cfg.window_seconds
         d = stream(clip, sc, sc.cfg, thr[k])
-        lab = window_labels(d, m["truth"], win)
+        lab = window_labels(d, with_buffer(m["truth"], buffer_s), win)
         conf = dwg.squash(d.score, thr[k]) if k == "comb" else d.score
-        tp, fn = int((d.drone & (lab == 1)).sum()), int((~d.drone & (lab == 1)).sum())
-        fp, tn = int((d.drone & (lab == 0)).sum()), int((~d.drone & (lab == 0)).sum())
+        a = d if alarm is None else Decisions(d.t_end, conf, float(alarm))   # what alarms: score or confidence
+        tp, fn = int((a.drone & (lab == 1)).sum()), int((~a.drone & (lab == 1)).sum())
+        fp, tn = int((a.drone & (lab == 0)).sum()), int((~a.drone & (lab == 0)).sum())
         ratio = lambda a, b: a / b if b else None                # noqa: E731
         first = delay = lead = None
         if m["truth"].drones:
             k0 = m["truth"].drones[0]
-            hit = d.drone & (d.t_end - win / 2 >= k0["start_s"]) & (d.t_end <= k0["end_s"])
+            hit = a.drone & (d.t_end - win / 2 >= k0["start_s"]) & (d.t_end <= k0["end_s"])
             if hit.any():
                 first = float(d.t_end[hit][0])
                 delay = first - k0["start_s"]
             if "impact_s" in k0:
-                lt = lead_times(d, m["truth"], win)
+                lt = lead_times(a, m["truth"], win)
                 lead = lt[0]["lead_s"] if lt else None
         out[k] = dict(dec=d, labels=lab, conf=conf,
                       row=dict(tp=tp, fn=fn, fp=fp, tn=tn, left_out=int((lab == -1).sum()),
                                recall=ratio(tp, tp + fn), false_positive_rate=ratio(fp, fp + tn),
                                precision=ratio(tp, tp + fp), first_alarm_s=first, delay_s=delay, lead_s=lead,
-                               any_alarm=bool(d.drone.any()), any_false_alarm=bool(fp),
+                               any_alarm=bool(a.drone.any()), any_false_alarm=bool(fp),
                                mean_conf_drone=float(conf[lab == 1].mean()) if (lab == 1).any() else None,
                                mean_conf_no_drone=float(conf[lab == 0].mean()) if (lab == 0).any() else None))
     return out
@@ -817,7 +841,7 @@ class Test:
                     progress(f"stopped after {i - 1} of {len(self.rounds)} rounds")
                     break
                 m = self.rebuild(r)
-                res = score_round(m, self.thr, self.scorers)
+                res = score_round(m, self.thr, self.scorers, self.plan.buffer_after_s)
                 q = snr(m)                                       # the same for every detector of the round
                 for v in res.values():
                     v["row"].update(q)

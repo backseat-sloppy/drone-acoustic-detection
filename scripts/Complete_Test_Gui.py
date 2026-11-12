@@ -515,6 +515,7 @@ class Page(ttk.Frame):
         ttk.Label(f, text="s until it ends with the soundscape").grid(row=0, column=4, sticky="w")
         ttk.Checkbutton(f, text="add one no-drone round per background (false alarms)", variable=self.v_nodrone,
                         command=self.update_count).grid(row=1, column=0, columnspan=5, sticky="w", pady=(6, 0))
+        self._build_buffer(f, row=3)
         fa = ttk.Frame(f)
         fa.grid(row=2, column=0, columnspan=5, sticky="w", pady=(4, 0))
         ttk.Label(fa, text="false alarms:").pack(side="left")
@@ -525,6 +526,18 @@ class Page(ttk.Frame):
                   style="Muted.TLabel").pack(side="left")
         for v in (self.v_len, self.v_step, self.v_fa):
             v.trace_add("write", lambda *_: self.update_count())
+
+    def _build_buffer(self, f, row: int):
+        """The buffer after impact: seconds the drone phase lasts past the drone's end (E.with_buffer)."""
+        bf = ttk.Frame(f)
+        bf.grid(row=row, column=0, columnspan=5, sticky="w", pady=(4, 0))
+        ttk.Label(bf, text="buffer after impact (s):").pack(side="left")
+        self.v_buffer = tk.StringVar(value="1")
+        ttk.Entry(bf, textvariable=self.v_buffer, width=5).pack(side="left", padx=4)
+        ttk.Label(bf, text="the \"there is a drone\" phase lasts this much longer than the drone (past the impact; past "
+                           "the end of a real file): the detectors' cooling counts with the drone, not as a false alarm",
+                  style="Muted.TLabel").pack(side="left")
+        self.v_buffer.trace_add("write", lambda *_: self.update_count())
 
     def _build_detectors(self, f):
         self.v_det = {}
@@ -582,6 +595,10 @@ class Page(ttk.Frame):
             step = float(self.v_step.get())
         except ValueError:
             raise ValueError("soundscape length and start step must be numbers") from None
+        try:
+            buffer_s = float(self.v_buffer.get().replace(",", "."))
+        except ValueError:
+            raise ValueError("buffer after impact must be a number of seconds") from None
         speeds, approach, pitches = None, None, None
         if self.kind in ("real", "modified"):
             drones = list(self.files)
@@ -621,7 +638,7 @@ class Page(ttk.Frame):
                    step_s=step, no_drone_rounds=self.v_nodrone.get(), pd_settings={**E.PD_SETTINGS, **pd_settings},
                    also_without=[n for n in layers if self.v_layer_off[n].get()], final_evaluation=self.v_final.get(),
                    car_once=True,                            # one car, one pass-by from the round's start (entry 199)
-                   fa_percentile=fa_pct(self.v_fa.get()),
+                   fa_percentile=fa_pct(self.v_fa.get()), buffer_after_s=buffer_s,
                    soundscape_start_s=float(start) if start else None, **({"synth": synth} if synth else {}),
                    **({"speeds": speeds, "approach": approach, "pitches": pitches, "pitch_random": self.v_pitch_random.get()}
                       if self.kind == "modified" else {}))
@@ -788,8 +805,10 @@ LIVE_MODES = {("virtual", "automatic"): "The plan's rounds play one after the ot
                                            "score what the microphone hears.",
               ("microphone", "manual"): "The soundscape loops out of the speaker; each press of Send drone flies in the "
                                         "next drone of the plan. The detectors score what the microphone hears."}
-LIVE_UNTIL_STOP = ("The test ends when the plan's last round has played, or when you press Stop; then the Results "
-                   "window opens once, with every finished round.")
+LIVE_UNTIL_STOP = {"automatic": "The test ends when the plan's last round has played, or when you press Stop; then the "
+                                "Results window opens once, with every finished round.",
+                   "manual": "There is no number of rounds: a round ends at the drone's impact + the buffer, the next "
+                             "starts at once, and the test runs until you press Stop; then the Results window opens."}
 DRONE_SPAN = "#f9d5d1"
 
 
@@ -881,17 +900,17 @@ class LivePage(Page):
         """The modified page's round settings, in live terms: a round is a stretch of the one soundscape."""
         self.v_len, self.v_step, self.v_nodrone = tk.StringVar(value="20"), tk.StringVar(value="1"), tk.BooleanVar(value=True)
         ttk.Label(f, text="Round length (s):").grid(row=0, column=0, sticky="w")
-        ttk.Spinbox(f, from_=10, to=600, increment=1, textvariable=self.v_len, width=8,
-                    command=self.update_count).grid(row=0, column=1, sticky="w", padx=8)
+        self.e_len = ttk.Spinbox(f, from_=10, to=600, increment=1, textvariable=self.v_len, width=8, command=self.update_count)
+        self.e_len.grid(row=0, column=1, sticky="w", padx=8)
         ttk.Label(f, text="the drone (up to 10 s, ending in its impact) starts at 0 s, then every").grid(row=0, column=2, sticky="w")
         self.e_step = ttk.Entry(f, textvariable=self.v_step, width=5)
         self.e_step.grid(row=0, column=3, sticky="w", padx=4)
         ttk.Label(f, text="s, as long as it fits in the round: one round per start").grid(row=0, column=4, sticky="w")
         self.l_step_note = ttk.Label(f, text="", style="Muted.TLabel")
         self.l_step_note.grid(row=1, column=0, columnspan=5, sticky="w")
-        ttk.Checkbutton(f, text="add one no-drone round per background (false alarms; they play after the drone rounds)",
-                        variable=self.v_nodrone, command=self.update_count).grid(row=2, column=0, columnspan=5, sticky="w",
-                                                                                pady=(6, 0))
+        self.cb_nodrone = ttk.Checkbutton(f, text="add one no-drone round per background (false alarms; they play after "
+                                                  "the drone rounds)", variable=self.v_nodrone, command=self.update_count)
+        self.cb_nodrone.grid(row=2, column=0, columnspan=5, sticky="w", pady=(6, 0))
         fa = ttk.Frame(f)
         fa.grid(row=3, column=0, columnspan=5, sticky="w", pady=(4, 0))
         ttk.Label(fa, text="false alarms:").pack(side="left")
@@ -899,8 +918,24 @@ class LivePage(Page):
         ttk.Entry(fa, textvariable=self.v_fa, width=5).pack(side="left", padx=4)
         ttk.Label(fa, text="%  of the no-drone windows lie below the threshold; Conclusions gives the threshold and the "
                            "time before impact at it", style="Muted.TLabel").pack(side="left")
+        self._build_buffer(f, row=4)
         for v in (self.v_len, self.v_step, self.v_fa):
             v.trace_add("write", lambda *_: self.update_count())
+
+    def _build_detectors(self, f):
+        """The detectors, and the alarm threshold the tester may set for all of them."""
+        super()._build_detectors(f)
+        th = ttk.Frame(f)
+        th.grid(row=99, column=0, columnspan=DET_PER_ROW, sticky="w", pady=(8, 0))
+        ttk.Label(th, text="alarm threshold (confidence, 0-1):").pack(side="left")
+        self.v_alarm = tk.StringVar(value="")
+        ttk.Entry(th, textvariable=self.v_alarm, width=6).pack(side="left", padx=4)
+        ttk.Label(th, text="blank = each detector's own threshold (frozen on validation; comb's own is 0.5 on its "
+                           "confidence). Set, every detector alarms at this confidence: the DRONE banner, the dashed "
+                           "lines and the alarm numbers in the results (recall, false positives, first alarm, lead). "
+                           "The confidences themselves do not change.", style="Muted.TLabel", wraplength=820,
+                  justify="left").pack(side="left")
+        self.v_alarm.trace_add("write", lambda *_: self.update_count())
 
     def _build_play(self, f):
         f.columnconfigure(0, weight=1)
@@ -956,6 +991,8 @@ class LivePage(Page):
                                          transform=self.ax_ban.transAxes)
         self.det_text = self.ax_ban.text(0.985, 0.5, "", fontsize=9, family="monospace", color="white", va="center",
                                          ha="right", transform=self.ax_ban.transAxes, linespacing=1.3)
+        self.dist_text = self.ax_ban.text(0.43, 0.5, "", fontsize=20, weight="bold", color="white", va="center",
+                                          ha="center", transform=self.ax_ban.transAxes, linespacing=1.1)
         self.n_cols = int(round(LIVE_SPAN_S * DEFAULT.sample_rate / DEFAULT.hop_length))
         self.spec = np.full((DEFAULT.n_mels, self.n_cols), np.nan, np.float32)
         cmap = matplotlib.colormaps["magma"].with_extremes(bad="#000004")
@@ -972,14 +1009,34 @@ class LivePage(Page):
         (self.level_line,) = self.ax_level.plot([], [], color="#777777", lw=1.0)
         self.ax_level.set(ylim=(-100, 0), xlim=(0, LIVE_SPAN_S))
         self.ax_level.set_ylabel("dBFS", fontsize=8)
-        self.ax_level.set_xlabel("seconds since Play  (shaded: a drone is flying; with the microphone, moved by its delay)",
-                                 fontsize=8)
+        self.ax_level.set_xlabel("seconds since Play  (red: a drone is flying; orange: the buffer after impact, still "
+                                 "counted as drone; with the microphone, moved by its delay)", fontsize=8)
         self.ax_level.grid(color="#e5e5e5", lw=0.5)
         self.ax_level.tick_params(labelsize=7)
         self.canvas = FigureCanvasTkAgg(self.fig, master=f)
         self.canvas.get_tk_widget().grid(row=1, column=0, sticky="ew")
-        self.l_log = tk.Label(f, text="", bg=PANEL, fg="#333333", font=("Consolas", 9), justify="left", anchor="w")
-        self.l_log.grid(row=2, column=0, sticky="ew", pady=(4, 0))
+        ttk.Label(f, text="Finished rounds (newest on top)", style="Bold.TLabel").grid(row=2, column=0, sticky="w", pady=(8, 2))
+        box = ttk.Frame(f)
+        box.grid(row=3, column=0, sticky="ew")
+        box.columnconfigure(0, weight=1)
+        cols = ("round", "drone", "detector", "false", "lead")
+        self.t_log = ttk.Treeview(box, columns=cols, show="headings", height=7, style="Log.Treeview")
+        for c, (head, w, anchor) in zip(cols, (("Round", 60, "center"), ("Drone", 330, "w"), ("Detector", 190, "w"),
+                                              ("False alarms", 110, "center"), ("Time before impact", 260, "w"))):
+            self.t_log.heading(c, text=head)
+            self.t_log.column(c, width=w, anchor=anchor, stretch=c == "drone")
+        sb = ttk.Scrollbar(box, orient="vertical", command=self.t_log.yview)
+        self.t_log.configure(yscrollcommand=sb.set)
+        self.t_log.grid(row=0, column=0, sticky="ew")
+        sb.grid(row=0, column=1, sticky="ns")
+        ttk.Style(self).configure("Log.Treeview", rowheight=24, font=("Segoe UI", 10))
+        ttk.Style(self).configure("Log.Treeview.Heading", font=("Segoe UI", 10, "bold"))
+        self.t_log.tag_configure("alarm", foreground="#b3261e")
+        self.t_log.tag_configure("odd", background="#f4f5f7")
+        ttk.Label(f, text="False alarms: separate alarms in the round's no-drone part (one alarm can last several hops), at "
+                          "the alarm threshold in force. Time before impact: the first alarm from the drone, counted back "
+                          "from the impact.", style="Muted.TLabel", wraplength=1000, justify="left").grid(
+            row=4, column=0, sticky="w", pady=(2, 0))
         self.lines, self.thr_lines, self.view_extra = {}, [], []
         self._reset_view([])
         self.canvas.draw_idle()
@@ -997,7 +1054,7 @@ class LivePage(Page):
             self.ax_score.get_legend().remove()
         if detectors:
             self.ax_score.legend(loc="upper left", fontsize=7.5, frameon=False, ncol=len(detectors))
-        self.l_log.configure(text="")
+        self.t_log.delete(*self.t_log.get_children())
         self.l_round.configure(text="")
         self.dirty = True
 
@@ -1007,18 +1064,29 @@ class LivePage(Page):
         manual = self.v_trigger.get() == "manual"
         for w in self.mic_widgets:
             w.state(["!disabled"] if mic else ["disabled"])
-        self.e_step.state(["disabled"] if manual else ["!disabled"])
-        self.l_step_note.configure(text="manual: the drone always starts at the round's start (when you press Send drone), "
-                                        "so there is one start" if manual else "")
+        for w in (self.e_len, self.e_step, self.cb_nodrone):  # automatic only
+            w.state(["disabled"] if manual else ["!disabled"])
+        self.l_step_note.configure(text="manual: none of these apply. A round runs from the end of the last one (or Play) "
+                                        "to the drone's impact + the buffer after impact, so the wait before you send a "
+                                        "drone is its no-drone part; the test runs until Stop." if manual else "")
         (self.b_send.grid if manual else self.b_send.grid_remove)()
-        self.l_mode.configure(text=LIVE_MODES[self.v_source.get(), self.v_trigger.get()] + " " + LIVE_UNTIL_STOP)
+        (self.pb.grid_remove if manual else self.pb.grid)()
+        self.l_mode.configure(text=LIVE_MODES[self.v_source.get(), self.v_trigger.get()] + " "
+                              + LIVE_UNTIL_STOP[self.v_trigger.get()])
         self.update_count()
 
     def plan(self) -> E.Plan:
         p = super().plan()
-        p.live = dict(source=self.v_source.get(), trigger=self.v_trigger.get())
-        if p.live["trigger"] == "manual":                    # the drone at the round's start: one start, 0 s
-            p.step_s = p.length_s
+        alarm = self.v_alarm.get().strip().replace(",", ".") if hasattr(self, "v_alarm") else ""
+        try:
+            alarm = float(alarm) if alarm else None
+        except ValueError:
+            raise ValueError("alarm threshold: a confidence from 0 to 1, or blank") from None
+        if alarm is not None and not 0 < alarm < 1:
+            raise ValueError("alarm threshold: above 0 and below 1, or blank")
+        p.live = dict(source=self.v_source.get(), trigger=self.v_trigger.get(), threshold=alarm)
+        if p.live["trigger"] == "manual":                    # the plan only lists the drone settings: one each
+            p.step_s, p.no_drone_rounds = p.length_s, False
         return p
 
     def update_count(self, *_):
@@ -1038,12 +1106,17 @@ class LivePage(Page):
             s = c["total"] * p.length_s
             self.l_duration.configure(text=f"plays for about {s / 60:.1f} min: {c['total']} rounds × {p.length_s:g} s, "
                                            f"after {L.LEAD_IN_S:g} s of background")
-        else:
-            n, b = c["drone_rounds"], c["backgrounds"]
-            self.l_duration.configure(text=f"{n} drone{'s' * (n != 1)} to send, one round of {p.length_s:g} s each "
-                                           f"(Send drone lights up again when the round is over)"
-                                           + (f"; then {b} no-drone round{'s' * (b != 1)} by {'itself' if b == 1 else 'themselves'}"
-                                              if p.no_drone_rounds else ""))
+        else:                                                # manual: no number of rounds, the test runs until Stop
+            n = c["drone_rounds"]
+            self.l_count.configure(text="runs until you press Stop")
+            self.l_count_detail.configure(text=f"{n} drone setting{'s' * (n != 1)} ({len(p.drones)} file"
+                                               f"{'s' * (len(p.drones) != 1)} × {len(p.speeds or [])} speed(s) × "
+                                               f"{len(p.pitches or [1])} pitch(es) × {c['drone_levels']} level(s) × "
+                                               f"{c['backgrounds']} background(s)), flown in turn by Send drone and over "
+                                               f"again", style="Muted.TLabel")
+            self.l_duration.configure(text=f"each round: the wait before you send the drone, then the drone up to its "
+                                           f"impact, then {p.buffer_after_s:g} s of buffer; Send drone lights up again "
+                                           "when the round is over")
 
     # ---------- run
     def _devices(self):
@@ -1148,13 +1221,11 @@ class LivePage(Page):
                 self.spans.append(x)
                 lvl = "" if x["level"] is None else f" at {x['level']:g} dB SPL at 1 m"
                 bg = "  ·  ".join(f"{k} {v:g} dB" for k, v in x["background"].items()) or "no background"
-                self.l_round.configure(text=f"round {x['index']} of {x['total']}: {x['label']}{lvl}  ·  {bg}")
+                of = "" if x["total"] is None else f" of {x['total']}"
+                self.l_round.configure(text=f"round {x['index']}{of}: {x['label']}{lvl}  ·  {bg}")
             elif kind == "round_done":
                 self.pb.configure(value=x["scored"])
-                bits = "   ".join(f"{k}: " + (f"drone {a:.2f}" if a is not None else "") + (" / " if a is not None and b is not None else "")
-                                   + (f"no drone {b:.2f}" if b is not None else "") for k, (a, b) in x["conf"].items())
-                self.log = (self.log + [f"round {x['round']:>4}  {x['label'][:48]:<48}  mean confidence  {bits}"])[-5:]
-                self.l_log.configure(text="\n".join(self.log))
+                self._log_round(x)
             elif kind == "lag":
                 self.lag_s = x / 1000
                 self.dirty = True
@@ -1181,6 +1252,21 @@ class LivePage(Page):
         else:
             self.after(100, self._poll)
 
+    def _log_round(self, x: dict):
+        """One finished round into the table: per detector its false alarms and its time before impact."""
+        for i, (det, s) in enumerate(reversed(list(x["sums"].items()))):   # inserted on top: keep the plan's order
+            n = s["false_alarms"]
+            if not x["drone"]:
+                lead = "no drone in this round"
+            elif s["lead_s"] is None:
+                lead = "no alarm before impact"
+            else:
+                lead = f"{s['lead_s']:.1f} s"
+            first = i == len(x["sums"]) - 1
+            self.t_log.insert("", 0, values=(x["round"] if first else "", x["label"] if first else "",
+                                             "DSP (comb)" if det == "comb" else det, n, lead),
+                              tags=(("alarm",) if n else ()) + (("odd",) if x["round"] % 2 else ()))   # rounds banded
+
     def _on_dec(self, d: dict):
         if d["cols"] is not None:
             c = min(d["cols"].shape[1], self.n_cols)
@@ -1200,7 +1286,8 @@ class LivePage(Page):
 
     def _thresholds(self) -> dict:
         thr = getattr(self.run.test, "thr", None) if self.run else None
-        return {} if not thr else {k: 0.5 if k == "comb" else float(v) for k, v in thr.items()}
+        alarm = self.run.plan.live.get("threshold") if self.run else None
+        return {} if not thr else {k: alarm if alarm is not None else 0.5 if k == "comb" else float(v) for k, v in thr.items()}
 
     def _redraw(self):
         self.dirty = False
@@ -1227,9 +1314,14 @@ class LivePage(Page):
         for s in self.spans:
             if s["drone"] is not None:
                 a, b = s["drone"][0] + lag, s["drone"][1] + lag
-                if b >= x0 and a <= x1:
+                buf = self.run.plan.buffer_after_s if self.run else 0.0
+                if b + buf >= x0 and a <= x1:
                     self.view_extra += [ax.axvspan(a, b, color=DRONE_SPAN, alpha=0.6, lw=0, zorder=0)
                                         for ax in (self.ax_score, self.ax_level)]
+                    if buf > 0:                              # the buffer after impact: still the drone phase
+                        self.view_extra += [ax.axvspan(b, b + buf, facecolor="#f4a261", alpha=0.3, lw=0, zorder=0,
+                                                       hatch="//", edgecolor="#e07b22")
+                                            for ax in (self.ax_score, self.ax_level)]
             if x0 <= s["t0"] + lag <= x1:
                 self.view_extra += [ax.axvline(s["t0"] + lag, color="#555555", lw=0.8, ls=":")
                                     for ax in (self.ax_score, self.ax_level)]
@@ -1243,7 +1335,24 @@ class LivePage(Page):
                                "stopped" if self.run.stop_flag.is_set() else "finished")
         self.det_text.set_text("\n".join(f"{k[:22]:<22} {v:5.2f}" + (f" / {thr[k]:.2f}" if k in thr else "")
                                          + ("  DRONE" if k in on else "       ") for k, v in last.items()))
+        self.dist_text.set_text(self._distance(t_now, lag) if running else "")
         self.canvas.draw_idle()
+
+    def _distance(self, t: float, lag: float) -> str:
+        """How far the flying drone is from the microphone at t (the end of the window the detectors just heard),
+        by the approach of the modified test: hypot(distance at impact, v x time left), with the time left before
+        impact; "" with no drone flying."""
+        for s in reversed(self.spans):
+            if s.get("impact") is None or s.get("speed_kmh") is None or s["drone"] is None:
+                continue
+            impact = s["impact"] + lag
+            if s["drone"][0] + lag <= t < impact:
+                left = impact - t
+                r = float(np.hypot(s["closest_m"], s["speed_kmh"] / 3.6 * left))
+                return f"drone {r:,.0f} m away\n{left:.1f} s to impact".replace(",", " ")
+            if impact <= t < impact + 1.5:
+                return "IMPACT"
+        return ""
 
     def open_results(self):
         if self.test and self.test.results:
@@ -1282,11 +1391,16 @@ class Results(tk.Toplevel):
         top.pack(fill="x")
         c = self.test.plan.count()
         lv = self.test.plan.live
-        ttk.Label(top, text=(f"live demo test ({lv['source']}, {lv['trigger']}) · {len(self.test.results)} of {c['total']} "
-                             f"rounds · {self.test.plan.length_s:g} s each, one continuous soundscape" if lv else
-                             f"{self.test.plan.kind} drone test · {len(self.test.results)} of {c['total']} rounds · "
-                             f"soundscape {self.test.plan.length_s:g} s from {self.test.start_s:g} s in the war track"),
-                  style="H2.TLabel").pack(side="left")
+        buf = f" · buffer after impact {self.test.plan.buffer_after_s:g} s"
+        head = (f"live demo test ({lv['source']}, manual) · {len(self.test.results)} rounds, each to impact + buffer, "
+                "until Stop · one continuous soundscape" if lv and lv["trigger"] == "manual" else
+                f"live demo test ({lv['source']}, {lv['trigger']}) · {len(self.test.results)} of {c['total']} rounds · "
+                f"{self.test.plan.length_s:g} s each, one continuous soundscape" if lv else
+                f"{self.test.plan.kind} drone test · {len(self.test.results)} of {c['total']} rounds · "
+                f"soundscape {self.test.plan.length_s:g} s from {self.test.start_s:g} s in the war track")
+        if lv and lv.get("threshold") is not None:
+            buf += f" · alarm threshold {lv['threshold']:g} (set by the tester)"
+        ttk.Label(top, text=head + buf, style="H2.TLabel").pack(side="left")
         ttk.Button(top, text="Open folder", command=lambda: os.startfile(self.test.out)).pack(side="right")
         ttk.Button(top, text="Conclusions", style="Accent.TButton",
                    command=lambda: Conclusions(self, self.test)).pack(side="right", padx=6)
@@ -1448,9 +1562,14 @@ class Results(tk.Toplevel):
                  + "".join(f" · {PD_LABELS[k]} {r['pd'][k]:g}" for k in self.test.plan.pd_swept() if k in r["pd"])
                  + "".join(f" · {n} off" for n in r["off"]))
         ax1.set_title(title, fontsize=9, loc="left")
+        buf = self.test.plan.buffer_after_s
         for k in m["truth"].drones:
             for ax in (ax2, ax3):
                 ax.axvspan(k["start_s"], k["end_s"], color="#d93025", alpha=0.06, lw=0)
+                if buf > 0:                                  # the buffer: still the drone phase (E.with_buffer)
+                    ax.axvspan(k["end_s"], k["end_s"] + buf, facecolor="#f4a261", alpha=0.25, lw=0,
+                               hatch="//", edgecolor="#e07b22")
+                    ax.axvline(k["end_s"], color="#d93025", lw=0.9, ls=":")
         for det in self.test.plan.detectors:
             s = self.scores.get(f"{rnd}|{det}")
             if s is None or len(s) != len(t_end):
@@ -1461,8 +1580,9 @@ class Results(tk.Toplevel):
         ax2.axhline(0.5, color="#888", ls="--", lw=0.9)          # a fixed 50 % mark, not a threshold (Mads)
         ax2.set(ylim=(0, 1.02), ylabel="confidence")
         ax2.legend(loc="upper left", fontsize=8, frameon=False, ncol=5)
-        ax2.set_title("each detector's confidence (dashed = 50 %; red band = drone sound; "
-                      "decision at the end of its 1 s window)", fontsize=8, loc="left", color=MUTED)
+        ax2.set_title("each detector's confidence (dashed = 50 %; red band = drone sound"
+                      + (f"; orange = buffer after impact, {buf:g} s, still counted as drone" if buf > 0 else "")
+                      + "; decision at the end of its 1 s window)", fontsize=8, loc="left", color=MUTED)
         parts = dict(m["parts"], mix=m["mix"])
         lv = E.hop_levels(parts, t_end)
         for name, y in lv.items():
@@ -2564,7 +2684,8 @@ def load_test(folder: Path) -> E.Test:
     plan = E.Plan(**{k: p[k] for k in ("kind", "length_s", "drones", "drone_levels", "layers", "detectors", "step_s",
                                        "no_drone_rounds", "soundscape_start_s", "synth")},
                   **{k: p[k] for k in ("speeds", "approach", "pitches", "pitch_random", "pd_settings", "also_without", "final_evaluation", "car_engines", "car_once", "fa_percentile", "live") if k in p},   # not in every run's config
-                  war_file=p.get("war_file", str(E.WAR_TRACK)))   # a run from before WarSoundScape.wav used the 600 s track
+                  war_file=p.get("war_file", str(E.WAR_TRACK)),   # a run from before WarSoundScape.wav used the 600 s track
+                  buffer_after_s=p.get("buffer_after_s", 0.0))    # a run from before the buffer counted from the impact on
     t = L.LiveTest(plan, folder) if plan.live else E.Test(plan, folder)
     if plan.live:
         t.load_live()                                        # each round's place in the one continuous soundscape

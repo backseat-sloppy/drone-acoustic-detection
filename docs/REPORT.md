@@ -13399,3 +13399,221 @@ Also: "1 test rounds" is now "1 test round" on every page.
 | Manual, Stop while the drone round plays | 0 | message: no round finished | none |
 
 The page was screen-grabbed and looked at (sections 1, 4-6 and the live view during and after a run). `uv run pytest`: all pass.
+
+## 229 - Complete test: a buffer after impact (default 1 s) that counts as neither drone nor no drone
+
+- Date: 2026-11-12
+- Type: Evaluation protocol change (requested by Nicolai; changes what "no drone" means in drone rounds)
+- Commit: as entry 226; uncommitted `scripts/complete_test_engine.py`, `scripts/live_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**Why.** Nicolai: after impact the detectors' confidence takes a moment to come down ("cooling time"), and that moment was counted as false positives, which skewed the results. Until now, every window in a drone round that lay wholly after the drone's end counted as no drone, from the impact on. Windows straddling the end were already left out (entry 039's reading).
+
+**What changed.**
+- A new plan setting `Plan.buffer_after_s` (default 1 s, allowed 0-10 s). It is on every setup page (Real, Modified, Live demo), under Test rounds as "buffer after impact (s)".
+- `complete_test_engine.after_drone_left_out` relabels as left out (-1) every no-drone window that overlaps the first `buffer_after_s` seconds after the drone's end. The end is the impact for modified and synthetic drones, and the end of the file for a real drone, which has no impact. With a 1 s window and 1 s buffer, that leaves out 8 more windows per drone round (window ends 1-2 s after impact) beyond the straddling ones.
+- `score_round` takes the buffer. `Test.run` and the live engine pass the plan's value.
+- Through the per-round rows it reaches every number made from them: false-positive rate, false confidence (`mean_conf_no_drone`), "any false alarm", left out, and Conclusions' true/false confidence.
+- Unchanged:
+  - drone windows, recall and the first alarm / lead;
+  - the no-drone rounds and the false-alarm threshold, which uses only no-drone rounds.
+- The Results window's heading gives the buffer.
+- A run made before this has no buffer in its config. `load_test` reopens it with 0 s, so its numbers stay as they were made, and earlier report entries keep their meaning. Old runs are not rescored.
+
+**Check** (`buffer_check.py` in the session scratchpad). Plan:
+- `PeterDrones/03_d3set_23oct_vol3_X500_3m.wav` at 100 km/h and 80 dB SPL at 1 m;
+- war soundscape at 60 dB SPL from 5 s; 16 s rounds with starts 0, 2, 4, 6 s plus one no-drone round; it9 CRNN and comb;
+- run twice with `Test.run`, buffer 0 s and 1 s.
+
+Results:
+- Rounds with time after impact (starts 0-4 s): left out +8, no-drone windows -8.
+- Start 6 s: the impact is at the round's end, so nothing changes.
+- The no-drone round and recall are unchanged.
+- comb, false positives in rounds 1-3: 36/25/9 at 0 s, 33/17/1 at 1 s. Round 3's false alarms were almost all the cooling.
+- it9 CRNN had no false positives in either case. Its false confidence moved by at most 0.003, since the windows dropped were low.
+
+Further checks:
+- All three pages read buffer 1 s by default, and their plans carry it.
+- The newest older modified run reopens with 0 s.
+- `uv run pytest`: all pass.
+
+Simulated modified drones on non-held-out sources: a tool check, not a detection result.
+
+**Assessment.** This changes the evaluation protocol: results with and without the buffer are not comparable, and the "false" side of every drone round now starts `buffer_after_s` after impact. CLAUDE.md section 4 asks for the council before changing the evaluation protocol. It was not convened, because Nicolai set the change directly. That is recorded here.
+
+## 230 - Live demo test: the drone's distance to the microphone in the live view
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/live_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What.** The live view's banner now shows, in large type in its middle, how far the flying drone is from the microphone and the time left before impact, for example "drone 170 m away / 6.1 s to impact". Just after impact it shows "IMPACT" for 1.5 s, and nothing while no drone flies.
+- **Formula.** The distance is the modified test's own geometry (`complete_test_engine.approach_distance`): hypot(distance at impact, v x time left), at the speed of the round's drone and the plan's distance at impact.
+- **Timing.** It is given for the end of the window the detectors have just heard, so it lines up with the confidence beside it. In microphone mode it is moved by the measured delay.
+- **Data.** Each round's start event from `live_test_engine` now also carries the impact time, the speed and the distance at impact.
+
+**Check** (`gui_check2.py` in the session scratchpad, virtual automatic, 100 km/h, distance at impact 1 m; run `20261112_105837_live_virtual_automatic`):
+- 11.2 s after Play the banner read "drone 170 m away / 6.1 s to impact". 100/3.6 x 6.1 = 169 m, the same up to rounding.
+- Between rounds it read nothing.
+- The saved figure was looked at.
+
+It is a display only: nothing in the results changes.
+
+## 231 - Correction to entry 229: the buffer after impact makes the drone phase longer; it does not leave windows out
+
+- Date: 2026-11-12
+- Type: Correction (of entry 229; evaluation protocol, requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What was wrong.** Entry 229 made the buffer a stretch that counts as neither drone nor no drone. Nicolai: the "there is a drone" phase should last one second longer than the impact.
+
+**Now.** `complete_test_engine.with_buffer` lengthens each drone's truth span by `Plan.buffer_after_s` (default 1 s) past the drone's end, and `score_round` labels windows against that longer span with the usual rule:
+- windows wholly inside are drone;
+- windows straddling the new end are left out;
+- windows wholly after it are no drone.
+`after_drone_left_out` is removed. The first alarm, the lead and the window SNRs still use the real impact. The setting and its default are unchanged; its text on the setup pages now says the drone phase lasts that much longer.
+
+With a 1 s window and a 1 s buffer:
+- windows ending up to 1 s after impact are now drone (before: left out, as they straddled the impact);
+- windows ending 1-2 s after impact are left out (before: no drone);
+- no-drone windows start 2 s after impact.
+
+**Check** (`buffer_check.py` in the session scratchpad, the same plan as entry 229, `Test.run` with 0 s and 1 s). Rounds 1-3 have time after impact:
+- drone windows 73 to 81, no-drone windows -8, left out unchanged.
+- Round 4 (impact at the round's end) and the no-drone round do not change, and neither does the first alarm.
+
+| Detector, round | Result | 0 s | 1 s |
+|---|---|---|---|
+| it9 CRNN, round 1 | true confidence | 0.376 | 0.341 |
+| it9 CRNN, round 2 | true confidence | 0.410 | 0.371 |
+| it9 CRNN, round 3 | true confidence | 0.443 | 0.402 |
+| it9 CRNN, round 1 | recall | 0.356 | 0.321 |
+| comb, rounds 1 / 2 / 3 | false positives | 36 / 25 / 9 | 33 / 17 / 1 |
+
+- it9 CRNN comes down within about a window of impact, so the first second after impact is mostly low confidence. Counting it as drone lowers its true confidence and recall a little.
+- comb's alarms after impact leave the false side, as entry 229's version did.
+
+`uv run pytest`: all pass. Simulated modified drones on non-held-out sources: a tool check, not a detection result.
+
+**Assessment.** As in entry 229, this is a change to the evaluation protocol set by Nicolai, and the council was not convened. Runs made between entries 229 and 231 (none reported) used the left-out version, and their config.json cannot tell the two versions apart. Older runs still reopen with 0 s.
+
+## 232 - The buffer after impact is drawn in the graphs
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**Why.** Nicolai could not see the buffer of entry 231 in the Results window's round graphs: they drew the red drone band only up to the impact.
+
+**What.**
+- **Results window, the selected round's two lower graphs** (confidence and dB SPL): the buffer is an orange hatched band from the impact to impact + `buffer_after_s`, with a dotted red line at the impact. The graph's caption says so.
+- **Live view:** the same band after each drone's red span.
+- A run with buffer 0 s (every run before entry 229) draws no band.
+
+**Check** (`results_fig.py` in the session scratchpad): `20261112_105837_live_virtual_automatic`, round 1, reopened with the buffer set to 1 s, its figure saved and looked at. The band runs 10-11 s, after the drone band 0-10 s.
+
+**Seen in that figure, not examined.** it9 CRNN falls from about 0.98 to near 0 at the first decision after impact. Its windows ending 10-11 s still hold up to 1 s of the loudest drone, at 67 dB SPL in the 1 s level. So for this network the first second after impact is low confidence, which is why the buffer lowered its true confidence in entry 231. comb stays high after impact. A likely cause is the drone's abrupt end in the window, but this was not checked.
+
+## 233 - Live demo test: an alarm threshold the tester sets
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/complete_test_engine.py`, `scripts/live_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What.** The Live demo page has, under 5 Detectors, an "alarm threshold (confidence, 0-1)" box.
+- **Blank** (the default, as before): each detector alarms at its own threshold, frozen on validation, and comb at 0.5 on its squashed confidence.
+- **Set:** every detector alarms at that confidence. The value is stored in `Plan.live["threshold"]`. It applies to:
+  - the live view: the DRONE banner and the dashed lines;
+  - the alarm numbers of every round: tp/fp/tn/fn, recall, false-positive rate, precision, first alarm, delay and lead, any (false) alarm. rounds.csv gets a column `alarm_threshold`, and the Results heading shows the value.
+- The confidences do not change, and neither do Conclusions' true/false confidence or its own false-alarm threshold (the percentile box). comb's confidence stays squashed by its own threshold.
+- **Code.** `complete_test_engine.score_round` takes `alarm`. With it set, a window alarms when its confidence is at or above it, through a `Decisions` on the confidence. The Real and Modified pages do not pass it and are unchanged.
+
+**Check** (`alarm_check.py` in the session scratchpad: `20261112_105837_live_virtual_automatic` round 1 rebuilt and scored with the 1 s buffer):
+
+| Detector | Alarm threshold | tp | recall | first alarm | lead |
+|---|---|---|---|---|---|
+| it9 CRNN | own (0.483) | 22 | 0.272 | 3.0 s | 7.0 s |
+| it9 CRNN | 0.3 | 24 | 0.296 | 3.0 s | 7.0 s |
+| it9 CRNN | 0.9 | 16 | 0.198 | 8.125 s | 1.875 s |
+| comb | own (0.5) | 14 | 0.173 | 4.125 s | 5.875 s |
+| comb | 0.3 | 14 | 0.173 | 4.125 s | 5.875 s |
+| comb | 0.9 | 2 | 0.025 | 10.0 s | 0.0 s |
+
+- The mean confidences are the same in all three: it9 CRNN 0.307 / 0.010, comb 0.124 / 0.949.
+- The box takes blank and 0.4. It refuses 1.5 and "abc" with the reason, and the plan cannot run then.
+- `uv run pytest`: all pass.
+
+A tool check on a simulated modified drone, not a detection result. A threshold chosen by hand on a live run is not one frozen on validation: numbers at a hand-set threshold must say so (the Results heading and rounds.csv do).
+
+## 234 - Live demo test: the round log is a table of false alarms and time before impact
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/live_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What.** Under the live view, the five-line text log of each round's mean drone / no-drone confidence is replaced by a table "Finished rounds (newest on top)". The columns are Round, Drone, Detector, False alarms and Time before impact, with one row per detector, rounds banded in grey and a row with false alarms in red.
+- **False alarms:** the number of separate alarms in the round's no-drone part. A run of alarming no-drone windows is one alarm, so an alarm lasting several hops counts once (`LiveRun._false_alarms`). It uses the alarm threshold in force: the tester's (entry 233), or the detector's own, with comb's own at 0.5 on its confidence. "No drone" follows the window labels, so the buffer after impact (entry 231) is not on the false side.
+- **Time before impact:** the round's lead (`lead_s`, the first alarm at least half drone and no later than impact, counted back from the impact). Otherwise it reads "no alarm before impact", or "no drone in this round".
+- Before, these were only in rounds.csv: fp there counts windows, not alarms.
+
+**Check** (`gui_check2.py` in the session scratchpad, virtual automatic; run `20261112_120026_live_virtual_automatic`). The table read, newest first:
+
+| Round | Detector | False alarms | Time before impact |
+|---|---|---|---|
+| 3 (no drone) | it9 CRNN | 0 | no drone in this round |
+| 3 (no drone) | comb | 9 | no drone in this round |
+| 2 | it9 CRNN | 0 | 3.9 s |
+| 2 | comb | 1 | 9.5 s |
+| 1 | it9 CRNN | 0 | 7.0 s |
+| 1 | comb | 1 | 5.9 s |
+
+Round 1's leads match entry 233's at the detectors' own thresholds (7.0 s and 5.9 s). The page was screen-grabbed and looked at. The run went to the system default output, which on this PC was a Bluetooth headset at the time.
+
+## 235 - Live demo test, manual: no number of rounds; a round ends at impact + buffer, the test at Stop
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/live_test_engine.py`, `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What Nicolai asked.** In manual mode there should be no number of test rounds. The settings are set, every buffer after an impact ends a round and the next round begins, and the test runs until Stop.
+
+**Now, in manual mode** (`live_test_engine.LiveRun`, the `manual` paths).
+- **The settings.** They give the drone settings: files x speeds x pitches x levels x backgrounds, one each. Send drone flies the next one in, in turn and over again. Round length, start step and no-drone rounds do not apply; they are greyed on the page with the reason.
+- **A round** runs from where the last one ended (or 3 s after Play) to this drone's impact + `buffer_after_s`. The wait before the press, background only, is the round's no-drone part, and the next round starts at once. Each round has its own length and drone start (`r["length_s"]`, `r["start_s"]`): `complete_test_engine.mix_round` takes the length from the round when it has one, and rounds.csv gets `round_length_s`.
+- **During the wait** the background is the next setting's. A layer that plays once (the car) starts at the round's start, as `mix_round` rebuilds it.
+- **Stop:**
+  - a drone still flying (or in its buffer) is dropped with its round;
+  - a wait of 2 s or more becomes a last no-drone round;
+  - the Results window opens once.
+- **live.json** keeps every manual round (they exist nowhere else), and `LiveTest.load_live` reopens a manual run with them. Manual runs from before this entry reopen with their plan's rounds, as before.
+- **The page in manual.** "runs until you press Stop" replaces the round count. A line names the drone settings and what a round is. The progress bar is hidden, and the round line has no "of N".
+- **Automatic mode is unchanged:** the plan's rounds, ending with the plan or Stop.
+
+**Check, headless** (`manual_check.py` in the session scratchpad: virtual, two drone settings, 100 and 150 km/h; waits of 2, 5 and 0 s before the three presses, then Stop 4 s into the next wait; run `20261112_121152_live_virtual_manual`):
+
+| Round | Drone | Start in round | Length | Drone / no-drone / left-out windows (it9 CRNN) |
+|---|---|---|---|---|
+| 1 | 100 km/h | 2.0 s | 13.0 s | 81 / 9 / 7 |
+| 2 | 150 km/h | 5.1 s | 16.1 s | 80 / 33 / 8 |
+| 3 | 100 km/h | 0.1 s | 11.1 s | 80 / 0 / 1 |
+| 4 | none (the wait at Stop) | - | 4.2 s | 0 / 26 / 0 |
+
+- Each round started where the one before ended and ended 1.0 s after its impact.
+- The run reopened with the same four rounds and results. A fresh `score_round` on each rebuilt round equals the saved scores, for both detectors.
+
+**Check, the page** (`gui_check3.py`, manual, Stop at 30 s):
+- In manual it shows "runs until you press Stop" and "3 drone settings (1 file x 3 speeds x ...)". Round length, step and no-drone rounds are greyed, and the progress bar is hidden. Back in automatic: "34 test rounds", all enabled.
+- In the run, three presses were made and the third drone was flying at Stop. Results opened once with rounds 1 and 2.
+
+`uv run pytest`: all pass.
+
+**Not handled.**
+- In a manual run, "drone start" (`start_s`) is the wait before the press, not a setting. summary.csv and Conclusions' per-setting graphs list it as a varied setting with one value per round.
+- A wait longer than about 115 s loses the start of the microphone recording (the ring holds 120 s), so in microphone mode the round's first part would be scored on silence.
+
+## 236 - Live demo test: the stream kept in memory is 600 s, so a long manual wait is scored whole
+
+- Date: 2026-11-12
+- Type: Bug fix (of the limit noted in entry 235)
+- Commit: as entry 226; uncommitted `scripts/live_test_engine.py`, `docs/REPORT.md`
+
+`RING_S`, how much of the digital stream and of the microphone recording the live engine keeps, is raised from 120 s to 600 s (about 38 MB each at 16 kHz). A manual round, including the wait before the press, is now scored whole up to about 595 s. Before, the limit was about 115 s, past which the microphone mode would have scored the round's start as silence. Not run with a wait that long; the headless manual check of entry 235 was not repeated, since only the constant changed.
