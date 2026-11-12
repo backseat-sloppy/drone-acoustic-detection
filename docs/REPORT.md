@@ -13264,3 +13264,138 @@ So the 58 windows above the threshold would be roughly 4-40 separate alarms in 2
 - `uv run pytest`: all pass.
 - `drone_war_grid` has 33 models. `detect_gui` imports.
 - `Complete_Test_Gui.detector_names()` lists it22 PCEN and not it21.
+
+## 226 - Complete_Test_Gui: a Live test page replaces the Synthetic drone test (virtual or microphone, automatic or manual)
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: on branch `NicolaiBranchGUI` at fde4425; uncommitted: new `scripts/live_test_engine.py`; changed `scripts/Complete_Test_Gui.py`, `scripts/complete_test_engine.py`, `docs/REPORT.md`
+
+**What was asked.** A new page in `Complete_Test_Gui`, all the way to the right and replacing the Synthetic drone test, that brings `live_gui` into the complete test. It has two switches: virtual or microphone, and automatic or manual. All settings come from the modified drone test and are set before Play. After Play the only actions are Send drone and Stop. Each combination:
+- Virtual + automatic: the modified drone test, but in real time and played out loud. The war soundscape loops until the test is over.
+- Virtual + manual: the soundscape loops, and a button sends the next drone.
+- Microphone + manual: the background loops and drones are sent, but confidence comes from the microphone, as in `live_gui`.
+- Microphone + automatic: the plan sends the drones, and confidence comes from the microphone.
+A run gives many test rounds in the same files as the other pages.
+
+**Design** (`scripts/live_test_engine.py`; its docstring holds the full description).
+- **The same plan and rounds as the modified test, in the same order.** The page is the modified page's settings plus the switches. The plan records them in a new field `Plan.live` (source, trigger, sample rate, device). That field is None for every offline run, so older plans and runs are unchanged.
+- **One continuous timeline.**
+  - The first 3 s (`LEAD_IN_S`) are background only.
+  - After that, round follows round. Round k's background starts where round k-1's ended, so the war soundscape loops without a break.
+  - `LiveTest.offset_s` keeps each round's place in the soundscape, so `rebuild()` (Results, Conclusions' SNR rebuild) gives the mix that was actually played.
+  - A once-only layer (the car) starts with each round, as offline.
+- **Automatic.** Each round plays its `length_s` with the drone at the plan's start in it.
+- **Manual.**
+  - Between rounds only the background plays, at the next round's levels.
+  - Send drone starts the next drone round at once, with the drone at the round's start. The page sets `step_s = length_s`, so there is one start at 0 s.
+  - The button stays greyed until that round has ended, so rounds never overlap.
+  - After the last drone round, the no-drone rounds (if ticked) play by themselves.
+  - A press reaches the speaker after up to about 0.6 s: 0.1 s of block plus 0.5 s already queued.
+- **Virtual scoring.** Each round is scored by `complete_test_engine.score_round` on the mix it played. The numbers are therefore the offline engine's on the same mix.
+- **Microphone scoring.**
+  - One duplex sounddevice stream plays and records, so the two share a clock.
+  - Each round is scored on the recording over that round. The round is located by cross-correlating the recording with the mix, searching delays of 0-1 s (`MAX_LAG_S`).
+  - A correlation below 0.05 is not trusted, and the last good delay is kept. Either way the page shows a note.
+  - Each round's heard audio is saved in `heard/round_NNNN.wav`. The Results window plays and draws that as the mix.
+- **SNRs.** In `rounds.csv` and `window_snr.npz` they come from the digital parts, also in microphone mode. The room and the microphone are not in them.
+- **The live view** is `live_gui`'s view, built into the page:
+  - DRONE / listening banner with each detector's latest confidence and threshold.
+  - Log-mel spectrogram, and every detector's confidence on the shared 0.125 s grid (comb squashed as elsewhere).
+  - Shaded spans where a drone is flying (moved by the measured delay in microphone mode), dotted round boundaries, and the level, over the last 30 s.
+  - A log of the last five rounds' mean confidence.
+  - This display scoring is separate from the round scoring, and only round scoring is saved.
+- **Files** are the other pages' files, in `artifacts/complete_test/<time>_live_<source>_<trigger>/`: rounds.csv, with three extra columns `timeline_s`, `mic_lag_ms` and `mic_corr`; scores.npz; window_snr.npz; summary.csv; config.json. A new live.json holds per round the timeline start, soundscape offset, delay and correlation, plus the device, rate, gains and speaker underflows. `plan.kind` stays "modified", so Results and Conclusions treat a live run as a modified run. `load_test` reopens it as a `LiveTest`.
+- **Levels.** Full scale is 110 dB SPL, as everywhere. Playback gain changes only what goes to the speaker. Mic gain scales the recording before scoring. Neither speaker nor microphone is calibrated, so in microphone mode the detectors do not hear the plan's dB SPL. The page says so.
+- **The Synthetic page is gone from the GUI.** Its runs still open with "Open results...", and the engine still runs synthetic plans (`complete_test_run.py`). The pages are now Real, Modified, Live.
+
+**Checks.** Plan in every check:
+- 12 s rounds, one non-sealed file, `PeterDrones/03_d3set_23oct_vol3_X500_3m.wav`, at 100 km/h and 80 dB SPL at 1 m.
+- War soundscape at 60 dB SPL; it9 CRNN and comb; one no-drone round.
+
+The scripts `live_check.py` and `gui_check.py` are in the session scratchpad.
+- **Virtual + automatic** (`20261112_093940_live_virtual_automatic`, playback gain -50 dB):
+  - Starts at 3 s, two drone rounds 12 s apart on the wall clock, then the no-drone round. 3 of 3 rounds scored.
+  - 307 live decisions to t = 39.25 s, which is 8 per second.
+  - Every saved score array equals a fresh `score_round` on `LiveTest.rebuild()` of the same round (`np.allclose`, all 6 detector-rounds).
+- **Virtual + manual** (`20261112_094049_live_virtual_manual`):
+  - The press was taken as soon as the lead-in was over, and the drone round started at once.
+  - The no-drone round followed by itself. Rebuild equals saved on all 4 detector-rounds.
+- **Microphone + automatic** (`20261112_094131_live_microphone_automatic`, this laptop's own microphone array and speaker, playback gain +20 dB):
+  - Runs to the end, saves `heard/`, and Results reopens it with the heard audio. A round is 192,000 samples.
+  - **The delay was not found reliably:** correlation 0.02-0.06, delays 249 ms and then 867 ms. The heard rounds are at -35 to -48 dBFS, so the microphone hears sound. The laptop's array processing (echo cancellation) probably removes the speaker's own output.
+  - **Microphone mode is therefore not verified with a real speaker and microphone.** It must be tried on the measurement setup before any number from it is used.
+- **The page itself** (`gui_check.py`, both triggers, virtual):
+  - The tabs read Real drone test, Modified drone test, Live test.
+  - The count and duration lines are right (manual: "1 drones for you to send ...").
+  - Settings and switches lock on Play. Send drone is pressed through the button.
+  - The run ends, and the Results window opens on it.
+  - The figure was saved and looked at: spectrogram, both confidences with thresholds, drone spans, round lines and banner are right.
+  - A screen grab of the whole window was not possible from this session (it captured the desktop), so the layout of the controls was not looked at.
+- Microphone + manual was not run as its own case. It combines the two checked paths.
+- `uv run pytest`: all pass.
+
+**Not done.**
+- The live view has no confidence display after a run ends: the Results window has it.
+- Speakers beyond two channels (the surround array of test 3) are not addressed: the mono mix goes to the first two channels.
+
+These are simulated modified drones on non-held-out sources: a tool check, not a detection result.
+
+## 227 - The Live test page is renamed "Live demo test"
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+The page of entry 226 is now called "Live demo test": the tab and page title, the module docstring and the Results window's heading ("live demo test (source, trigger)"). Run folders keep the name `<time>_live_<source>_<trigger>`, and nothing else changed. Check: `Complete_Test_Gui` imports and `PAGES` ends with ("live", "Live demo test").
+
+## 228 - Live demo test: the microphone stopped at Play; the page cleaned up; Results once, at the end
+
+- Date: 2026-11-12
+- Type: Bug fix and evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/live_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**The bug.** Nicolai's first microphone runs stopped at Play with `PortAudioError: Illegal combination of I/O devices [-9993]`, so no round was scored and no Results window came. Entry 226 opened the speaker and the microphone as one duplex stream, and PortAudio refuses a duplex stream whose two devices sit on different host APIs (MME, WASAPI, ...). Entry 226's microphone check used the system defaults, which are both MME, so it did not catch this.
+
+**The fix.**
+- The microphone now has its own input stream and the speaker its own output stream, each at a rate its device takes. The input stream starts first, so the speaker's sound always arrives later in the recording.
+- The delay measured each round now also absorbs the gap between the two starts and any drift between the two clocks.
+- The delay searched is 0-2 s (`MAX_LAG_S`, was 1 s).
+
+**Check** (`live_check.py`, `gui_check2.py` in the session scratchpad): WASAPI microphone (device 9, 48 kHz) with the MME speaker (device 3, 16 kHz), the combination that failed. Both runs play to the end, score every round and save `heard/`:
+- headless automatic: `20261112_100316_live_microphone_automatic`, and again after the changes below: `20261112_101341_live_microphone_automatic`;
+- the GUI, manual: `20261112_100630_live_microphone_manual`.
+
+The laptop's own microphone array still matches the speaker poorly (correlation 0.02), as in entry 226. So the delay, and the microphone mode as a whole, are still not verified on a real speaker and microphone.
+
+**The page, top to bottom in the order it is used** (Nicolai: "clean up the page so everything makes sense"):
+1. Source and drones. The two switches, a sentence saying what the chosen combination does and when the test ends, and the speaker and microphone with their gains and channel. Before, the microphone's channel and gain boxes were hidden behind another frame. The note now also warns against microphones with echo cancellation.
+2. Drones, 3. Background layers, 4. Test rounds, 5. Detectors: the modified page's settings, in live terms.
+   - "Round length" instead of "Soundscape length".
+   - The start step is greyed in manual, with the reason.
+   - The soundscape start reads "where the war soundscape starts ... loops without a break" instead of "every round uses the same stretch", which was wrong for a live run.
+   - No-drone rounds "play after the drone rounds".
+6. Play: the round count, how long it plays (or how many drones there are to send), Play / Stop / Send drone / Results window / Save plan, the progress bar and the status line.
+   - Send drone shows only in manual. It is red only when a press would fly a drone in now, and grey otherwise.
+   - The duration line is hidden while the plan has a problem.
+   - Play scrolls the page to this section.
+7. Live view, below Play.
+
+Also: "1 test rounds" is now "1 test round" on every page.
+
+**Results, once, at the end.** Nicolai said the Results window should not open after each round, only after the whole test: when the plan is done or when Stop is pressed.
+- It already opened only when a run ended. With a short plan, though, the end came after one or two rounds.
+- Stop no longer drops everything still waiting. A round that has played to its end is scored (with the microphone, after up to `MAX_LAG_S` more recording). Only the round that is playing is dropped.
+- The window opens once, in front, when the test ends either way.
+- If no round finished, a message says why. If the test failed, an error box gives the reason, where before there was only the status line.
+- Plan repetition until Stop was built and removed again within this entry, after Nicolai's correction ("it can also be when the plan is done"). It is not in the code.
+
+**Check** (`gui_check3.py`, virtual, 12 s rounds):
+
+| Case | Results windows | When | Rounds in results |
+|---|---|---|---|
+| Automatic, plan finishes | 1 | at 43.0 s, "plan done: 3 of 3" | 1, 2, 3 |
+| Automatic, Stop at 22.4 s | 1 | at 23.0 s, "stopped: 1 of 3" | 1 |
+| Manual, Stop while the drone round plays | 0 | message: no round finished | none |
+
+The page was screen-grabbed and looked at (sections 1, 4-6 and the live view during and after a run). `uv run pytest`: all pass.

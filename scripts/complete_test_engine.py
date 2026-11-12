@@ -328,6 +328,8 @@ class Plan:
     fa_percentile: float = 95.0                              # Conclusions: the threshold leaves this % of no-drone windows below it
     war_file: str = "WarSoundScape/WarSoundScape.wav"        # the war soundscape layer's source, repo-relative; an older
                                                              # run without it used the 600 s track (load_test sets that)
+    live: dict | None = None                                 # Live page (live_test_engine): source, trigger, devices;
+                                                             # None for every offline run
 
     def __post_init__(self):
         """Every Pure Data setting as a list of values (a plan may hold single values); an older plan's
