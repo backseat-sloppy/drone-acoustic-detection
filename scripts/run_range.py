@@ -27,7 +27,7 @@ sys.path.insert(0, str(REPO / "src"))
 from dad import rangerun as rg  # noqa: E402
 from dad import realrun as rr  # noqa: E402
 from dad.config import FrontendConfig  # noqa: E402
-from dad.realdata import load_manifest  # noqa: E402
+from dad.realdata import load_manifest, relabel  # noqa: E402
 
 NETS = ("dscnn", "resnet", "crnn", "transformer", "dscnnwide", "crnnwide")
 HOP_S = {"glasgow": 2.0}   # 8.7 h of near-range hover; a coarser grid is plenty
@@ -80,6 +80,8 @@ def main() -> None:
     p.add_argument("--deploy-fa", type=float, default=0.10)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--load-from", default=None, help="score checkpoints of this run name instead of training")
+    p.add_argument("--relabel", default=None, metavar="CSV",
+                   help="relabel spans of no-drone recordings, e.g. labels/nightjar_relabel.csv (iteration 23)")
     p.add_argument("--integrate", nargs="+", type=int, default=[1],
                    help="also score the average of k consecutive windows, for each k given")
     args = p.parse_args()
@@ -90,6 +92,8 @@ def main() -> None:
                           wiener=args.wiener, pcen=args.pcen is not None, pcen_t=args.pcen or 0.4)
     print(f"frontend: {cfg.describe()}", flush=True)
     manifest = load_manifest()
+    if args.relabel:
+        manifest = relabel(manifest, args.relabel)
     if args.pair:
         manifest = [dataclasses.replace(r, _file=r._file.replace(f"{r.source}.i16", f"{r.source}_pair.i16"))
                     if r.source in ("nightjar", "d3set") else r for r in manifest]

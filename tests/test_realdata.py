@@ -58,3 +58,21 @@ def test_reading_past_the_recording_raises(store):
 def test_window_starts_cover_only_full_windows():
     assert window_starts(10, 4, 3).tolist() == [0, 3, 6]
     assert window_starts(3, 4, 1).size == 0
+
+
+def test_relabel_splits_a_no_drone_recording_at_its_spans(tmp_path):
+    from dad.realdata import SAMPLE_RATE, Recording, relabel
+    r = Recording("nightjar", "s/rec#00", 0, "background", "g", "day", 30 * SAMPLE_RATE, "", {}, "f", "int16", 100)
+    other = Recording("nightjar", "s/drone#00", 1, "drone", "g", "day", 5 * SAMPLE_RATE, "", {}, "f", "int16", 0)
+    p = tmp_path / "r.csv"
+    p.write_text("recording_id,start_s,end_s,label,why\ns/rec#00,10,20,1,x\ns/rec#00,20,25,-1,y\n", encoding="utf-8")
+    out = relabel([r, other], p)
+    assert out[-1] is other
+    parts = [(q.recording_id, q.label, q._offset, q.n_samples) for q in out[:-1]]
+    assert parts == [("s/rec#00@0-10s", 0, 100, 10 * SAMPLE_RATE),
+                     ("s/rec#00@10-20s", 1, 100 + 10 * SAMPLE_RATE, 10 * SAMPLE_RATE),
+                     ("s/rec#00@20-25s", -1, 100 + 20 * SAMPLE_RATE, 5 * SAMPLE_RATE),
+                     ("s/rec#00@25-30s", 0, 100 + 25 * SAMPLE_RATE, 5 * SAMPLE_RATE)]
+    p.write_text("recording_id,start_s,end_s,label,why\ns/drone#00,0,1,1,x\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        relabel([other], p)

@@ -1,0 +1,12 @@
+recording_id,start_s,end_s,label,why
+nightjar-flight-20260806-1/uma16_1786060901#00,0,20,1,Mads by ear: listen ranks 26 and 23
+nightjar-flight-20260806-1/uma16_1786060901#00,20,50,-1,between two drone segments; ~640 Hz stack at +23 dB (entry 226)
+nightjar-flight-20260806-1/uma16_1786060901#00,50,60,1,Mads by ear: listen rank 2
+nightjar-flight-20260806-1/uma16_1786061201#00,0,10,1,Mads by ear: listen rank 32
+nightjar-flight-20260804/uma16_1785861777#00,120,140,1,Mads by ear: listen ranks 7 and 12
+nightjar-flight-20260804/uma16_1785861777#00,140,150,-1,between two drone segments
+nightjar-flight-20260804/uma16_1785861777#00,150,160,1,Mads by ear: listen rank 21
+nightjar-flight-20260806-2/uma16_1786062315#02,60,70,1,Mads by ear: listen rank 17
+nightjar-flight-20260806-2/uma16_1786062615#00,0,10,1,Mads by ear: listen rank 27
+nightjar-flight-20260806-2/uma16_1786062615#00,120,130,1,Mads by ear: listen rank 39
+nightjar-flight-20260804-2/uma16_1785867606#02,60,70,-1,Mads by ear: listen rank 31 holds ~0.8 s of drone; left out

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
 
@@ -69,6 +69,40 @@ def load_manifest(root: Path | str = PROCESSED) -> list[Recording]:
                 attributes=json.loads(r["attributes"] or "{}"),
                 _file=str(root / r["file"]), _dtype=r["dtype"], _offset=int(r["offset"]),
             ))
+    return out
+
+
+def relabel(manifest: list[Recording], path: Path | str) -> list[Recording]:
+    """Split no-drone recordings at the spans of a relabel CSV (recording_id, start_s, end_s, label)
+    and give each span its label: 1 = a drone heard by ear, -1 = left out (iteration 23).
+    A span piece gets the id `<id>@<a>-<b>s`, so it has no range track (an unranged drone counts as near)."""
+    spans: dict[str, list[tuple[int, int, int]]] = {}
+    with open(path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            a, b = int(float(row["start_s"]) * SAMPLE_RATE), int(float(row["end_s"]) * SAMPLE_RATE)
+            spans.setdefault(row["recording_id"], []).append((a, b, int(row["label"])))
+    by_id = {r.recording_id: r for r in manifest}
+    out = []
+    for r in manifest:
+        if r.recording_id not in spans:
+            out.append(r)
+            continue
+        if r.label != 0:
+            raise ValueError(f"{r.recording_id}: only no-drone recordings may be relabelled")
+        cuts, pos = [], 0
+        for a, b, lab in sorted(spans[r.recording_id]):
+            if not (pos <= a < b <= r.n_samples) or lab not in (1, -1):
+                raise ValueError(f"{r.recording_id}: bad or overlapping span {a}-{b} label {lab}")
+            cuts += [(pos, a, 0), (a, b, lab)]
+            pos = b
+        cuts.append((pos, r.n_samples, 0))
+        for a, b, lab in cuts:
+            if b > a:
+                out.append(replace(r, recording_id=f"{r.recording_id}@{a / SAMPLE_RATE:g}-{b / SAMPLE_RATE:g}s",
+                                   label=lab, n_samples=b - a, _offset=r._offset + a))
+    missing = set(spans) - set(by_id)
+    if missing:
+        raise ValueError(f"relabel ids not in the manifest: {sorted(missing)}")
     return out
 
 

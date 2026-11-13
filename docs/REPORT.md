@@ -43,6 +43,8 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 21 | 206 to 208 | A development copy of test 1 from Lund and Halmstad drones (`scripts/dev_test.py`), with a pinned comparison and an AUC; then road vehicles from FSD50K dev as 25% of the negatives and under 30% of the drones, on the `600k` arm | Test 1 fails on cars (entry 179), iterations 16-20 were judged on proxies of deleted requirements, and ITU ARIS may not steer design | **Fails its box.** Council (entry 206). The copy reproduces the car failure (it9 CRNN 76.6 % on cars alone) but not the CRNN's lead over the DS-CNN on ITU ARIS (entry 207). Vehicle negatives cut confidence on cars alone from 64 to 36 % (CRNN, pinned), but "with cars" only by 6.9 points (10 required), and the CRNN's AUC in war falls 0.930 to 0.916 (entry 208). Found on the way: the car layer renders without its engines silently, and the sealed car's manifest row stopped every run on the server. |
 | Iteration 22 | 210 to 212 | Two frontend probes on `600k`: PCEN (T 60 ms) in place of the log, three seeds; and whether 8-11 kHz adds drone information, on raw Nightjar and FPV before any store rebuild | Mads asked for both; PCEN has been the named next frontend since entry 095; the microphone samples at 42 kHz | **PCEN fails; the frozen frontend stays.** Council (entry 210). PCEN passes its CPU gate at T 60 ms only; the band probe is inconclusive (+0.018 AUC in grouped CV; transfer AUCs at chance) (entry 211). On the development test PCEN loses 0.008 AUC in war for both networks, and wind alone without a drone gives 37-50 % confidence against 1-3 %; the CRNN's cars-alone confidence falls 64 to 47 % (entry 213). The six models are in Complete_Test_Gui as a failed arm (entry 212). |
 | Iteration 24 | 230 to | The 2 s colour recipe of iteration 23 with MAD war audio (461 training videos of military-video audio, Kaggle/CC BY 4.0) as 25% of the negatives and under 30% of the drones | Marius asked to train on war sounds without a drone; war is the first-priority background | Training (started 2026-11-12) |
+| Iteration 22 | 210 to 228 | Two frontend probes on `600k`: PCEN (T 60 ms) in place of the log, three seeds; and whether 8-11 kHz adds drone information, on raw Nightjar and FPV before any store rebuild | Mads asked for both; PCEN has been the named next frontend since entry 095; the microphone samples at 42 kHz | **PCEN fails; the frozen frontend stays.** Council (entry 210). PCEN passes its CPU gate at T 60 ms only; the band probe is inconclusive (+0.018 AUC in grouped CV; transfer AUCs at chance) (entry 211). On the development test PCEN loses 0.008 AUC in war for both networks, and wind alone without a drone gives 37-50 % confidence against 1-3 %; the CRNN's cars-alone confidence falls 64 to 47 % (entry 213). The six models are in Complete_Test_Gui as a failed arm (entry 212). **22.05 kHz: not adopted.** A CRNN on Nightjar and FPV gains +0.015 AUC from 8-11 kHz on near drones (entry "215 (probe B2)"), but on Lund from 100 m on B is 0.1-0.6 points below A on all three seeds (probe B3, entry 228); both arms detect at most 1 % there, so B3 also shows the probe networks are too weak to test range. `Complete_Test_Gui22k.py` holds the probe networks (entry 227). |
+| Iteration 23 | 226 to 232, after master's 236 (entry 237) | Ten Nightjar no-drone segments Mads heard as drones relabelled drone (100 s), three left out (50 s); CRNN only, `600k` and `colour` arms, seed 1 | Nightjar's no-drone label means "no logged DJI flight"; Mads heard drones in a listening list (entries 226-227) | **No effect, no harm.** Drone confidence in war +0.8 and +0.7 points, inside the 1.6-point seed spread; no-drone confidence equal or lower; AUC in war -0.009 (600k) and +0.001 (colour). Run-file Lund and mower readouts move with the threshold in opposite directions (entry 230). Entry numbers 226-232 are used twice (entries 231, 237). Both CRNNs are in the test GUIs (entry 232). |
 
 ## Templates
 
@@ -14107,3 +14109,838 @@ size and an MD5 that was only partly legible on screen). Unpacked into `artifact
 `artifacts/runs/`. Checked: `Complete_Test_Gui.detector_names()` offers all six; `it24 CRNN 2s war s1`
 and `it24 CNN 2s war s0` load and score 3 s of noise with thresholds 0.672 and 0.543. The GUIs were
 not opened.
+## 226 - Complete_Test_Gui: a Live test page replaces the Synthetic drone test (virtual or microphone, automatic or manual)
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: on branch `NicolaiBranchGUI` at fde4425; uncommitted: new `scripts/live_test_engine.py`; changed `scripts/Complete_Test_Gui.py`, `scripts/complete_test_engine.py`, `docs/REPORT.md`
+
+**What was asked.** A new page in `Complete_Test_Gui`, all the way to the right and replacing the Synthetic drone test, that brings `live_gui` into the complete test. It has two switches: virtual or microphone, and automatic or manual. All settings come from the modified drone test and are set before Play. After Play the only actions are Send drone and Stop. Each combination:
+- Virtual + automatic: the modified drone test, but in real time and played out loud. The war soundscape loops until the test is over.
+- Virtual + manual: the soundscape loops, and a button sends the next drone.
+- Microphone + manual: the background loops and drones are sent, but confidence comes from the microphone, as in `live_gui`.
+- Microphone + automatic: the plan sends the drones, and confidence comes from the microphone.
+A run gives many test rounds in the same files as the other pages.
+
+**Design** (`scripts/live_test_engine.py`; its docstring holds the full description).
+- **The same plan and rounds as the modified test, in the same order.** The page is the modified page's settings plus the switches. The plan records them in a new field `Plan.live` (source, trigger, sample rate, device). That field is None for every offline run, so older plans and runs are unchanged.
+- **One continuous timeline.**
+  - The first 3 s (`LEAD_IN_S`) are background only.
+  - After that, round follows round. Round k's background starts where round k-1's ended, so the war soundscape loops without a break.
+  - `LiveTest.offset_s` keeps each round's place in the soundscape, so `rebuild()` (Results, Conclusions' SNR rebuild) gives the mix that was actually played.
+  - A once-only layer (the car) starts with each round, as offline.
+- **Automatic.** Each round plays its `length_s` with the drone at the plan's start in it.
+- **Manual.**
+  - Between rounds only the background plays, at the next round's levels.
+  - Send drone starts the next drone round at once, with the drone at the round's start. The page sets `step_s = length_s`, so there is one start at 0 s.
+  - The button stays greyed until that round has ended, so rounds never overlap.
+  - After the last drone round, the no-drone rounds (if ticked) play by themselves.
+  - A press reaches the speaker after up to about 0.6 s: 0.1 s of block plus 0.5 s already queued.
+- **Virtual scoring.** Each round is scored by `complete_test_engine.score_round` on the mix it played. The numbers are therefore the offline engine's on the same mix.
+- **Microphone scoring.**
+  - One duplex sounddevice stream plays and records, so the two share a clock.
+  - Each round is scored on the recording over that round. The round is located by cross-correlating the recording with the mix, searching delays of 0-1 s (`MAX_LAG_S`).
+  - A correlation below 0.05 is not trusted, and the last good delay is kept. Either way the page shows a note.
+  - Each round's heard audio is saved in `heard/round_NNNN.wav`. The Results window plays and draws that as the mix.
+- **SNRs.** In `rounds.csv` and `window_snr.npz` they come from the digital parts, also in microphone mode. The room and the microphone are not in them.
+- **The live view** is `live_gui`'s view, built into the page:
+  - DRONE / listening banner with each detector's latest confidence and threshold.
+  - Log-mel spectrogram, and every detector's confidence on the shared 0.125 s grid (comb squashed as elsewhere).
+  - Shaded spans where a drone is flying (moved by the measured delay in microphone mode), dotted round boundaries, and the level, over the last 30 s.
+  - A log of the last five rounds' mean confidence.
+  - This display scoring is separate from the round scoring, and only round scoring is saved.
+- **Files** are the other pages' files, in `artifacts/complete_test/<time>_live_<source>_<trigger>/`: rounds.csv, with three extra columns `timeline_s`, `mic_lag_ms` and `mic_corr`; scores.npz; window_snr.npz; summary.csv; config.json. A new live.json holds per round the timeline start, soundscape offset, delay and correlation, plus the device, rate, gains and speaker underflows. `plan.kind` stays "modified", so Results and Conclusions treat a live run as a modified run. `load_test` reopens it as a `LiveTest`.
+- **Levels.** Full scale is 110 dB SPL, as everywhere. Playback gain changes only what goes to the speaker. Mic gain scales the recording before scoring. Neither speaker nor microphone is calibrated, so in microphone mode the detectors do not hear the plan's dB SPL. The page says so.
+- **The Synthetic page is gone from the GUI.** Its runs still open with "Open results...", and the engine still runs synthetic plans (`complete_test_run.py`). The pages are now Real, Modified, Live.
+
+**Checks.** Plan in every check:
+- 12 s rounds, one non-sealed file, `PeterDrones/03_d3set_23oct_vol3_X500_3m.wav`, at 100 km/h and 80 dB SPL at 1 m.
+- War soundscape at 60 dB SPL; it9 CRNN and comb; one no-drone round.
+
+The scripts `live_check.py` and `gui_check.py` are in the session scratchpad.
+- **Virtual + automatic** (`20261112_093940_live_virtual_automatic`, playback gain -50 dB):
+  - Starts at 3 s, two drone rounds 12 s apart on the wall clock, then the no-drone round. 3 of 3 rounds scored.
+  - 307 live decisions to t = 39.25 s, which is 8 per second.
+  - Every saved score array equals a fresh `score_round` on `LiveTest.rebuild()` of the same round (`np.allclose`, all 6 detector-rounds).
+- **Virtual + manual** (`20261112_094049_live_virtual_manual`):
+  - The press was taken as soon as the lead-in was over, and the drone round started at once.
+  - The no-drone round followed by itself. Rebuild equals saved on all 4 detector-rounds.
+- **Microphone + automatic** (`20261112_094131_live_microphone_automatic`, this laptop's own microphone array and speaker, playback gain +20 dB):
+  - Runs to the end, saves `heard/`, and Results reopens it with the heard audio. A round is 192,000 samples.
+  - **The delay was not found reliably:** correlation 0.02-0.06, delays 249 ms and then 867 ms. The heard rounds are at -35 to -48 dBFS, so the microphone hears sound. The laptop's array processing (echo cancellation) probably removes the speaker's own output.
+  - **Microphone mode is therefore not verified with a real speaker and microphone.** It must be tried on the measurement setup before any number from it is used.
+- **The page itself** (`gui_check.py`, both triggers, virtual):
+  - The tabs read Real drone test, Modified drone test, Live test.
+  - The count and duration lines are right (manual: "1 drones for you to send ...").
+  - Settings and switches lock on Play. Send drone is pressed through the button.
+  - The run ends, and the Results window opens on it.
+  - The figure was saved and looked at: spectrogram, both confidences with thresholds, drone spans, round lines and banner are right.
+  - A screen grab of the whole window was not possible from this session (it captured the desktop), so the layout of the controls was not looked at.
+- Microphone + manual was not run as its own case. It combines the two checked paths.
+- `uv run pytest`: all pass.
+
+**Not done.**
+- The live view has no confidence display after a run ends: the Results window has it.
+- Speakers beyond two channels (the surround array of test 3) are not addressed: the mono mix goes to the first two channels.
+
+These are simulated modified drones on non-held-out sources: a tool check, not a detection result.
+
+## 227 - The Live test page is renamed "Live demo test"
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+The page of entry 226 is now called "Live demo test": the tab and page title, the module docstring and the Results window's heading ("live demo test (source, trigger)"). Run folders keep the name `<time>_live_<source>_<trigger>`, and nothing else changed. Check: `Complete_Test_Gui` imports and `PAGES` ends with ("live", "Live demo test").
+
+## 228 - Live demo test: the microphone stopped at Play; the page cleaned up; Results once, at the end
+
+- Date: 2026-11-12
+- Type: Bug fix and evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/live_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**The bug.** Nicolai's first microphone runs stopped at Play with `PortAudioError: Illegal combination of I/O devices [-9993]`, so no round was scored and no Results window came. Entry 226 opened the speaker and the microphone as one duplex stream, and PortAudio refuses a duplex stream whose two devices sit on different host APIs (MME, WASAPI, ...). Entry 226's microphone check used the system defaults, which are both MME, so it did not catch this.
+
+**The fix.**
+- The microphone now has its own input stream and the speaker its own output stream, each at a rate its device takes. The input stream starts first, so the speaker's sound always arrives later in the recording.
+- The delay measured each round now also absorbs the gap between the two starts and any drift between the two clocks.
+- The delay searched is 0-2 s (`MAX_LAG_S`, was 1 s).
+
+**Check** (`live_check.py`, `gui_check2.py` in the session scratchpad): WASAPI microphone (device 9, 48 kHz) with the MME speaker (device 3, 16 kHz), the combination that failed. Both runs play to the end, score every round and save `heard/`:
+- headless automatic: `20261112_100316_live_microphone_automatic`, and again after the changes below: `20261112_101341_live_microphone_automatic`;
+- the GUI, manual: `20261112_100630_live_microphone_manual`.
+
+The laptop's own microphone array still matches the speaker poorly (correlation 0.02), as in entry 226. So the delay, and the microphone mode as a whole, are still not verified on a real speaker and microphone.
+
+**The page, top to bottom in the order it is used** (Nicolai: "clean up the page so everything makes sense"):
+1. Source and drones. The two switches, a sentence saying what the chosen combination does and when the test ends, and the speaker and microphone with their gains and channel. Before, the microphone's channel and gain boxes were hidden behind another frame. The note now also warns against microphones with echo cancellation.
+2. Drones, 3. Background layers, 4. Test rounds, 5. Detectors: the modified page's settings, in live terms.
+   - "Round length" instead of "Soundscape length".
+   - The start step is greyed in manual, with the reason.
+   - The soundscape start reads "where the war soundscape starts ... loops without a break" instead of "every round uses the same stretch", which was wrong for a live run.
+   - No-drone rounds "play after the drone rounds".
+6. Play: the round count, how long it plays (or how many drones there are to send), Play / Stop / Send drone / Results window / Save plan, the progress bar and the status line.
+   - Send drone shows only in manual. It is red only when a press would fly a drone in now, and grey otherwise.
+   - The duration line is hidden while the plan has a problem.
+   - Play scrolls the page to this section.
+7. Live view, below Play.
+
+Also: "1 test rounds" is now "1 test round" on every page.
+
+**Results, once, at the end.** Nicolai said the Results window should not open after each round, only after the whole test: when the plan is done or when Stop is pressed.
+- It already opened only when a run ended. With a short plan, though, the end came after one or two rounds.
+- Stop no longer drops everything still waiting. A round that has played to its end is scored (with the microphone, after up to `MAX_LAG_S` more recording). Only the round that is playing is dropped.
+- The window opens once, in front, when the test ends either way.
+- If no round finished, a message says why. If the test failed, an error box gives the reason, where before there was only the status line.
+- Plan repetition until Stop was built and removed again within this entry, after Nicolai's correction ("it can also be when the plan is done"). It is not in the code.
+
+**Check** (`gui_check3.py`, virtual, 12 s rounds):
+
+| Case | Results windows | When | Rounds in results |
+|---|---|---|---|
+| Automatic, plan finishes | 1 | at 43.0 s, "plan done: 3 of 3" | 1, 2, 3 |
+| Automatic, Stop at 22.4 s | 1 | at 23.0 s, "stopped: 1 of 3" | 1 |
+| Manual, Stop while the drone round plays | 0 | message: no round finished | none |
+
+The page was screen-grabbed and looked at (sections 1, 4-6 and the live view during and after a run). `uv run pytest`: all pass.
+
+## 229 - Complete test: a buffer after impact (default 1 s) that counts as neither drone nor no drone
+
+- Date: 2026-11-12
+- Type: Evaluation protocol change (requested by Nicolai; changes what "no drone" means in drone rounds)
+- Commit: as entry 226; uncommitted `scripts/complete_test_engine.py`, `scripts/live_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**Why.** Nicolai: after impact the detectors' confidence takes a moment to come down ("cooling time"), and that moment was counted as false positives, which skewed the results. Until now, every window in a drone round that lay wholly after the drone's end counted as no drone, from the impact on. Windows straddling the end were already left out (entry 039's reading).
+
+**What changed.**
+- A new plan setting `Plan.buffer_after_s` (default 1 s, allowed 0-10 s). It is on every setup page (Real, Modified, Live demo), under Test rounds as "buffer after impact (s)".
+- `complete_test_engine.after_drone_left_out` relabels as left out (-1) every no-drone window that overlaps the first `buffer_after_s` seconds after the drone's end. The end is the impact for modified and synthetic drones, and the end of the file for a real drone, which has no impact. With a 1 s window and 1 s buffer, that leaves out 8 more windows per drone round (window ends 1-2 s after impact) beyond the straddling ones.
+- `score_round` takes the buffer. `Test.run` and the live engine pass the plan's value.
+- Through the per-round rows it reaches every number made from them: false-positive rate, false confidence (`mean_conf_no_drone`), "any false alarm", left out, and Conclusions' true/false confidence.
+- Unchanged:
+  - drone windows, recall and the first alarm / lead;
+  - the no-drone rounds and the false-alarm threshold, which uses only no-drone rounds.
+- The Results window's heading gives the buffer.
+- A run made before this has no buffer in its config. `load_test` reopens it with 0 s, so its numbers stay as they were made, and earlier report entries keep their meaning. Old runs are not rescored.
+
+**Check** (`buffer_check.py` in the session scratchpad). Plan:
+- `PeterDrones/03_d3set_23oct_vol3_X500_3m.wav` at 100 km/h and 80 dB SPL at 1 m;
+- war soundscape at 60 dB SPL from 5 s; 16 s rounds with starts 0, 2, 4, 6 s plus one no-drone round; it9 CRNN and comb;
+- run twice with `Test.run`, buffer 0 s and 1 s.
+
+Results:
+- Rounds with time after impact (starts 0-4 s): left out +8, no-drone windows -8.
+- Start 6 s: the impact is at the round's end, so nothing changes.
+- The no-drone round and recall are unchanged.
+- comb, false positives in rounds 1-3: 36/25/9 at 0 s, 33/17/1 at 1 s. Round 3's false alarms were almost all the cooling.
+- it9 CRNN had no false positives in either case. Its false confidence moved by at most 0.003, since the windows dropped were low.
+
+Further checks:
+- All three pages read buffer 1 s by default, and their plans carry it.
+- The newest older modified run reopens with 0 s.
+- `uv run pytest`: all pass.
+
+Simulated modified drones on non-held-out sources: a tool check, not a detection result.
+
+**Assessment.** This changes the evaluation protocol: results with and without the buffer are not comparable, and the "false" side of every drone round now starts `buffer_after_s` after impact. CLAUDE.md section 4 asks for the council before changing the evaluation protocol. It was not convened, because Nicolai set the change directly. That is recorded here.
+
+## 230 - Live demo test: the drone's distance to the microphone in the live view
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/live_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What.** The live view's banner now shows, in large type in its middle, how far the flying drone is from the microphone and the time left before impact, for example "drone 170 m away / 6.1 s to impact". Just after impact it shows "IMPACT" for 1.5 s, and nothing while no drone flies.
+- **Formula.** The distance is the modified test's own geometry (`complete_test_engine.approach_distance`): hypot(distance at impact, v x time left), at the speed of the round's drone and the plan's distance at impact.
+- **Timing.** It is given for the end of the window the detectors have just heard, so it lines up with the confidence beside it. In microphone mode it is moved by the measured delay.
+- **Data.** Each round's start event from `live_test_engine` now also carries the impact time, the speed and the distance at impact.
+
+**Check** (`gui_check2.py` in the session scratchpad, virtual automatic, 100 km/h, distance at impact 1 m; run `20261112_105837_live_virtual_automatic`):
+- 11.2 s after Play the banner read "drone 170 m away / 6.1 s to impact". 100/3.6 x 6.1 = 169 m, the same up to rounding.
+- Between rounds it read nothing.
+- The saved figure was looked at.
+
+It is a display only: nothing in the results changes.
+
+## 231 - Correction to entry 229: the buffer after impact makes the drone phase longer; it does not leave windows out
+
+- Date: 2026-11-12
+- Type: Correction (of entry 229; evaluation protocol, requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What was wrong.** Entry 229 made the buffer a stretch that counts as neither drone nor no drone. Nicolai: the "there is a drone" phase should last one second longer than the impact.
+
+**Now.** `complete_test_engine.with_buffer` lengthens each drone's truth span by `Plan.buffer_after_s` (default 1 s) past the drone's end, and `score_round` labels windows against that longer span with the usual rule:
+- windows wholly inside are drone;
+- windows straddling the new end are left out;
+- windows wholly after it are no drone.
+`after_drone_left_out` is removed. The first alarm, the lead and the window SNRs still use the real impact. The setting and its default are unchanged; its text on the setup pages now says the drone phase lasts that much longer.
+
+With a 1 s window and a 1 s buffer:
+- windows ending up to 1 s after impact are now drone (before: left out, as they straddled the impact);
+- windows ending 1-2 s after impact are left out (before: no drone);
+- no-drone windows start 2 s after impact.
+
+**Check** (`buffer_check.py` in the session scratchpad, the same plan as entry 229, `Test.run` with 0 s and 1 s). Rounds 1-3 have time after impact:
+- drone windows 73 to 81, no-drone windows -8, left out unchanged.
+- Round 4 (impact at the round's end) and the no-drone round do not change, and neither does the first alarm.
+
+| Detector, round | Result | 0 s | 1 s |
+|---|---|---|---|
+| it9 CRNN, round 1 | true confidence | 0.376 | 0.341 |
+| it9 CRNN, round 2 | true confidence | 0.410 | 0.371 |
+| it9 CRNN, round 3 | true confidence | 0.443 | 0.402 |
+| it9 CRNN, round 1 | recall | 0.356 | 0.321 |
+| comb, rounds 1 / 2 / 3 | false positives | 36 / 25 / 9 | 33 / 17 / 1 |
+
+- it9 CRNN comes down within about a window of impact, so the first second after impact is mostly low confidence. Counting it as drone lowers its true confidence and recall a little.
+- comb's alarms after impact leave the false side, as entry 229's version did.
+
+`uv run pytest`: all pass. Simulated modified drones on non-held-out sources: a tool check, not a detection result.
+
+**Assessment.** As in entry 229, this is a change to the evaluation protocol set by Nicolai, and the council was not convened. Runs made between entries 229 and 231 (none reported) used the left-out version, and their config.json cannot tell the two versions apart. Older runs still reopen with 0 s.
+
+## 232 - The buffer after impact is drawn in the graphs
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**Why.** Nicolai could not see the buffer of entry 231 in the Results window's round graphs: they drew the red drone band only up to the impact.
+
+**What.**
+- **Results window, the selected round's two lower graphs** (confidence and dB SPL): the buffer is an orange hatched band from the impact to impact + `buffer_after_s`, with a dotted red line at the impact. The graph's caption says so.
+- **Live view:** the same band after each drone's red span.
+- A run with buffer 0 s (every run before entry 229) draws no band.
+
+**Check** (`results_fig.py` in the session scratchpad): `20261112_105837_live_virtual_automatic`, round 1, reopened with the buffer set to 1 s, its figure saved and looked at. The band runs 10-11 s, after the drone band 0-10 s.
+
+**Seen in that figure, not examined.** it9 CRNN falls from about 0.98 to near 0 at the first decision after impact. Its windows ending 10-11 s still hold up to 1 s of the loudest drone, at 67 dB SPL in the 1 s level. So for this network the first second after impact is low confidence, which is why the buffer lowered its true confidence in entry 231. comb stays high after impact. A likely cause is the drone's abrupt end in the window, but this was not checked.
+
+## 233 - Live demo test: an alarm threshold the tester sets
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/complete_test_engine.py`, `scripts/live_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What.** The Live demo page has, under 5 Detectors, an "alarm threshold (confidence, 0-1)" box.
+- **Blank** (the default, as before): each detector alarms at its own threshold, frozen on validation, and comb at 0.5 on its squashed confidence.
+- **Set:** every detector alarms at that confidence. The value is stored in `Plan.live["threshold"]`. It applies to:
+  - the live view: the DRONE banner and the dashed lines;
+  - the alarm numbers of every round: tp/fp/tn/fn, recall, false-positive rate, precision, first alarm, delay and lead, any (false) alarm. rounds.csv gets a column `alarm_threshold`, and the Results heading shows the value.
+- The confidences do not change, and neither do Conclusions' true/false confidence or its own false-alarm threshold (the percentile box). comb's confidence stays squashed by its own threshold.
+- **Code.** `complete_test_engine.score_round` takes `alarm`. With it set, a window alarms when its confidence is at or above it, through a `Decisions` on the confidence. The Real and Modified pages do not pass it and are unchanged.
+
+**Check** (`alarm_check.py` in the session scratchpad: `20261112_105837_live_virtual_automatic` round 1 rebuilt and scored with the 1 s buffer):
+
+| Detector | Alarm threshold | tp | recall | first alarm | lead |
+|---|---|---|---|---|---|
+| it9 CRNN | own (0.483) | 22 | 0.272 | 3.0 s | 7.0 s |
+| it9 CRNN | 0.3 | 24 | 0.296 | 3.0 s | 7.0 s |
+| it9 CRNN | 0.9 | 16 | 0.198 | 8.125 s | 1.875 s |
+| comb | own (0.5) | 14 | 0.173 | 4.125 s | 5.875 s |
+| comb | 0.3 | 14 | 0.173 | 4.125 s | 5.875 s |
+| comb | 0.9 | 2 | 0.025 | 10.0 s | 0.0 s |
+
+- The mean confidences are the same in all three: it9 CRNN 0.307 / 0.010, comb 0.124 / 0.949.
+- The box takes blank and 0.4. It refuses 1.5 and "abc" with the reason, and the plan cannot run then.
+- `uv run pytest`: all pass.
+
+A tool check on a simulated modified drone, not a detection result. A threshold chosen by hand on a live run is not one frozen on validation: numbers at a hand-set threshold must say so (the Results heading and rounds.csv do).
+
+## 234 - Live demo test: the round log is a table of false alarms and time before impact
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/live_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What.** Under the live view, the five-line text log of each round's mean drone / no-drone confidence is replaced by a table "Finished rounds (newest on top)". The columns are Round, Drone, Detector, False alarms and Time before impact, with one row per detector, rounds banded in grey and a row with false alarms in red.
+- **False alarms:** the number of separate alarms in the round's no-drone part. A run of alarming no-drone windows is one alarm, so an alarm lasting several hops counts once (`LiveRun._false_alarms`). It uses the alarm threshold in force: the tester's (entry 233), or the detector's own, with comb's own at 0.5 on its confidence. "No drone" follows the window labels, so the buffer after impact (entry 231) is not on the false side.
+- **Time before impact:** the round's lead (`lead_s`, the first alarm at least half drone and no later than impact, counted back from the impact). Otherwise it reads "no alarm before impact", or "no drone in this round".
+- Before, these were only in rounds.csv: fp there counts windows, not alarms.
+
+**Check** (`gui_check2.py` in the session scratchpad, virtual automatic; run `20261112_120026_live_virtual_automatic`). The table read, newest first:
+
+| Round | Detector | False alarms | Time before impact |
+|---|---|---|---|
+| 3 (no drone) | it9 CRNN | 0 | no drone in this round |
+| 3 (no drone) | comb | 9 | no drone in this round |
+| 2 | it9 CRNN | 0 | 3.9 s |
+| 2 | comb | 1 | 9.5 s |
+| 1 | it9 CRNN | 0 | 7.0 s |
+| 1 | comb | 1 | 5.9 s |
+
+Round 1's leads match entry 233's at the detectors' own thresholds (7.0 s and 5.9 s). The page was screen-grabbed and looked at. The run went to the system default output, which on this PC was a Bluetooth headset at the time.
+
+## 235 - Live demo test, manual: no number of rounds; a round ends at impact + buffer, the test at Stop
+
+- Date: 2026-11-12
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 226; uncommitted `scripts/live_test_engine.py`, `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What Nicolai asked.** In manual mode there should be no number of test rounds. The settings are set, every buffer after an impact ends a round and the next round begins, and the test runs until Stop.
+
+**Now, in manual mode** (`live_test_engine.LiveRun`, the `manual` paths).
+- **The settings.** They give the drone settings: files x speeds x pitches x levels x backgrounds, one each. Send drone flies the next one in, in turn and over again. Round length, start step and no-drone rounds do not apply; they are greyed on the page with the reason.
+- **A round** runs from where the last one ended (or 3 s after Play) to this drone's impact + `buffer_after_s`. The wait before the press, background only, is the round's no-drone part, and the next round starts at once. Each round has its own length and drone start (`r["length_s"]`, `r["start_s"]`): `complete_test_engine.mix_round` takes the length from the round when it has one, and rounds.csv gets `round_length_s`.
+- **During the wait** the background is the next setting's. A layer that plays once (the car) starts at the round's start, as `mix_round` rebuilds it.
+- **Stop:**
+  - a drone still flying (or in its buffer) is dropped with its round;
+  - a wait of 2 s or more becomes a last no-drone round;
+  - the Results window opens once.
+- **live.json** keeps every manual round (they exist nowhere else), and `LiveTest.load_live` reopens a manual run with them. Manual runs from before this entry reopen with their plan's rounds, as before.
+- **The page in manual.** "runs until you press Stop" replaces the round count. A line names the drone settings and what a round is. The progress bar is hidden, and the round line has no "of N".
+- **Automatic mode is unchanged:** the plan's rounds, ending with the plan or Stop.
+
+**Check, headless** (`manual_check.py` in the session scratchpad: virtual, two drone settings, 100 and 150 km/h; waits of 2, 5 and 0 s before the three presses, then Stop 4 s into the next wait; run `20261112_121152_live_virtual_manual`):
+
+| Round | Drone | Start in round | Length | Drone / no-drone / left-out windows (it9 CRNN) |
+|---|---|---|---|---|
+| 1 | 100 km/h | 2.0 s | 13.0 s | 81 / 9 / 7 |
+| 2 | 150 km/h | 5.1 s | 16.1 s | 80 / 33 / 8 |
+| 3 | 100 km/h | 0.1 s | 11.1 s | 80 / 0 / 1 |
+| 4 | none (the wait at Stop) | - | 4.2 s | 0 / 26 / 0 |
+
+- Each round started where the one before ended and ended 1.0 s after its impact.
+- The run reopened with the same four rounds and results. A fresh `score_round` on each rebuilt round equals the saved scores, for both detectors.
+
+**Check, the page** (`gui_check3.py`, manual, Stop at 30 s):
+- In manual it shows "runs until you press Stop" and "3 drone settings (1 file x 3 speeds x ...)". Round length, step and no-drone rounds are greyed, and the progress bar is hidden. Back in automatic: "34 test rounds", all enabled.
+- In the run, three presses were made and the third drone was flying at Stop. Results opened once with rounds 1 and 2.
+
+`uv run pytest`: all pass.
+
+**Not handled.**
+- In a manual run, "drone start" (`start_s`) is the wait before the press, not a setting. summary.csv and Conclusions' per-setting graphs list it as a varied setting with one value per round.
+- A wait longer than about 115 s loses the start of the microphone recording (the ring holds 120 s), so in microphone mode the round's first part would be scored on silence.
+
+## 236 - Live demo test: the stream kept in memory is 600 s, so a long manual wait is scored whole
+
+- Date: 2026-11-12
+- Type: Bug fix (of the limit noted in entry 235)
+- Commit: as entry 226; uncommitted `scripts/live_test_engine.py`, `docs/REPORT.md`
+
+`RING_S`, how much of the digital stream and of the microphone recording the live engine keeps, is raised from 120 s to 600 s (about 38 MB each at 16 kHz). A manual round, including the wait before the press, is now scored whole up to about 595 s. Before, the limit was about 115 s, past which the microphone mode would have scored the round's start as silence. Not run with a wait that long; the headless manual check of entry 235 was not repeated, since only the constant changed.
+## 215 - Probe B2 result: 8-11 kHz helps the CRNN a little on near drones, and passes the bar of entry 214
+
+- Date: 2026-11-12
+- Iteration: 22
+- Type: Evaluation
+- Commit: d378f1d (`scripts/it22_band_store.py`, `scripts/it22_band_net.py`); run on the server, GPU 0
+
+**How.** `PYTHONPATH=$PWD/src .venv/bin/python -u scripts/it22_band_net.py`, on the store of entry 214 (16,372
+windows, 8,886 drone, 13 groups; MD5 of `windows.flac` ecc2ebd5... equal on this PC and the server).
+Result in the server's `artifacts/it22_band/result.json`. No checkpoints were saved.
+
+**Result.** Held-out AUC, mean of seeds 0 and 1, A = 16 kHz / 64 bands to 8 kHz, B = 22.05 kHz / 74 bands
+to 11 kHz:
+
+| Held-out groups | windows (drone) | A | B | B - A |
+|---|---|---|---|---|
+| FPV palmahim_27.05 | 5,090 (2,087) | 0.750 | 0.785 | +0.035 |
+| FPV ariel_25.02 | 4,723 (3,047) | 0.815 | 0.823 | +0.008 |
+| FPV palmahim_10.02 + four Nightjar sessions | 3,242 (1,802) | 0.883 | 0.873 | -0.010 |
+| six Nightjar sessions (mower and night ambient included) | 3,317 (1,950) | 0.685 | 0.713 | +0.028 |
+| **Mean** | | **0.783** | **0.798** | **+0.015** |
+
+**Verdict: passes the bar of entry 214** (at least +0.01 on average, B ahead in 3 of 4 folds). The gain is
+small, about the size of the seed spread in two folds, and it is on near drones only (Nightjar and FPV
+drones are close to the microphone). Whether it holds at range was to be checked on Lund (probe B3); its
+store build stopped with exit code 4 on this PC and was not rerun. A 22.05 kHz frontend means a rebuilt
+store, a 22.05 kHz development test and a council (entry 210). The probe's models were not saved and could
+not run in `Complete_Test_Gui` anyway, which works at 16 kHz.
+
+## 216 - Council: move the frontend to 22.05 kHz, keep 16 kHz, or test range first
+
+- Date: 2026-11-12
+- Iteration: 22
+- Type: Council
+- Commit: uncommitted on `master` after d378f1d
+
+**Question.** Replace the frozen frontend with 22.05 kHz and 74 log-mel bands to 11 kHz, rebuild the store,
+retrain `600k` and port the complete test and the development test; keep 16 kHz; or first test at range on
+Lund? Asked by Mads after probe B2 passed its bar (entry 215).
+
+**Devil's Advocate.** Decisive: B2 is near-field (6-11 m) and the requirements are about range and the war
+soundscape; B2 has no confusers from the requirements and its AUC is not their unit; +0.015 is near the
+seed spread with 2 seeds and one fold negative. Serious: above 8 kHz the sources differ by recording chain
+(phones, UMA-16, 96 kHz rigs; d3set has nothing above 8 kHz), so the band can carry source identity; B has
+74 bands against 64, so band count and bandwidth are not separated; the port costs days and breaks
+comparability with 22 iterations of numbers, baselines included. *Answered:* none is answered by B2, so the
+decision waits for B3 on Lund (range) and builds in the confuser readout the Problem Solver proposed. The
+band-count confound and seed count stay open until a port is proposed again.
+
+**Scholar** (context-free). 16 kHz is common, not a standard; no checked study ablates content above 8 kHz
+against range; ISO 9613-1 absorption grows fast with frequency (magnitudes unverified). For mixed
+bandwidth, a random low-pass on all sources is the best-supported option; up-sampling band-limited
+sources without it risks a shortcut. Testing at range before moving is standard practice; moving on
+near-field evidence alone is weakly supported. *Departure:* none.
+
+**Problem Solver.** Not yet. Run B3: the B2 arms trained on Nightjar and FPV, thresholds at 1% false alarms
+on held-out no-drone windows, Lund drone windows by range bin; pass if B is at least 3 points above A from
+100 m on, never more than 1 point below in any bin, on at least 2 of 3 seeds. If it passes: add 22.05 kHz
+as a second arm in a new store (not replacing 16 kHz), handle d3set by dropping it from both arms (or ask
+for its original-rate audio), rerun the baselines, and let each model's rate set the engine's.
+
+**Decision.** Not yet. B3 as the Problem Solver specified (`scripts/it22_band_lund_store.py`,
+`scripts/it22_band_lund.py`), its bar fixed here before the run. A port is proposed again only if B3
+passes, and then as a second arm with d3set handled as above.
+
+## 226 - Data audit: Nightjar no-drone audio may hold drones; a listening list
+- Date: 2026-11-12
+- Iteration: none (data audit between iterations; no model trained)
+- Type: Data
+- Commit: uncommitted on `master` after d378f1d
+
+**What changed.** New `scripts/nightjar_listen_list.py`. It scores every 10 s segment of every
+label-0 Nightjar recording in `data/processed/manifest.csv` with `comb` and the it19 CRNN colour s1,
+ranks the segments by the mean of the two detectors' percentile ranks, and writes the top 40 as
+unscaled WAVs plus `listen_list.csv` (every segment, with an empty `mads_verdict` column) to
+`data/extracted/nightjar_listen/`. Nothing in the manifest or the raw data was changed.
+
+**Why.** Mads listened to `no_drone.nightjar_nightjar-flight-20260806-1_uma16_1786060901_00_00050`
+(seconds 50-60 of `uma16_1786060901.wav`) and is confident it holds a drone. Checked against the
+sources:
+- The logged DJI Mini 2 took off at 00:15:21 UTC (`FlightRecord_2026-08-06_[20-15-21].csv`, first
+  rows EngineStart then AutoTakeoff); the clip is 00:02:31-00:02:41 UTC, 13 min earlier.
+- The clip has a harmonic stack at about 164, 328, 641, 961, 1281 Hz (multiples of ~160 Hz) with
+  neighbouring lines near 640 Hz (641, 684, 738 Hz) and slow joint glides. The ~640 Hz line is
+  20-25 dB above its surroundings in segments 00010-00050 only (seconds 10-60) and 2-5 dB in the
+  rest of session 1.
+- Nightjar's cue log has 14 `cue_candidate` events at 00:01:58-00:02:39 UTC, azimuth 137.5-140.6 deg,
+  array elevation 34.5-48 deg, line 638.7-738.3 Hz. Nightjar's README calls it a fixed site emitter
+  (the elevation datum is stated as unreliable, ~25 deg floor).
+So Nightjar's no-drone label means "no logged DJI flight", not "no drone". The stretch is in the
+local manifest as `label 0, background` (the whole 300 s recording), and session 0806-1 is on the
+training side (only 0804-3 is Nightjar validation, `src/dad/rangerun.py:45`). Mads reports further
+Nightjar files that sound like drones (file names not yet given). A negative that holds a drone
+teaches the model to suppress faint drones.
+
+**How.**
+
+```powershell
+uv run python -I scripts/nightjar_listen_list.py --top 40
+```
+
+**Result.** 442 segments of 10 s from 28 label-0 recordings (73.7 of 75.3 min; segments shorter
+than 10 s at recording ends are not scored, so two short recordings give none). The clip Mads
+flagged ranks 2 of 442. The top 40 come from: 0806-2 (19), 0806-1 (9), night-ambient 0804 (5),
+0804 (3), 0804-2 (1), 0804-4 (1), 0804-night (1), the lawn-mower session (1). No 0804-3 (validation) segment is in the top
+40; not checked further down. The CRNN's per-segment max is high almost everywhere (0.70-0.99 in
+the top 44), so its rank separates little; `comb` (untrained) spreads more. The CRNN was trained on
+these windows as negatives, so it is biased low here. Not a detection result: no labels are known
+yet.
+
+**Assessment.** No requirement is judged. If Mads confirms drones by ear, the Nightjar negatives
+used for training (and possibly validation 0804-3, and the mower session as a test readout) carry
+label noise of unknown size.
+
+**Next.** Mads listens to the 40 WAVs and fills in `mads_verdict` (drone / no drone / unsure).
+Confirmed or unsure segments go on an exclusion list in the repo with a margin, without touching
+`data/`. Then one model is retrained with and without the exclusion to measure the effect.
+Changing validation 0804-3 needs a council first (CLAUDE.md section 4).
+
+## 227 - A 22.05 kHz copy of the complete test for the probe B3 networks; B3 saves its checkpoints
+- Date: 2026-11-12
+- Iteration: 22 (probe B3 tooling; no model trained yet)
+- Type: Tooling
+- Commit: uncommitted on `master` after d378f1d
+
+**Numbering.** The entries "Probe B2 result" and "Council: move the frontend to 22.05 kHz" above were
+numbered 215 and 216, but those numbers were already in use (entries 215 and 216 on iteration 21's
+CRNNs). They keep their numbers. Code and later entries refer to them as "215 (probe B2)" and "216
+(council on 22.05 kHz)".
+
+**What changed.**
+- `scripts/it22_band_net.py`: `train_score` can save the trained network (`save=`): its weights, the
+  per-band mean and standard deviation from the training fold, and the band count.
+- `scripts/it22_band_lund.py` saves each of its six networks as `artifacts/it22_band/probe_{A,B}_s{0,1,2}.pt`.
+  Their thresholds are in `lund_result.json`. Nothing about the training or the B3 bar changes.
+- New `scripts/complete_test_engine22k.py` and `scripts/Complete_Test_Gui22k.py`, copies of the
+  complete test. Mads asked for this so the original GUI, which the others use for their tests, stays
+  as it is. The differences:
+  - It renders at 22,050 Hz. Each detector hears the mix resampled to its own frontend rate: comb and
+    the 16 kHz models at 16 kHz, probe B at 22.05 kHz.
+  - The score grid stays on DEFAULT's 0.125 s hop and 1 s window, in seconds.
+  - It offers the six probe networks as "it22 probe A/B s0-s2" once their files are on this PC.
+  - The spectrogram shows 74 log-mel bands up to 11 kHz.
+  - Results go to `artifacts/complete_test22k`.
+- `scripts/it22_band_lund_store.py` prints one line per recording. The first two builds were run
+  twice at the same time by mistake and wrote the same `lund.flac`. Both were stopped and the file
+  rebuilt from scratch.
+
+**How checked.** These are smoke tests, not results:
+- Dummy probe networks (1 epoch on 8 random windows, in the scratchpad, not in `artifacts/`) next to
+  comb and `it22 CRNN pcen s0` in `score_round` on a 20 s mix give 153 grid points for every detector,
+  the same count as `grid_t_end`.
+- `model_view` gives 74 x 2002 for B and 64 x 1998 for the 16 kHz model.
+- `detector_names()` lists the dummy probes.
+- The GUI starts and stays up for 25 s without errors.
+
+The original `Complete_Test_Gui.py` and `complete_test_engine.py` are unchanged.
+
+**Caveat for anyone using it.** The probe networks were trained on about 4.5 h of Nightjar and FPV
+only, without the 600k recipe or its distractors. They answer B3's question (does 8-11 kHz help at
+range) and are not candidate detectors. The 16 kHz models give nearly the same numbers in both
+GUIs, but not bit-identical ones, because the mix is resampled 16 -> 22.05 -> 16 kHz in places.
+
+## 227 - Correction to entry 226: the listening files were inaudible; +50 dB copies added
+- Date: 2026-11-12
+- Iteration: none (data audit between iterations; no model trained)
+- Type: Correction
+- Commit: uncommitted on `master` after d378f1d
+
+**What changed.** Mads reported that the 40 WAVs of entry 226 sound empty. They were written at
+the stored level: RMS -83.7 to -60.6 dBFS (median -80.5), peaks -70.3 to -33.9 dBFS. The script now
+also writes copies with one common gain to `data/extracted/nightjar_listen/plus50dB/` (`--gain-db`,
+default 50), passed through `tanh` so the few transients that would pass full scale are bent instead
+of clipped. The unscaled files stay. Scores and ranks are unchanged (same run, same list).
+
+**Why.** Entry 071's rule (no rescaling of listening files) exists so that audibility at a calibrated
+level can be judged by ear. Here the question is whether a drone is present, and Nightjar's level is
+not calibrated in this repo; at -80 dBFS nothing is audible. One gain for all clips keeps their
+relative loudness, which per-clip normalisation would not.
+
+**How.**
+
+```powershell
+uv run python -I scripts/nightjar_listen_list.py --top 40
+```
+
+**Result.** The +50 dB copies: RMS -32.8 dBFS (rank 2, the clip Mads flagged) to -16.7 dBFS
+(rank 1), peak at most -0.1 dBFS. Not listened to by Claude.
+
+**Next.** Mads listens to `plus50dB/` and fills in `mads_verdict`.
+
+---
+
+# Iteration 23 - Nightjar no-drone segments heard as drones, relabelled
+
+> **Changed from the reference runs:** the training manifest only. Ten 10 s Nightjar segments that Mads
+> heard as drones (entries 226-227) are labelled drone (100 s); two segments between them and one with
+> about 0.8 s of drone are left out (50 s). `run_range.py --relabel labels/nightjar_relabel.csv`.
+> **Why:** Nightjar's no-drone label means "no logged DJI flight" (entry 226). A drone trained as no-drone
+> teaches the network to suppress faint drones, and Mads ranks confidence with a drone first
+> (REQUIREMENTS.md).
+> **Kept the same:** everything else of `it16_600k_s1` (recipe `simdist`) and `it19_colour_s1` (recipe
+> `simdist_colour`): 600k windows, speed 0.8-1.25, 1 s window, MFE frontend, seed 1, both networks,
+> deployment threshold at 5 % false alarms on validation. Validation (Nightjar 0804-3, d3set) is unchanged;
+> none of the relabelled segments is in it.
+> **Hypothesis:** with the drone-holding negatives gone, confidence with a drone rises (development test
+> and Lund recall at the frozen threshold) without confidence without a drone rising (mower, pink and brown
+> noise, development test without a drone).
+> **Judged by:** each new run against its same-seed reference, per network: `it19_colour_check.py`
+> (validation recall, Lund recall, mower false alarms, pink and brown at -30 dBFS) and `dev_test.py` on the
+> tune half (mean confidence with a drone in war, without a drone, and the AUC in war). One seed each, at
+> Mads's request: a change smaller than the seed spread of iteration 16 (entry 156) is read as no effect.
+> 100 s of relabelled audio is small against about 75 min of Nightjar no-drone audio, so no effect is a
+> likely outcome.
+
+## 228 - The relabel list and `--relabel`
+- Date: 2026-11-12
+- Iteration: 23
+- Type: Data
+- Commit: uncommitted on `master` after d378f1d
+
+**What changed.**
+- `labels/nightjar_relabel.csv` (versioned): recording id, span in seconds from the manifest recording's
+  start, label (1 = drone, -1 = left out) and the reason. Mads's verdicts on the +50 dB listening files,
+  by listen rank: drone 02, 07, 12, 17, 21, 23, 26, 27, 32, 39; rank 31 holds about 0.8 s of drone and is
+  left out.
+- Added by Claude, not by Mads: two unflagged segments that lie between flagged ones in the same recording
+  are left out rather than kept as no-drone: 0806-1 `uma16_1786060901` 20-50 s (the ~640 Hz stack is
+  strongest there, +23 to +25 dB, entry 226) and 0804 `uma16_1785861777` 140-150 s.
+- `dad.realdata.relabel`: splits each listed no-drone recording into pieces at the spans; a piece's id is
+  `<id>@<a>-<b>s`, so a relabelled drone has no range track and counts as near (as the FPV drones do).
+  Refuses spans in drone recordings, overlapping spans and ids not in the manifest.
+- `scripts/run_range.py --relabel CSV`. Without the flag nothing changes.
+
+**How.**
+
+```powershell
+uv run pytest -q -p no:cacheprovider tests/test_realdata.py
+```
+
+**Result.** 5 passed (one new test). On this PC's manifest: 737 rows become 752; the new pieces hold
+100.0 s of drone, 50.0 s left out and 1,158.6 s of no-drone. Each of the ten drone pieces' 10 s blocks
+equals the corresponding listening WAV sample for sample (10 of 10). No training yet.
+
+**Next.** Upload to the server and train `it23_relabel_600k_s1` and `it23_relabel_colour_s1`.
+
+## 228 - Probe B3 result: 8-11 kHz does not help at range on Lund; 22.05 kHz is not adopted
+- Date: 2026-11-12
+- Iteration: 22 (probe B3, the last step of the band line)
+- Type: Experiment
+- Commit: uncommitted on `master` after d378f1d (scripts as in entry 227)
+
+**Setup, as fixed in entry 216 (council on 22.05 kHz) before the run.**
+- Training: windows from three of the four GroupKFold(4) folds of `artifacts/it22_band/windows.*`,
+  11,282 Nightjar and FPV windows.
+- Threshold: 1 % false alarms on the 3,003 no-drone windows of the held-out fold. That fold is one FPV
+  group, `fpv:palmahim_27.05`.
+- Lund test set: 1,800 drone windows from 12 recordings (not `10_flower3`), at most 150 per
+  recording, channel 0 of the raw 96 kHz WAV resampled to 22.05 kHz. Ranges 8-1,579 m, median 142 m.
+  Lund was never trained on.
+- Range bins (windows): 0-50 m (293), 50-100 m (444), 100-150 m (186), 150 m and more (877).
+- Frontends: A at 16 kHz with 64 bands to 8 kHz; B at 22.05 kHz with 74 bands to 11 kHz.
+- Model: zoo CRNN, 12 epochs, EQ augmentation, seeds 0-2.
+- Class balance in training: 8,886 drone of 16,372 windows over all folds; the training folds were not
+  counted separately.
+- Bar: B's detection rate averaged over the bins from 100 m on is at least 3 points above A's, and B is
+  never more than 1 point below A in any bin, on at least 2 of 3 seeds.
+
+**How.**
+
+```bash
+# server ~/ct_9_11, GPU 0, about 10 min
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=$PWD/src nohup .venv/bin/python -u scripts/it22_band_lund.py
+```
+
+- Inputs: `lund.flac` (MD5 e26318e58c70ab0b5c79a8905832d155) and `lund.csv` (f8251ebc5f890dd4f4648cc4c5fffc86),
+  built on this PC by `uv run python -I scripts/it22_band_lund_store.py`. `windows.*` as in entry 214.
+- Outputs, copied to this PC and checked by MD5:
+  - `artifacts/it22_band/lund_result.json` (c2bbc3878c080e1c75ff8cacdac767ec)
+  - `lund_run.log`
+  - `probe_{A,B}_s{0,1,2}.pt`
+
+**Result.** Detection rate on Lund drone windows at each arm's 1 % false-alarm threshold:
+
+| Seed | Arm | Threshold | 0-50 m | 50-100 m | 100-150 m | 150 m + | From 100 m, B - A | Worst bin, B - A | Pass |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | A | 0.9966 | 14.3 % | 2.3 % | 1.1 % | 1.0 % | | | |
+| 0 | B | 0.9990 | 19.8 % | 2.0 % | 0.5 % | 0.3 % | -0.6 pt | -0.7 pt | no |
+| 1 | A | 0.9972 | 21.5 % | 3.2 % | 0.5 % | 0.3 % | | | |
+| 1 | B | 0.9984 | 17.4 % | 1.8 % | 0.0 % | 0.1 % | -0.4 pt | -4.1 pt | no |
+| 2 | A | 0.9969 | 7.2 % | 0.7 % | 0.0 % | 0.2 % | | | |
+| 2 | B | 0.9982 | 5.5 % | 0.5 % | 0.0 % | 0.0 % | -0.1 pt | -1.7 pt | no |
+
+**B3 fails on all three seeds.** From 100 m on, B is never above A.
+
+The mean confidence on Lund drone windows is 0.76-0.87 for both arms. The thresholds sit at
+0.996-0.999 because the held-out no-drone windows (one FPV phone group) also score high. In a
+smoke test in `Complete_Test_Gui22k.py`, white noise alone gave a mean confidence of 0.37-0.98
+depending on the network (entry 227's tooling, the real probe files, one 20 s round).
+
+**Assessment.**
+- The bar of entry 216 is not met, so 22.05 kHz is not adopted and the frozen 16 kHz frontend stays.
+- The test is also weak. Both arms detect at most about 1 % from 100 m on, so neither network
+  separates drone from background at range. A real 8-11 kHz gain at range could hide below this
+  floor. What B3 shows is that 8-11 kHz does not rescue a weak model at range. It does not show
+  that 8-11 kHz is useless for a strong one.
+- This matches the physics the council cited (entry 216): air absorption grows steeply with
+  frequency, so 8-11 kHz is the first band to fade at range.
+- No requirement in `REQUIREMENTS.md` is judged here. These are probe networks, not candidate
+  detectors. No baselines were run, because the bar compares two frontends under one model.
+
+**Next.** The band line closes. With PCEN (entry 213) and 22.05 kHz both rejected, iteration 22
+ends with the frozen frontend unchanged. Mads asked for the six probe networks in a test GUI:
+`scripts/Complete_Test_Gui22k.py` offers them as "it22 probe A/B s0-s2" next to the 16 kHz models.
+Their poor calibration (high confidence on noise) means they are not comparable in confidence with
+the 600k models. The next iteration starts from `REQUIREMENTS.md` (war first) and from entry 226's
+Nightjar label audit, which waits on Mads's listening verdicts.
+
+## 229 - Correction to the iteration 23 box: CRNN only; the code on the server; runs started
+- Date: 2026-11-12
+- Iteration: 23
+- Type: Correction, Infrastructure
+- Commit: uncommitted on `master` after d378f1d; server clone `~/drone-acoustic-detection` (00ee4e8 plus
+  local changes) patched in place
+
+**What changed.**
+- Mads asked for two models: the CRNN of `it16_600k_s1` and the CRNN of `it19_colour_s1`, retrained on the
+  relabelled manifest. The box above says "both networks"; that was Claude's addition and is withdrawn.
+  The first start trained both networks; it was stopped after about 10 min on Mads's word, before any
+  checkpoint was saved (logs kept as `artifacts/runs/it23_relabel_*_s1.log.killed_dscnn` on the server).
+  Only the two CRNNs are trained and judged.
+- Server: `labels/nightjar_relabel.csv`, `it23_relabel_fn.py` and `it23_patch.py` uploaded through the
+  JupyterLab contents API into `~/drone-acoustic-detection`. The server's `realdata.py` and `run_range.py`
+  differ from this PC's (older), so they were not replaced: `it23_patch.py` inserts `relabel` and
+  `--relabel` and stops if the expected lines are missing. Run on copies of this PC's HEAD files, the patch
+  gives exactly this PC's edited files. Backups on the server: `*.pre_it23`.
+- On the server's manifest (43,936 rows, FSD50K included) the relabel gives the same split as on this PC:
+  100.0 s drone, 50.0 s left out, 1,158.6 s no-drone. The run logs show Nightjar 0-50 m positives 37.7 min
+  (36.2 min in iteration 21's logs) and 21 validation segments, as before.
+- `~/ct_9_11/artifacts/dev_test/score_it23.py` registers the two CRNNs for the development test (tag
+  `gate`, tune half); the references `it16 CRNN 600k s1` and `it19 CRNN colour s1` are already scored there.
+
+**How.**
+
+```
+cd ~/drone-acoustic-detection; .venv/bin/python -I it23_patch.py
+CUDA_VISIBLE_DEVICES=G nohup setsid .venv/bin/python -u scripts/run_range.py --name it23_relabel_A_s1 --pool \
+    --arms none --recipes R --models crnn --device cuda --windows 600000 --speed 0.8 1.25 --deploy-fa 0.05 \
+    --seed 1 --frontend mfe --relabel labels/nightjar_relabel.csv > artifacts/runs/it23_relabel_A_s1.log
+# (G, A, R) = (0, 600k, simdist) and (1, colour, simdist_colour)
+```
+
+**Result.** Running; no numbers yet.
+
+**Next.** Score both CRNNs: run-file readouts, `it19_colour_check.py`, and the development test; judge
+against the same-seed reference CRNNs.
+
+## 230 - Iteration 23 result: drone confidence up by less than the seed spread; no harm without a drone
+- Date: 2026-11-12
+- Iteration: 23
+- Type: Evaluation
+- Commit: uncommitted on `master` after d378f1d; scores on the server only
+
+**How.** On the server, after the two runs of entry 229 (570 s each):
+```
+cd ~/drone-acoustic-detection
+CUDA_VISIBLE_DEVICES=2 .venv/bin/python -u scripts/it19_colour_check.py it16_600k_s1 it19_colour_s1 \
+    it23_relabel_600k_s1 it23_relabel_colour_s1 > artifacts/runs/it23_colour_check.log
+cp artifacts/runs/it23_relabel_*_s1.json ~/ct_9_11/artifacts/runs/; cp artifacts/models/it23_relabel_*_crnn.pt ~/ct_9_11/artifacts/models/
+cd ~/ct_9_11
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=$PWD/src .venv/bin/python -u artifacts/dev_test/score_it23.py
+PYTHONPATH=$PWD/src .venv/bin/python scripts/dev_test.py judge gate --ref 'it16 CRNN 600k' > artifacts/dev_test/judge_it23.log
+```
+
+**Result.** CRNNs only; seed 1; references are the same-seed CRNNs.
+
+Run files (validation = Nightjar 0804-3 and d3set validation, threshold at 5 % false alarms there; Lund =
+unseen rig, all ranges; mower = the Nightjar mower-only session, false alarms at the deployment threshold):
+
+| Model | Threshold | Validation recall | Lund recall (all / 100-200 m) | Mower false alarms |
+|---|---|---|---|---|
+| it16 CRNN 600k s1 | 0.528 | 0.790 | 0.424 / 0.492 | 0.200 |
+| it23 CRNN relabel 600k s1 | 0.502 | 0.790 | 0.465 / 0.596 | 0.272 |
+| it19 CRNN colour s1 | 0.612 | 0.793 | 0.403 / 0.444 | 0.152 |
+| it23 CRNN relabel colour s1 | 0.694 | 0.785 | 0.383 / 0.410 | 0.072 |
+
+Pink / brown noise at -30 dBFS, alarms: it16 600k 0.5 % / 27.1 %; relabel 600k 2.9 % / 23.7 %; it19 colour
+0 / 0; relabel colour 0 / 0.
+
+Development test, tune half (entry 207), mean confidence in % unpinned; AUC of drone-in-war hops against
+no-drone hops:
+
+| Model | drone war | drone Lund | drone Halmstad | drone all | none war | none war+wind | none war+cars | none with cars | helicopter | AUC war | AUC all |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| it16 CRNN 600k s1 | 60.0 | 47.3 | 70.1 | 61.2 | 2.2 | 10.4 | 13.9 | 32.9 | 23.3 | 0.931 | 0.810 |
+| it23 CRNN relabel 600k s1 | 60.8 | 48.1 | 70.9 | 61.8 | 2.4 | 12.4 | 13.2 | 32.8 | 20.2 | 0.922 | 0.817 |
+| it19 CRNN colour s1 | 60.8 | 48.1 | 70.9 | 62.1 | 4.2 | 13.4 | 16.7 | 39.4 | 26.6 | 0.920 | 0.792 |
+| it23 CRNN relabel colour s1 | 61.5 | 48.4 | 72.0 | 63.0 | 4.0 | 14.3 | 16.2 | 38.4 | 25.1 | 0.921 | 0.801 |
+
+Seed spread of the reference (it16 CRNN 600k s0-s2, same table): drone in war 58.4-60.0 (1.6 points), none
+with cars 32.9-36.8, AUC war 0.926-0.932. Pinned to the reference's drone confidence in war (59.0), no
+drone with cars: relabel 600k 30.5 (it16 s1 31.7), relabel colour 35.4 (it19 colour s1 37.4); helicopter
+18.0 (22.0) and 21.9 (24.3).
+
+**Assessment.**
+- Confidence with a drone rose in every drone column for both arms (war +0.8 and +0.7 points, all
+  +0.6 and +0.9), but by less than the reference's seed spread (1.6 points in war). By the box's rule,
+  that reads as no effect. The direction is the one the hypothesis predicts, in both arms.
+- Confidence without a drone did not rise: in the development test most no-drone columns are equal or a
+  little lower, also after the pin. In the 600k arm, war+wind rose 2.0 points and AUC in war fell 0.009
+  (just outside the seed spread 0.006); the colour arm's AUC is unchanged (0.921 against 0.920).
+- The run-file readouts move with the deployment threshold, in opposite directions for the two arms
+  (600k: threshold 0.528 to 0.502, Lund +0.041, mower +0.072; colour: 0.612 to 0.694, Lund -0.020, mower
+  -0.080). As entry 127 found for recipes, this is a shifted operating point, not better separation.
+- One seed per arm; 100 s of relabelled audio. Not judged on ITU ARIS.
+- **Verdict: hypothesis not confirmed, no harm.** The relabelled labels are kept as the more correct
+  labels, but they did not measurably change the models.
+
+**Next.** For Mads: whether to (a) adopt `labels/nightjar_relabel.csv` in all later runs, (b) listen
+further down the list (ranks 41+) or to 0806-2, which held 19 of the top 40, before relabelling more, and
+(c) put `it23 CRNN relabel colour s1` in `Complete_Test_Gui` (REQUIREMENTS.md asks for a proposal when a
+model arrives). The checkpoints are on the server only.
+
+## 231 - Correction: entry numbers 227 and 228 are used twice
+- Date: 2026-11-12
+- Iteration: 23
+- Type: Correction
+
+Two sessions appended to this report on 2026-11-12 at the same time, so two numbers are used twice and the
+entries interleave:
+- 227 "A 22.05 kHz copy of the complete test ..." and 228 "Probe B3 result ..." belong to **iteration 22**
+  (the 22.05 kHz probe). The B3 entry sits below the `# Iteration 23` heading only because it was appended
+  after that heading was written.
+- 227 "Correction to entry 226: the listening files were inaudible ..." and 228 "The relabel list and
+  `--relabel`" belong to the Nightjar data audit and **iteration 23**.
+Nothing was renumbered (append only). In iteration 23's entries and in `labels/nightjar_relabel.csv`,
+"entry 227" and "entry 228" mean the audit entries. Cite the iteration 22 pair as "227 (22.05 kHz copy)" and
+"228 (probe B3)".
+
+## 232 - The two iteration 23 CRNNs downloaded and added to the test GUIs
+- Date: 2026-11-12
+- Iteration: 23
+- Type: Infrastructure
+- Commit: uncommitted on `master` after d378f1d
+
+**What changed.** On Mads's request, `it23 CRNN relabel 600k s1` and `it23 CRNN relabel colour s1` can be
+run in our own tests.
+- On the server, `~/it23_models.zip` (5,509,467 bytes, MD5 63e7d86972d53b98a7a53185bcb7f966): the two run
+  files, the two CRNN checkpoints, the two training logs, `it23_colour_check.log` and `judge_it23.log`.
+  Downloaded through Mads's Chrome; the downloaded bytes have the same MD5, and so do both checkpoints
+  (600k 2972ac065ed261941b852ba0d040c177, colour a9f6dde77d09375a4b45205893009fe2).
+- Into `artifacts/models/` (versioned) and `artifacts/runs/` (git-ignored: force-add the two run files on
+  commit, or the GUIs will not offer the models, entry 194); `judge_it23.log` into `artifacts/dev_test/`.
+- `drone_war_grid.MODELS` gains both names; `Complete_Test_Gui.COLORS` and `detect_gui.MODEL_COLORS` gain
+  a colour each (detect_gui asserts one colour per model).
+
+**How.** Checked by loading both through `complete_test_engine.load_detectors` and streaming 3 s of white
+noise at -40 dBFS, and with `Complete_Test_Gui.detector_names()`.
+
+**Result.** Thresholds read from the run files: 0.502 (600k) and 0.694 (colour), window 1 s, as on the
+server. Both are offered on the setup page of `Complete_Test_Gui`. White noise: scores 0.09-0.19 (600k) and
+0.001-0.002 (colour). `detect_gui`: 35 colours for 35 models. `pytest`: 169 passed. Not run in the GUI by
+hand; not scored on ITU ARIS by Claude.
+
+## 237 - Pull onto master: entry numbers 226 to 232 are used twice
+- Date: 2026-11-12
+- Type: Infrastructure, Correction
+- Commit: the commit that carries this entry, on `master` after ceca0b4
+
+**What changed.** Before committing the Nightjar audit, iteration 23 and the iteration 22 probe B3 work, the
+local changes were stashed, `master` was pulled (b4acc22 "Add live demo test page and engine", 4370ede,
+ceca0b4 "Live_Demo_Test") and the stash re-applied. Git merged `docs/REPORT.md` and
+`scripts/Complete_Test_Gui.py` without conflicts. The Live demo test page lists its detectors through
+`detector_names()`, so the two iteration 23 CRNNs are offered there as well.
+
+**Numbering.** Master's entries 226-236 (Live demo test, Complete test buffer) and this PC's entries
+226-232 were written the same day, so numbers 226-232 now occur twice (227 and 228 three times, entry 231).
+Nothing was renumbered (append only). The entries from "## 226 - Data audit" on (after master's 236) are this
+PC's: the Nightjar audit and iteration 23 (226, 227 "Correction to entry 226", 228 "The relabel list",
+229-232) and the probe B3 pair of iteration 22 (227 "A 22.05 kHz copy", 228 "Probe B3 result"). Cite them
+by number and title. New entries continue at 238.
+
+**How.** `git stash push -u`, `git pull --ff-only`, `git stash pop`; `uv run pytest -q -p no:cacheprovider`.
