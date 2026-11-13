@@ -92,7 +92,10 @@ MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file
           "it23 CRNN relabel 600k s1": (ROOT / "artifacts/runs/it23_relabel_600k_s1.json",
                                         MODEL_DIR / "it23_relabel_600k_s1_none_simdist_crnn.pt"),
           "it23 CRNN relabel colour s1": (ROOT / "artifacts/runs/it23_relabel_colour_s1.json",
-                                          MODEL_DIR / "it23_relabel_colour_s1_none_simdist_colour_crnn.pt")}
+                                          MODEL_DIR / "it23_relabel_colour_s1_none_simdist_colour_crnn.pt"),
+          # it23 colour CRNN with pink and brown noise also under 30% of the drones (iteration 25, entries 238-239)
+          "it25 CRNN relabel double colour s1": (ROOT / "artifacts/runs/it25_relabel_double_colour_s1.json",
+                                                 MODEL_DIR / "it25_relabel_double_colour_s1_none_simdist_dcolour_crnn.pt")}
 OFF =float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
 NO_DRONE = 0.0                                               # drone "speed" of the no-drone row (war only)
 

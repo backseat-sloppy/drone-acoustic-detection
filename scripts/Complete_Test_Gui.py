@@ -101,7 +101,8 @@ COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it
           "it21 CRNN uav16 s2": "#b0bec5", "it22 CNN pcen s0": "#1a237e", "it22 CNN pcen s1": "#3949ab",
           "it22 CNN pcen s2": "#7986cb", "it22 CRNN pcen s0": "#b71c1c", "it22 CRNN pcen s1": "#e53935",
           "it22 CRNN pcen s2": "#ef9a9a", "it23 CRNN relabel 600k s1": "#00695c",
-          "it23 CRNN relabel colour s1": "#f9a825", "comb": "#1baf7a"}   # it20-it23: the same colours as detect_gui
+          "it23 CRNN relabel colour s1": "#f9a825", "it25 CRNN relabel double colour s1": "#6a1b9a",
+          "comb": "#1baf7a"}   # it20-it25: the same colours as detect_gui
 PD_CONTROLS = {"wind (Pd)": ("wind", (("speed_ms", "speed (m/s, assumed)", "quiet: 1  ·  storm: 25"),
                                       ("reso", "resonance (0-127)", "open field: 10  ·  city: 90"))),
                "cars": ("cars", (("speed_kmh", "speed (km/h)", "town: 50  ·  motorway: 130"),
