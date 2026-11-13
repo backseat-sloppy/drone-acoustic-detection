@@ -27,7 +27,14 @@ This page contains documentation for a project on acoustic drone detection devel
 
 ---
 
+<h3 class="fw-700">Project Abstract</h3>
+
+abstract goes here
+
+---
+
 <h3 class="fw-700">Full Paper</h3>
 
 The project paper is seen in pdf-form below.
 
+<embed src="P7_report.pdf" type="application/pdf" width="100%" height="1000px"/>
