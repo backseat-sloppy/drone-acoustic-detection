@@ -42,6 +42,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 23 | 209 to 210 | The colour recipe with a 2 s window (iterations 17 and 19 combined), trained twice: on the usual pool, and with UAV16 added as in iteration 22 | Entries 204, 207 and 208: UAV16 at 1 s did not beat `it19_colour`; the 2 s window and the colour recipe each passed their box on different readouts and were never combined; Marius chose both arms | **The 2 s colour DS-CNN passes; the CRNN and both UAV16 networks fail.** DS-CNN against the 2 s reference: pink and brown 0%, Lund 0.440 (ref 0.457), validation 0.782 (0.794), mower false alarms 0.066 (0.209). The CRNN loses 0.058 of Lund. UAV16 costs Lund 0.07-0.08 again. Not yet run against war and cars. |
 | Iteration 21 | 206 to 208 | A development copy of test 1 from Lund and Halmstad drones (`scripts/dev_test.py`), with a pinned comparison and an AUC; then road vehicles from FSD50K dev as 25% of the negatives and under 30% of the drones, on the `600k` arm | Test 1 fails on cars (entry 179), iterations 16-20 were judged on proxies of deleted requirements, and ITU ARIS may not steer design | **Fails its box.** Council (entry 206). The copy reproduces the car failure (it9 CRNN 76.6 % on cars alone) but not the CRNN's lead over the DS-CNN on ITU ARIS (entry 207). Vehicle negatives cut confidence on cars alone from 64 to 36 % (CRNN, pinned), but "with cars" only by 6.9 points (10 required), and the CRNN's AUC in war falls 0.930 to 0.916 (entry 208). Found on the way: the car layer renders without its engines silently, and the sealed car's manifest row stopped every run on the server. |
 | Iteration 22 | 210 to 212 | Two frontend probes on `600k`: PCEN (T 60 ms) in place of the log, three seeds; and whether 8-11 kHz adds drone information, on raw Nightjar and FPV before any store rebuild | Mads asked for both; PCEN has been the named next frontend since entry 095; the microphone samples at 42 kHz | **PCEN fails; the frozen frontend stays.** Council (entry 210). PCEN passes its CPU gate at T 60 ms only; the band probe is inconclusive (+0.018 AUC in grouped CV; transfer AUCs at chance) (entry 211). On the development test PCEN loses 0.008 AUC in war for both networks, and wind alone without a drone gives 37-50 % confidence against 1-3 %; the CRNN's cars-alone confidence falls 64 to 47 % (entry 213). The six models are in Complete_Test_Gui as a failed arm (entry 212). |
+| Iteration 24 | 230 to | The 2 s colour recipe of iteration 23 with MAD war audio (461 training videos of military-video audio, Kaggle/CC BY 4.0) as 25% of the negatives and under 30% of the drones | Marius asked to train on war sounds without a drone; war is the first-priority background | Training (started 2026-11-12) |
 
 ## Templates
 
@@ -13894,3 +13895,215 @@ So the 58 windows above the threshold would be roughly 4-40 separate alarms in 2
 - `uv run pytest`: all pass.
 - `drone_war_grid` has 33 models. `detect_gui` imports.
 - `Complete_Test_Gui.detector_names()` lists it22 PCEN and not it21.
+
+## 226 - Complete test and detect_gui: iteration 23's 2 s colour DS-CNNs, seeds 0 and 2
+
+- Date: 2026-11-12
+- Iteration: 23
+- Type: Engineering (no model, metric or split changed)
+- Commit: uncommitted, on top of 007b65e
+
+**Why.** Marius asked for "CNN s2 and CNN s0" in the GUI. The GUI changes written on 2026-11-11 for
+all six `it23` networks were never committed; the merge of `master` on 2026-11-12 (007b65e) set
+them aside in `stash@{0}` ("!!GitHub_Desktop<iteration-21-uav16>"), so the lists held no `it23`
+network. The stash was left as it is.
+
+**Change.** `drone_war_grid.MODELS`: `it23 CNN 2s colour s0` and `it23 CNN 2s colour s2`, each with
+its run file `artifacts/runs/it23_2s_colour_sS.json` (2 s window, frozen threshold). Colours in
+`Complete_Test_Gui.COLORS` and `detect_gui.MODEL_COLORS`. `Complete_Test_Gui.detector_names()`
+still hides every DS-CNN (entry 185) except names starting `it23 CNN`. Seed 1 and the three `it23`
+CRNNs are not added.
+
+**Checks.** Both load with a 2 s window and their run files' thresholds (0.520 and 0.450) and
+score a window. The setup page's list holds them and no other DS-CNN; no model lacks a colour.
+`.venv/bin/python -m pytest -q -p no:cacheprovider tests`: all passed (macOS). Neither network has
+been run against the war soundscape or cars (the run of entry 211 was stopped).
+
+## 227 - Complete test and detect_gui: iteration 23's 2 s colour CRNNs, seeds 0-2
+
+- Date: 2026-11-12
+- Iteration: 23
+- Type: Engineering (no model, metric or split changed)
+- Commit: uncommitted, with entry 226's files
+
+**Why.** Marius asked to add the CRNN as well.
+
+**Change.** `drone_war_grid.MODELS`: `it23 CRNN 2s colour s0-s2` with the run files
+`artifacts/runs/it23_2s_colour_sS.json`; colours in `Complete_Test_Gui.COLORS` and
+`detect_gui.MODEL_COLORS`. As CRNNs they pass the setup page's filter without an exception. This
+network failed entry 210's box (Lund -0.058 against the 2 s reference).
+
+**Checks.** All three load with a 2 s window and their run files' thresholds (0.529, 0.648, 0.665)
+and score a window; the setup page's list holds the five `it23` networks; no model lacks a colour.
+`.venv/bin/python -m pytest -q -p no:cacheprovider tests`: all passed (macOS).
+
+Marius then asked for all of them: `it23 CNN 2s colour s1` added as well (threshold 0.624), so
+all six `it23` 2 s colour networks are offered, as entry 212 had them before the merge.
+
+## 228 - Test 1's shape on the server: the 2 s colour networks against `it19 CRNN colour s1`
+
+- Date: 2026-11-12
+- Iteration: 23 (scoring after the verdict; ITU ARIS, scoring only)
+- Type: Evaluation
+- Commit: bcd91a8 on the server (`~/dad21`); `scripts/it21_test1.py`'s it19-s1-only change is
+  uncommitted on the Mac and was not used there
+
+**What changed.** Marius asked for the `it23` networks to be compared with the GUIs' colour model,
+`it19 CRNN colour s1`. A run on the Mac (seven CPU processes) estimated about 100 minutes and was
+stopped at round 39 of 173; nothing from it was read. Marius uploaded the car render to the
+server, where the same plan took about 6 minutes on three GPUs.
+
+**How.** Car render `cars_50kmh_30m_20s_7b41c86f.wav`, 22,755,920 bytes, MD5
+245436aa797c84fc635f96e42c4e8c15 on the Mac and on the server. War track MD5
+966937647ba588030f411ca1eaf079ee on both (entry 209's check). On the server, in `~/dad21`:
+```
+CUDA_VISIBLE_DEVICES=k PYTHONPATH=$HOME/dad21/src ~/dad/.venv/bin/python -u scripts/it21_test1.py --it23 --shard k 3 --device cuda
+```
+Plan as entry 208: the ten `sealed_peek` excerpts at 60-100 dB SPL, war soundscape 90 dB SPL or
+off, cars (six development engines, 50 km/h, 30 m) at 20, 35, 50 dB SPL or off; 1,208 rounds. The
+server's copy of the script also scored `it19 colour s0` and `s2`; only `s1` is reported here.
+10,872 rows read from the three shards' `rounds.csv` through the JupyterLab contents API.
+
+**Result.** Mean confidence in %. `it19 CRNN colour s1`: one network, 30 drone rounds and 150 no-drone
+cells per row. `it23`: three seeds pooled, 90 and 450. No drone: mean over the no-drone windows of
+the drone rounds (the no-drone rounds agree within 10 points).
+
+| Background | Model | 60 dB | 70 dB | 80 dB | 90 dB | 100 dB | No drone |
+|---|---|---|---|---|---|---|---|
+| war 90 | `it19 CRNN colour s1` | 18.2 | 27.4 | 37.8 | 50.4 | 62.3 | 2.5 |
+| war 90 | `it23 CNN 2s colour` | 9.1 | 15.9 | 25.4 | 38.4 | 49.8 | 0.3 |
+| war 90 | `it23 CRNN 2s colour` | 12.1 | 21.1 | 32.5 | 51.6 | 67.1 | 1.0 |
+| war 90 + cars 50 | `it19 CRNN colour s1` | 17.5 | 25.5 | 37.0 | 50.2 | 62.2 | 25.6 |
+| war 90 + cars 50 | `it23 CNN 2s colour` | 13.9 | 21.8 | 29.6 | 39.6 | 50.2 | 19.3 |
+| war 90 + cars 50 | `it23 CRNN 2s colour` | 10.9 | 19.2 | 32.8 | 52.3 | 67.4 | 19.2 |
+| cars 20, no war | `it19 CRNN colour s1` | 73.4 | 73.9 | 74.0 | 74.0 | 74.0 | 80.8 |
+| cars 20, no war | `it23 CNN 2s colour` | 69.9 | 68.7 | 68.1 | 67.9 | 67.9 | 42.1 |
+| cars 20, no war | `it23 CRNN 2s colour` | 76.9 | 76.1 | 75.8 | 75.8 | 75.8 | 83.3 |
+| cars 50, no war | `it19 CRNN colour s1` | 67.3 | 69.0 | 72.7 | 73.9 | 74.0 | 93.8 |
+| cars 50, no war | `it23 CNN 2s colour` | 77.4 | 79.2 | 74.5 | 70.3 | 68.7 | 66.9 |
+| cars 50, no war | `it23 CRNN 2s colour` | 65.7 | 72.5 | 77.4 | 77.2 | 76.2 | 87.6 |
+| nothing | `it19 CRNN colour s1` | 73.5 | 73.9 | 74.0 | 74.0 | 74.0 | 1.1 |
+| nothing | `it23 CNN 2s colour` | 67.8 | 67.9 | 67.9 | 67.9 | 67.9 | 0.1 |
+| nothing | `it23 CRNN 2s colour` | 75.5 | 75.7 | 75.8 | 75.8 | 75.8 | 0.9 |
+
+War 90 with cars at 20 and 35 dB, no drone: `it19` 18.4 and 24.0, `it23 CNN` 9.7 and 16.2,
+`it23 CRNN` 14.0 and 17.8. Cars at 35 dB alone, no drone: 92.9, 60.7 and 88.4.
+
+**Assessment against `REQUIREMENTS.md`** (rank first by confidence with a drone against the war
+soundscape, then by confidence without a drone with distractors; ranking on ITU ARIS by the
+decision of entry 180):
+1. **Drone against war:** `it19 CRNN colour s1` is highest for the quieter drones (60-80 dB:
+   18.2 / 27.4 / 37.8). `it23 CRNN 2s colour` is lower there (12.1 / 21.1 / 32.5) and higher for the
+   loud ones (90-100 dB: 51.6 / 67.1 against 50.4 / 62.3). `it23 CNN 2s colour` is lowest at every
+   level, 9-13 points below `it19`.
+2. **No drone, with distractors:** `it23 CNN 2s colour` is lowest everywhere, and the only one that
+   is clearly lower with cars alone (42-67% against 81-94% for `it19`). `it23 CRNN 2s colour` is a
+   few points below `it19` with war and cars, and a few points above it with cars alone.
+3. Every network still gives 42-94% confidence without a drone when cars play without war.
+
+No network beats `it19 CRNN colour s1` on the first criterion. The 2 s CNN trades about 10 points
+of drone confidence under war for the lowest false confidence with cars. The 2 s CRNN is not
+clearly better or worse; it moves confidence from quiet drones to loud ones.
+
+**Limits.** Ten excerpts, not the 35 drones; synthetic war and car mixes, so not detection figures;
+`it19` is one network, `it23` three seeds pooled, no per-seed spread taken; no baselines; time
+before impact (test 2) not scored, where a 2 s window is known to react later (entry 191).
+
+## 229 - MAD (Military Audio Dataset) downloaded as no-drone war test audio
+
+**What:** searched for open war-sound recordings to test the no-drone side against. Chosen: MAD
+(Kim, Yoon and Jung, *Scientific Data* 2024, CC BY 4.0), about 11 hours of real military-video
+audio with shooting, shelling, vehicle, helicopter and fighter-jet classes. Backup, not fetched:
+SESA (Zenodo 3519845, CC BY 4.0, 585 Freesound clips, 8-bit). Details in `docs/datasets.md`.
+
+**Why:** the war soundscape is the first-priority background in `REQUIREMENTS.md`, and so far the
+no-drone war audio is `WarSoundScape.wav` and two FSD50K clips (gunfire, explosion).
+
+**Result:** on the JupyterLab server, 7,466 WAVs, 16 kHz mono, 1-10 s, 10.96 h, from 512 videos.
+Classes: communication 981, shooting 1573, footsteps 877, shelling 987, vehicle 1032,
+helicopter 1025, fighter 991. Counted with a one-off Python command in the server terminal
+(soundfile, csv); no repo script.
+
+**Decision:** test only, never training or tuning. Not yet scored against any model; no clip
+listened to, so the absence of drones is assumed from the video titles only.
+
+# Iteration 24 - MAD war audio in the training pool
+
+> **Changed from iteration 23 (`it23_2s_colour`):** recipe `simdist_colour_mad` = `simdist_colour` plus
+> MAD war audio as 25% of the negatives (over a rig background) and under 30% of the drones, mixed exactly
+> as iteration 21's road vehicles (`src/dad/rangerun.py`, `mad_neg` / `mad_mask`).
+> **Why:** Marius asked to train on war sounds without a drone (2026-11-12). The war soundscape is the
+> first-priority background of `REQUIREMENTS.md`, and the training pool has no war audio: on the war
+> test the networks lose 30-60 points of drone confidence (entry 228).
+> **Kept the same:** 2 s window, pool arm `none` without UAV16, speed 0.8-1.25, MFE 64 mel, 600,000
+> windows, DS-CNN and CRNN, seeds 0-2, threshold at 5% false alarms on the unchanged validation.
+> **Hypothesis:** drone confidence under war rises and false confidence on war without a drone falls,
+> at no more than a small cost in Lund recall.
+> **Judged by** (against `it23_2s_colour` and `it19 CRNN colour s1`): mean confidence on MAD's held-out
+> videos (no drone); iteration 23's box readouts (validation recall, Lund, mower, pink/brown); then
+> test 1's shape (`scripts/it21_test1.py`) against war and cars.
+
+## 230 - MAD becomes training data; split by video; iteration 24 trained
+
+**What:** entry 229 marked MAD test-only. On Marius's request it is now training data, split by video
+so it can still be scored: every video with a clip in MAD's own `test.csv` is held out (51 videos;
+4 of them also have clips in `training.csv`, and those clips are held out too). The rest, 6,025
+clips from 461 videos (8.95 h), are written to `data/processed/mad/train.f32` by
+`scripts/prepare_mad.py`; 5,356 of them are at least the 2.5 s the sampler draws. The held-out list is
+`data/processed/mad/heldout_videos.txt`. Every MAD reader calls `forbid_in_training`.
+
+**How.** On the server in `~/dad21`, checked out at 007b65e (`git checkout -f`, which replaced the
+untracked copies of the iteration 21-23 checkpoints with the identical files in git) plus this
+uncommitted patch, one run per GPU:
+```
+prepare_mad.py
+run_range.py --name it24_2s_mad_sS --pool --no-uav16 --arms none --recipes simdist_colour_mad --models dscnn crnn \
+    --device cuda --windows 600000 --window-seconds 2.0 --speed 0.8 1.25 --deploy-fa 0.05 --seed S --frontend mfe
+```
+
+**Also run and not used:** `scripts/mad_nodrone.py` scored `it19 CRNN colour s1`, the six it23
+networks and comb on all 7,322 MAD clips of at least 2 s (output `artifacts/mad_nodrone/` on the
+server). Marius stopped that line before the table was read; it is not reported here, and its clips
+include the videos iteration 24 now trains on.
+
+**Not verified:** that no MAD clip holds a drone (titles only, entry 229). A drone in a training
+negative would teach the networks to ignore it.
+
+**Result:** pending.
+
+## 231 - Iteration 24 trained: first readouts from the training logs
+
+**What:** the three runs of entry 230 finished on 2026-11-12 in 1,814-1,876 s each (DS-CNN about
+730 windows/s, CRNN about 615-640 windows/s, one run per GPU). Checkpoints
+`artifacts/models/it24_2s_mad_s{0,1,2}_none_simdist_colour_mad_{dscnn,crnn}.pt` and run files
+`artifacts/runs/it24_2s_mad_s{0,1,2}.json` are on the server only.
+
+**Result, read from `~/it24_sS.log`** (threshold at 5% false alarms on validation):
+
+| Network | Validation recall s0 / s1 / s2 (mean) | Lund recall s0 / s1 / s2 (mean) | it23 `2s_colour` means (entry 210) |
+|---|---|---|---|
+| DS-CNN | 0.804 / 0.789 / 0.781 (0.791) | 0.518 / 0.562 / 0.561 (0.547) | 0.782 / 0.440 |
+| CRNN | 0.803 / 0.804 / 0.801 (0.803) | 0.305 / 0.421 / 0.527 (0.418) | 0.795 / 0.404 |
+
+**Not verified:** that the logs' Lund column is the same readout as entry 210's (which came from
+`scripts/it19_colour_check.py`); mower and pink/brown readouts, held-out MAD and the war-and-cars
+test are not run yet. No verdict on iteration 24 until they are.
+
+**Correction to the chat, not the report:** while the CRNNs trained, the absence of a progress line
+was read as a CRNN far slower than the DS-CNN (an estimate of more than two hours). It was not; the
+CRNNs finished about 16 minutes after the DS-CNNs.
+
+## 232 - The GUIs: iteration 24's networks in, iteration 23's out
+
+**What:** on Marius's request, `drone_war_grid.MODELS` (and with it `Complete_Test_Gui` and
+`detect_gui`) lists `it24 CNN 2s war s0-s2` and `it24 CRNN 2s war s0-s2` in place of iteration 23's
+six 2 s colour networks, in the colours they had. The Complete Test GUI offers the it24 DS-CNNs, as it
+did the it23 ones. The it23 checkpoints and run files stay in `artifacts/`; older results that name
+them no longer open their model in the GUIs.
+
+**How:** the server zipped the six checkpoints and three run files as `it24_models.zip`
+(8,549,462 bytes; MD5 `cdb54e7ba5e16a0fa30dd786cb463bbd` on the Mac; the server printed the same
+size and an MD5 that was only partly legible on screen). Unpacked into `artifacts/models/` and
+`artifacts/runs/`. Checked: `Complete_Test_Gui.detector_names()` offers all six; `it24 CRNN 2s war s1`
+and `it24 CNN 2s war s0` load and score 3 s of noise with thresholds 0.672 and 0.543. The GUIs were
+not opened.

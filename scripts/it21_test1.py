@@ -28,7 +28,8 @@ RUNS = dwg.ROOT / "artifacts/runs"
 NETS = {}
 IT23 = "--it23" in sys.argv   # entry 211: the 2 s colour networks of iteration 23 against it19_colour
 for s in (0, 1, 2):   # the reference's threshold comes from its re-score (entry 207), the same as its own run's
-    NETS[f"it19 colour s{s}"] = (RUNS / f"it22_ref_s{s}.json", dwg.MODEL_DIR / f"it19_colour_s{s}_none_simdist_colour_crnn.pt")
+    if not IT23 or s == 1:   # with --it23 only the GUI's colour model, it19 CRNN colour s1 (entry 228)
+        NETS[f"it19 colour s{s}"] = (RUNS / f"it22_ref_s{s}.json", dwg.MODEL_DIR / f"it19_colour_s{s}_none_simdist_colour_crnn.pt")
     if IT23:
         for arch in ("dscnn", "crnn"):
             NETS[f"it23 2s colour {arch} s{s}"] = (RUNS / f"it23_2s_colour_s{s}.json",

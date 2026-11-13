@@ -39,6 +39,7 @@ from . import steady
 from .config import DEFAULT, FrontendConfig
 from .features import LogMel
 from .realdata import Recording
+from .sealed import forbid_in_training
 
 TRAIN_BINS = ((0, 50), (50, 100), (100, 150), (150, 200))
 CONTROL_MIN_M = 300.0
@@ -160,6 +161,8 @@ class Recipe:
     steady_slopes: tuple | None = None           # only slope noise at these dB/octave, no phase copies (iteration 19)
     veh_neg: float = 0.0                         # share of negatives that are a road vehicle over a rig background (iteration 21)
     veh_mask: float = 0.0                        # share of positives with a road vehicle under the drone
+    mad_neg: float = 0.0                         # share of negatives that are MAD war audio over a rig background (iteration 24)
+    mad_mask: float = 0.0                        # share of positives with MAD war audio under the drone
 
 
 # Iteration 21: FSD50K labels of road vehicles and their engines.
@@ -179,6 +182,20 @@ def vehicle_pools(fsd: list[Recording]) -> tuple[list[Recording], list[Recording
     return fsd, [r for r in fsd if VEHICLE.intersection(r.labels.split(","))]
 
 
+def mad_pool(n: int) -> list[Recording]:
+    """MAD's training-video clips of at least n samples (scripts/prepare_mad.py; held-out videos are not in
+    the store). Grouped by video, so the sampler's per-group weighting keeps one video from dominating."""
+    import csv
+    root = Path(__file__).resolve().parents[2] / "data/processed/mad"
+    out = []
+    for r in csv.DictReader(open(root / "train.csv", newline="", encoding="utf-8")):
+        forbid_in_training(r["path"], r["video"], where="mad_pool")
+        if int(r["n_samples"]) >= n:
+            out.append(Recording("mad", r["path"], 0, r["class"], r["video"], "train", int(r["n_samples"]),
+                                 r["class"], {}, str(root / "train.f32"), "float32", int(r["offset"])))
+    return out
+
+
 RECIPES = {
     "near": Recipe("near", {(0, 50): 1.0}),
     "range": Recipe("range", {(0, 50): 0.20, (50, 100): 0.25, (100, 150): 0.30, (150, 200): 0.25}),
@@ -189,6 +206,10 @@ RECIPES = {
                              steady_slopes=(-3.0, -6.0)),
     # Iteration 21: road vehicles as 25% of the negatives and under 30% of the drones; no clip a test plays.
     "simdist_veh": Recipe("simdist_veh", {(0, 50): 1.0}, sim_share=0.80, veh_neg=0.25, veh_mask=0.30),
+    # Iteration 24: simdist_colour plus MAD war audio (training videos) as 25% of the negatives and under 30% of
+    # the drones, the same shares and mixing as the road vehicles of iteration 21.
+    "simdist_colour_mad": Recipe("simdist_colour_mad", {(0, 50): 1.0}, sim_share=0.80, steady_neg=0.15,
+                                 steady_slopes=(-3.0, -6.0), mad_neg=0.25, mad_mask=0.30),
 }
 
 
@@ -272,6 +293,8 @@ class RangeSampler:
         if recipe.veh_neg or recipe.veh_mask:
             fsd, veh = vehicle_pools(fsd)
             self.veh = rr.WindowSampler([rr.ddl_pool(splits.ddl_train, n, 50.0)], veh, long_cfg, self.variant, seed)
+        if recipe.mad_neg or recipe.mad_mask:
+            self.mad = rr.WindowSampler([rr.ddl_pool(splits.ddl_train, n, 50.0)], mad_pool(n), long_cfg, self.variant, seed)
         self.fsd = rr.WindowSampler([rr.ddl_pool(splits.ddl_train, n, 50.0)], fsd, long_cfg,
                                     self.variant, seed)
 
@@ -340,6 +363,9 @@ class RangeSampler:
         if self.recipe.veh_neg or self.recipe.veh_mask:
             parts.append(f"road vehicles ({len(self.veh.neg)} clips): {self.recipe.veh_neg:.0%} of negatives, "
                          f"under {self.recipe.veh_mask:.0%} of positives")
+        if self.recipe.mad_neg or self.recipe.mad_mask:
+            parts.append(f"MAD war audio ({len(self.mad.neg)} clips): {self.recipe.mad_neg:.0%} of negatives, "
+                         f"under {self.recipe.mad_mask:.0%} of positives")
         return "; ".join(parts)
 
     def _norm(self) -> float:
@@ -405,6 +431,11 @@ class RangeSampler:
             m, pm = self.veh._background(rng)
             snr = rng.uniform(*self.variant.snr_db)
             x = x + m * math.sqrt(pd / (pm * 10.0 ** (snr / 10.0)))
+        if self.recipe.mad_mask and rng.random() < self.recipe.mad_mask:
+            # MAD war audio under the drone, drone over war at the buried range of in-band SNR.
+            m, pm = self.mad._background(rng)
+            snr = rng.uniform(*self.variant.snr_db)
+            x = x + m * math.sqrt(pd / (pm * 10.0 ** (snr / 10.0)))
         return x
 
     def negative(self, rng: np.random.Generator) -> np.ndarray:
@@ -414,6 +445,11 @@ class RangeSampler:
             # A road vehicle over a rig background, vehicle over background at the same range.
             a, pa = self._rig_background(rng)
             v, pv = self.veh._background(rng)
+            return a + v * math.sqrt(pa * 10.0 ** (rng.uniform(*self.variant.snr_db) / 10.0) / pv)
+        if self.recipe.mad_neg and rng.random() < self.recipe.mad_neg:
+            # MAD war audio over a rig background, war over background as the vehicles.
+            a, pa = self._rig_background(rng)
+            v, pv = self.mad._background(rng)
             return a + v * math.sqrt(pa * 10.0 ** (rng.uniform(*self.variant.snr_db) / 10.0) / pv)
         u = rng.random()
         if u < self.rig_neg_share:

@@ -327,3 +327,31 @@ tuning (`src/dad/sealed.py`). See report entry 174.
   not used: they are FSD50K clips, and FSD50K eval is a held-out test source.
 - **Not verified here:** the WAV count, the dataset's own audit script and the levels.
 
+
+## Added on 2026-11-12: MAD, the Military Audio Dataset (war sounds, no drone)
+
+Kim, Yoon and Jung, "A Military Audio Dataset for Situational Awareness and Surveillance",
+*Scientific Data* 11, 2024 (DOI 10.1038/s41597-024-03511-w). Code and licence:
+<https://github.com/kaen2891/military_audio_dataset> (CC BY 4.0). Audio:
+<https://www.kaggle.com/datasets/junewookim/mad-dataset-military-audio-dataset>. Annotation CSVs
+also on Figshare (collection 7001919, CC0). The clips are cut from 512 YouTube videos of military
+activity; the authors excluded games and simulations.
+
+- **Fetched:** 2026-11-12. Kaggle answers the JupyterLab server with 404, so the signed storage
+  link was taken on the Mac and downloaded on the server.
+
+  | File | Bytes | MD5 |
+  |---|---|---|
+  | `MAD_kaggle.zip` | 1,096,444,373 | `22a5ae7fd12639863d9e6e795de73030` |
+
+- **Where:** only on the JupyterLab server, account `mariusq`: raw zip and the Figshare CSVs in
+  `~/dad/data/MAD/`, extracted in `~/dad/data/extracted/MAD/MAD_dataset/`.
+- **Content, counted on the server:** 7,466 WAVs (the paper lists 8,075), 16 kHz mono, 1-10 s,
+  10.96 h. `training.csv` + `test.csv` columns: path, label, YouTube title, YouTube URL.
+  Labels (from `main.py` of the code): 0 communication 981, 1 shooting 1573, 2 footsteps 877,
+  3 shelling 987, 4 vehicle 1032, 5 helicopter 1025, 6 fighter 991.
+- **Use:** changed by report entry 230: training videos in the training pool (iteration 24), MAD's 51 test
+  videos held out for scoring only. Originally (entry 229): test only, never training or tuning, so it
+  stays an outside check.
+- **Not verified:** that no clip contains a drone. No video title contains drone, UAV, FPV,
+  quadcopter, Bayraktar, Shahed or loitering, but the audio has not been listened to.

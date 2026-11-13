@@ -87,7 +87,15 @@ MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file
           # 600k with PCEN (T 60 ms) in place of the log (iteration 22, entry 211); model_cfg reads it from the run file
           **{f"it22 {name} pcen s{s}": (ROOT / f"artifacts/runs/it22_pcen_s{s}.json",
                                         MODEL_DIR / f"it22_pcen_s{s}_none_simdist_{arch}.pt")
-             for name, arch in (("CNN", "dscnn"), ("CRNN", "crnn")) for s in (0, 1, 2)}}
+             for name, arch in (("CNN", "dscnn"), ("CRNN", "crnn")) for s in (0, 1, 2)},
+          # iteration 23's 2 s colour networks were here until entry 232 (Marius, 2026-11-13: replaced by iteration 24)
+          # the 2 s colour recipe with MAD war audio, DS-CNN seeds 0-2 (iteration 24, entries 230-232; not yet run
+          # against war and cars). Complete_Test_Gui and detect_gui only
+          **{f"it24 CNN 2s war s{s}": (ROOT / f"artifacts/runs/it24_2s_mad_s{s}.json",
+                                       MODEL_DIR / f"it24_2s_mad_s{s}_none_simdist_colour_mad_dscnn.pt") for s in (0, 1, 2)},
+          # the same with the CRNN, seeds 0-2
+          **{f"it24 CRNN 2s war s{s}": (ROOT / f"artifacts/runs/it24_2s_mad_s{s}.json",
+                                        MODEL_DIR / f"it24_2s_mad_s{s}_none_simdist_colour_mad_crnn.pt") for s in (0, 1, 2)}}
 OFF = float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
 NO_DRONE = 0.0                                               # drone "speed" of the no-drone row (war only)
 

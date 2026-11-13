@@ -87,7 +87,10 @@ COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it
           "it20 CRNN bp s2": "#a1887f", "it21 CRNN uav16 s0": "#263238", "it21 CRNN uav16 s1": "#607d8b",
           "it21 CRNN uav16 s2": "#b0bec5", "it22 CNN pcen s0": "#1a237e", "it22 CNN pcen s1": "#3949ab",
           "it22 CNN pcen s2": "#7986cb", "it22 CRNN pcen s0": "#b71c1c", "it22 CRNN pcen s1": "#e53935",
-          "it22 CRNN pcen s2": "#ef9a9a", "comb": "#1baf7a"}   # it20, it21, it22: the same colours as detect_gui
+          "it22 CRNN pcen s2": "#ef9a9a", "it24 CNN 2s war s0": "#827717", "it24 CNN 2s war s1": "#afb42b",
+          "it24 CNN 2s war s2": "#c0ca33",
+          "it24 CRNN 2s war s0": "#004d40", "it24 CRNN 2s war s1": "#00897b", "it24 CRNN 2s war s2": "#80cbc4",
+          "comb": "#1baf7a"}   # it20, it21, it22, it24: the same colours as detect_gui
 PD_CONTROLS = {"wind (Pd)": ("wind", (("speed_ms", "speed (m/s, assumed)", "quiet: 1  ·  storm: 25"),
                                       ("reso", "resonance (0-127)", "open field: 10  ·  city: 90"))),
                "cars": ("cars", (("speed_kmh", "speed (km/h)", "town: 50  ·  motorway: 130"),
@@ -212,10 +215,11 @@ def pd_steps(name: str, lo: str, hi: str, n: str) -> list[float]:
 def detector_names() -> list[str]:
     """The detectors offered on the setup page: the recurrent networks (CRNN, It9B) and comb. The DS-CNNs
     are left out at Nicolai's request (2026-11-10); they stay in dwg.MODELS, so older results that used
-    them still open. A model whose run file or checkpoint is missing on this machine is not offered (run
+    them still open, except the 2 s DS-CNNs of iteration 24 (Marius, 2026-11-12, then for iteration 23's). A model whose run file or checkpoint is missing on this machine is not offered (run
     files are git-ignored, so a pulled checkpoint can arrive without the threshold it needs)."""
     return [m for m, (run, ckpt) in E.dwg.MODELS.items()
-            if not str(ckpt).endswith("_dscnn.pt") and Path(run).exists() and Path(ckpt).exists()] + ["comb"]
+            if (not str(ckpt).endswith("_dscnn.pt") or m.startswith("it24 CNN"))
+            and Path(run).exists() and Path(ckpt).exists()] + ["comb"]
 
 
 def model_view(x: np.ndarray, sc, batch: int = 256) -> np.ndarray:
