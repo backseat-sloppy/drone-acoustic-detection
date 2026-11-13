@@ -161,6 +161,9 @@ RECIPES = {
     # Iteration 19: pink (-3 dB/oct) and brown (-6 dB/oct) noise as 15% of the negatives, never under a drone.
     "simdist_colour": Recipe("simdist_colour", {(0, 50): 1.0}, sim_share=0.80, steady_neg=0.15,
                              steady_slopes=(-3.0, -6.0)),
+    # Iteration 25: the same pink and brown noise also under 30% of the drones, so it stops deciding the label.
+    "simdist_dcolour": Recipe("simdist_dcolour", {(0, 50): 1.0}, sim_share=0.80, steady_neg=0.15,
+                              steady_mask=0.30, steady_slopes=(-3.0, -6.0)),
     # Iteration 21: road vehicles as 25% of the negatives and under 30% of the drones; no clip a test plays.
     "simdist_veh": Recipe("simdist_veh", {(0, 50): 1.0}, sim_share=0.80, veh_neg=0.25, veh_mask=0.30),
 }

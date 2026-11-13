@@ -103,6 +103,12 @@ These exist because an inflated number is worse than a low one.
 - Provenance and licences are in `docs/datasets.md`. Re-create `data/` on a
   new machine with `scripts/download_datasets.ps1`.
 - Respect per-clip licences (FSD50K) and unresolved ones (Halmstad).
+- **Nightjar's no-drone label is wrong in places** (report entries 226-230,
+  iteration 23): it means "no logged DJI flight", and some segments hold a
+  drone heard by ear. Every training run from iteration 23 on passes
+  `--relabel labels/nightjar_relabel.csv` to `scripts/run_range.py` (or calls
+  `dad.realdata.relabel` on the manifest). A run without it must say why in
+  its report entry. New verdicts by ear go into that CSV, never into `data/`.
 
 ## Project commands
 

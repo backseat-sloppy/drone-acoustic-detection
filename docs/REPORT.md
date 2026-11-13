@@ -14101,3 +14101,43 @@ PC's: the Nightjar audit and iteration 23 (226, 227 "Correction to entry 226", 2
 by number and title. New entries continue at 238.
 
 **How.** `git stash push -u`, `git pull --ff-only`, `git stash pop`; `uv run pytest -q -p no:cacheprovider`.
+
+---
+
+# Iteration 25 - Pink and brown noise under drones as well (double colours)
+
+> **Changed from iteration 23's `colour` arm:** 30% of the drone training windows also get pink or brown
+> noise under the drone (drone over noise at -5 to +15 dB in-band SNR, the `buried` range), the same
+> generator and level as the 15% of no-drone windows that are pink or brown noise alone (recipe
+> `simdist_dcolour`). Iteration 24 exists on another branch, not on `master` (Mads, 2026-11-13).
+> **Why:** Mads's request (2026-11-13). In `simdist_colour` pink and brown noise only ever appear as no
+> drone, so the network can learn "coloured broadband noise means no drone", which pulls the score down
+> when a drone sits in a noisy war soundscape. Under drones too, the noise carries no label information.
+> Iteration 11's `simdist_steady` also put noise under 30% of drones but mixed random slopes and phase
+> copies in, and halved Lund recall (entry 125); which part cost the recall was never separated. This
+> isolates the "under drones" part with pink and brown only.
+> **Kept the same:** everything of `it23_relabel_colour_s1`: the relabelled manifest
+> (`--relabel labels/nightjar_relabel.csv`, now required by CLAUDE.md), 600k windows, speed 0.8-1.25, 1 s
+> window, MFE frontend, seed 1, CRNN only, threshold at 5% false alarms on validation.
+> **Hypothesis:** confidence with a drone in war rises, and Lund recall does not fall.
+> **Judged by:** against `it23_relabel_colour_s1`: the run-file readouts (validation recall, Lund recall,
+> mower false alarms) and the development test on the tune half (mean confidence with a drone in war,
+> without a drone, AUC in war). One seed: a change smaller than the seed spread (1.6 points in war,
+> entry 230) is read as no effect. Lund recall more than 0.03 below the reference counts as harm.
+
+## 238 - The `simdist_dcolour` recipe
+- Date: 2026-11-13
+- Iteration: 25
+- Type: Data
+- Commit: uncommitted on `master` after 89541e8
+
+**What changed.**
+- `src/dad/rangerun.py` RECIPES: `simdist_dcolour` = `simdist_colour` plus `steady_mask=0.30`. The
+  masking code path is iteration 11's (`RangeSampler.positive`), unchanged; with `steady_slopes` set it
+  draws only -3 or -6 dB/octave noise.
+- CLAUDE.md section 6: every training run from iteration 23 on passes the Nightjar relabel CSV, at Mads's
+  request.
+
+**Result.** No run yet.
+
+**Next.** Upload the recipe to the server and train `it25_relabel_double_colour_s1`.
