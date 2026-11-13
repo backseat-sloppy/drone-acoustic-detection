@@ -14944,3 +14944,19 @@ PC's: the Nightjar audit and iteration 23 (226, 227 "Correction to entry 226", 2
 by number and title. New entries continue at 238.
 
 **How.** `git stash push -u`, `git pull --ff-only`, `git stash pop`; `uv run pytest -q -p no:cacheprovider`.
+
+## 238 - Merge of master into `iteration-21-uav16`: two "iteration 23"s, entries 226-232 used again
+
+**What:** master was merged into `iteration-21-uav16` on 2026-11-13 (Marius). `REPORT.md` merges by
+union: no line of either side is missing (checked line by line). This branch's entries come first
+(iterations 21-24 of this branch, entries 200-232), master's after them (entries 226-237). Nothing was
+renumbered.
+
+**Read with care:**
+- Two different iterations are called 23: this branch's 2 s colour recipe (entries 209-211) and
+  master's Nightjar relabelling (entries 228-232 on master). Iteration 24 (MAD war audio, entries
+  230-232 on this branch) follows this branch's iteration 23.
+- Entry numbers 226-232 appear on both sides with different content; cite them with their title.
+- Entry 232's "iteration 23's networks out of the GUIs" means this branch's 2 s colour networks.
+  Master's `it23 CRNN relabel 600k s1` and `it23 CRNN relabel colour s1` stay in
+  `drone_war_grid.MODELS` and both GUIs, next to the six it24 networks.
