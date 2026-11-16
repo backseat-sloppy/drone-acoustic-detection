@@ -26,8 +26,8 @@ On each page:
 
     Drones               the files or speeds, and the drone level(s) in dB SPL (synthetic: "as rendered"
                          keeps the physical level of the render)
-    Background layers    (open with the arrow) war soundscape, war-shaped noise, wind, wind and cars from
-                         Pure Data, and helicopter, insects (listed, not set up yet). Tick a layer and give its levels in
+    Background layers    (open with the arrow) war soundscape, war-shaped noise, wind, and wind, cars,
+                         helicopter and insects (bumblebees) from Pure Data. Tick a layer and give its levels in
                          dB SPL as min, max and # (as drone_war_gui: # values from min to max, both
                          included, evenly spaced; # 1 needs min = max); every combination of the ticked
                          layers' levels is a background
@@ -89,7 +89,7 @@ SUBTITLES = {"real": "Real drone recordings mixed into chosen background layers 
              "modified": "Real drone recordings flown at the microphone: the end of each file is the impact, and the "
                          "level follows the distance at each moment for the chosen speed."}
 DEFAULT_LEVELS = {"war soundscape": ("60", "60", "1"), "war-shaped noise": ("50", "50", "1"), "wind": ("50", "50", "1"),
-                  "wind (Pd)": ("50", "50", "1"), "cars": ("5", "5", "1"), "helicopter": ("", "", ""), "insects": ("", "", "")}
+                  "wind (Pd)": ("50", "50", "1"), "cars": ("5", "5", "1"), "helicopter": ("50", "50", "1"), "insects": ("30", "30", "1")}
 COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it10 CNN": "#d93025",
           "It9B": "#0b8a8a", "it16 CNN 600k s0": "#b8860b", "it16 CNN 600k s1": "#d4a72c",
           "it16 CNN 600k s2": "#8a6d0b", "it16 CRNN 600k s0": "#c2185b", "it16 CRNN 600k s1": "#e5609a",
@@ -118,7 +118,7 @@ FINAL_TAG = "  -  THE FINAL EVALUATION (sealed car)"
 PD_LABELS = {"wind_speed_ms": "wind (Pd) speed (m/s, assumed)", "wind_reso": "wind (Pd) resonance (0-127)",
              "car_speed_kmh": "car speed (km/h)", "car_dist_m": "car closest distance (m)"}
 PART_COLORS = {"drone": "#d93025", "war soundscape": "#6b4e16", "war-shaped noise": "#7a7a7a", "wind": "#2a9d8f",
-               "wind (Pd)": "#2a9d8f", "cars": "#c2570c", "mix": "#111111"}
+               "wind (Pd)": "#2a9d8f", "cars": "#c2570c", "helicopter": "#3949ab", "insects": "#b8860b", "mix": "#111111"}
 BG, PANEL, ACCENT, MUTED = "#f4f5f7", "#ffffff", "#2a78d6", "#6b7280"
 LOGMEL = LogMel(DEFAULT)
 BAND_HZ = E.np.asarray(mel_to_hz(np.linspace(hz_to_mel(DEFAULT.fmin), hz_to_mel(DEFAULT.fmax), DEFAULT.n_mels + 2))[1:-1])
@@ -141,7 +141,11 @@ LAYER_GUIDELINES = (
     "21.5 s) the round has no car. The level you set is the average over the pass-by. At 50 km/h and 10 m a pass-by "
     "peaks about 11 dB above that level (1 s windows).",
     "cars: the engine recordings are from FSD50K dev, which training draws from. Low confidence on cars may partly be "
-    "memory of the engines: say so when reporting results.")
+    "memory of the engines: say so when reporting results.",
+    "helicopter and insects: fixed Pure Data renders, made once and kept (helicopter about 35 s in real time). "
+    "helicopter: one fly-by (200 km/h, closest 100 m at 15 s of a 30 s loop), so its level is the average over the "
+    "loop and the pass is far louder. insects: 2 bumblebees about 2 m away; the bee is the cleaned FSD50K dev "
+    "233783 recording, a training distracter stem, so the same caution as for cars applies.")
 MODEL_LIM = (-3, 3)                                         # colour scale of the network's input, z-scores
 SPEC_NOTES = {"ui": "the whole round on one scale: 80 dB down from its loudest point",
               "model": "each 125 ms from its own 1 s window: that window's level removed, scaled by the training statistics"}
@@ -1709,7 +1713,7 @@ CURVE_ABOVE = 4                                              # more values than 
 COMPARE = "comparison"                                       # the Conclusions choice that draws every detector together
 SPARE_COLORS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948")
 SUMMARY_LAYERS = (("War soundscape summary", ("war soundscape",)), ("Wind summary", ("wind", "wind (Pd)")),
-                  ("Car summary", ("cars",)))
+                  ("Car summary", ("cars",)), ("Helicopter summary", ("helicopter",)), ("Insect summary", ("insects",)))
 TOP_IN, HEAD_IN, ROW_IN, NOTE_IN = 0.7, 0.55, 3.1, 0.4       # heights on the Conclusions page, inches
 
 
