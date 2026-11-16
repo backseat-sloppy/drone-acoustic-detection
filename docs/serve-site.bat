@@ -53,6 +53,25 @@ call bundle check >nul 2>nul || (
 )
 
 rem --- 3. Serve ----------------------------------------------------------------
+rem A server left over from another window (or a terminal tab) holds port 4000,
+rem and would keep serving the site after this window is closed.
+set "OLD_PID="
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":4000 .*LISTENING"') do set "OLD_PID=%%p"
+if not defined OLD_PID goto serve
+echo.
+echo A site server is already running ^(process %OLD_PID%^), probably in another
+echo window or terminal tab.
+set "ANSWER="
+set /p "ANSWER=Stop it and start a fresh one here? [Y/N] "
+if /i not "%ANSWER%"=="Y" (
+    echo Leaving it running and opening the site.
+    start "" "http://localhost:4000/drone-acoustic-detection/"
+    exit /b 0
+)
+taskkill /PID %OLD_PID% /T /F >nul
+ping -n 3 127.0.0.1 >nul
+
+:serve
 echo.
 echo Starting the site. Your browser opens when it is built.
 echo Close this window to stop it.
