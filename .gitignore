@@ -25,4 +25,3 @@ Pure-data+Script/EnviromentTest/drone_only/*.json
 docs/_site/
 docs/.jekyll-cache/
 docs/.jekyll-metadata
-docs/Gemfile.lock
