@@ -14212,3 +14212,49 @@ stay on the server.
 
 **Result.** `drone_war_grid._detectors` loads it with threshold 0.708 (the run's deployment threshold);
 pytest passes. Not run by hand in the GUI.
+
+## 241 - Helicopter and insect layers in the Complete Test GUI
+- Date: 2026-11-16
+- Iteration: 25 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted on `master` after 030670c
+
+**What changed.**
+- **Brought in from two unmerged branches** (files only; their `.DS_Store`, Reaper peak files and report
+  edits left out). The helicopter and bee distractors are their authors' work, copied unchanged except
+  where noted below: the helicopter by Liriano24, the bees by Garioo. Claude only wired them into the GUI.
+  - `origin/Synth_Distractors` (7d65495): `Distrators/Helicopter/Helicopter/helicopter_flyby.py` and `.pd`
+    (a Pd helicopter fly-by fitted to reference recordings), the updated `Helicipter.pd`, `mdel.pd`,
+    `vrdel.pd` and the reference spectrogram figure.
+  - `origin/Insect-Distractors` (e3b68c3): `Pure-data+Script/BeeDistractor/` (bee patch, `make_tables.py`,
+    credits, comparison figures). That branch logs the bee work as its own entries 155-163, numbered
+    before master's later entries 155-240; they are not copied here. Read them on that branch.
+- **`make_tables.py`** skips a bee type whose FSD50K stem is not on the machine and keeps its line in
+  `bee_types.txt`. Only 233783 (bumblebee, type 1) is in `data/processed/stems/distracter/buzzing_insect`
+  here; 59451 and 79931 are not.
+- **`scripts/complete_test_engine.py`**: the `helicopter` and `insects` layers, until now "not set up yet",
+  are rendered once and kept in `artifacts/complete_test/layers/` like the other Pd layers:
+  - helicopter: `helicopter_flyby.render_flyby`, preset A, 200 km/h, closest 100 m at 15 s of a 30 s
+    file, looped. Pd renders it in real time (about 35 s).
+  - insects: `bee_distractor.pd` in batch mode, type 1, 2 bees about 2 m away, 60 s, looped.
+  - No per-round settings (speed, distance) yet: one fixed render each.
+- **`scripts/Complete_Test_Gui.py`**: default levels (helicopter 50, insects 30 dB SPL), colours, a
+  summary row for each in Conclusions, a guideline note. `Complete_Test_Gui22k.py` and its engine are
+  not changed.
+
+**Result.** (`uv run python Pure-data+Script/BeeDistractor/make_tables.py`, then
+`complete_test_engine.make_layers()`):
+- `make_tables.py` reproduces the branch's type 1: f0 147.5 Hz, loop 4.60-8.30 s, 0.1 dB removed.
+- Both layers available. Helicopter render 30.0 s, per-second level from -43 dBFS at the ends to
+  -26 dBFS at the pass (a 3 dB step at the loop seam); bee render 60.0 s, -69 to -58 dBFS per second,
+  no gaps. A 12 s window set to 60 dB SPL reads 62.0 (helicopter, the louder pass in that stretch) and
+  59.8 dB SPL (bees).
+- The GUI starts, both layers can be ticked with their defaults, and `mix_round` mixes them. pytest:
+  169 passed. No full test run with detectors, and no listening by Claude.
+
+**Caveat.** The bee is cleaned FSD50K dev 233783, which is also a training distracter stem
+(`build_stems.py`): low confidence on insects may partly be memory, as for the cars (entry 199).
+Synthetic scaffolding.
+
+**Next.** Fetch stems 59451 and 79931 if the honeybee types are wanted; per-round helicopter
+speed/distance if Mads wants them swept.

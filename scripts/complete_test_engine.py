@@ -83,6 +83,10 @@ CAR_DIR = dwg.ROOT / "Pure-data+Script/CarDistractor"
 CAR_PD = dict(speed_kmh=50, dist_m=10, dur_s=20)             # the patch's defaults; one pass-by per engine
 ONE_CAR = 0                                                  # Plan.car_once: car_idle (FSD50K dev 369049), Mads's pick by ear (entry 199)
 SEALED_CAR_TABLE = CAR_DIR / "car_engines_sealed.txt"        # The Final Evaluation's car (scripts/fetch_sealed_car.py)
+HELI_DIR = dwg.ROOT / "Distrators/Helicopter/Helicopter"
+HELI_PD = dict(speed_kmh=200.0, distance_m=100.0, duration=30.0)   # helicopter_flyby.py's defaults, 30 s: one fly-by, closest at 15 s
+BEE_DIR = dwg.ROOT / "Pure-data+Script/BeeDistractor"
+BEE_PD = dict(type=1, n=2, dist_m=2, dur_s=60)            # bumblebee 233783 (the only bee stem on this machine), the patch's 2 bees at 2 m
 WIND_SLIDER_PER_MS = 4.0                                     # ASSUMED, not measured: wind.pd's 0-127 slider for 1 m/s
 PD_SETTINGS = dict(wind=dict(speed_ms=WIND_PD["speed"] / WIND_SLIDER_PER_MS, reso=WIND_PD["reso"]),   # what a test can change, and its limits:
                    cars=dict(speed_kmh=CAR_PD["speed_kmh"], dist_m=CAR_PD["dist_m"]))
@@ -254,6 +258,53 @@ def _cars(cfg: dict):
     return _read_44k(f)
 
 
+def _heli_file() -> Path:
+    return _pd_cached("helicopter_{speed_kmh:g}kmh_{distance_m:g}m_{duration:g}s".format(**HELI_PD), HELI_DIR / "helicopter_flyby.py")
+
+
+def _heli():
+    """One fly-by from helicopter_flyby.py (preset A), looped. Pd renders it in real time (about 35 s)."""
+    f = _heli_file()
+    if not f.exists():
+        _need_pd()
+        sys.path.insert(0, str(HELI_DIR))
+        import helicopter_flyby
+        PD_CACHE.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory() as tmp:           # moved when complete: several workers may render this
+            whole = Path(tmp) / "whole.wav"
+            helicopter_flyby.render_flyby(**HELI_PD, out=str(whole), pd_bin=_pd(), workdir=str(Path(tmp) / "work"))
+            shutil.move(str(whole), str(f))
+    return _read_44k(f)
+
+
+def _bee_loop() -> Path:
+    return BEE_DIR / f"bee_clean{BEE_PD['type']}.wav"
+
+
+def _bees_file() -> Path:
+    return _pd_cached("bees_t{type}_n{n}_{dist_m:g}m_{dur_s:g}s".format(**BEE_PD), BEE_DIR / "bee_distractor.pd",
+                      BEE_DIR / "bee_voice.pd", _bee_loop())
+
+
+def _bees():
+    """bee_distractor.pd's bees buzzing around near the microphone, looped."""
+    f = _bees_file()
+    if not f.exists():
+        _need_pd()
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "whole.wav"
+            r = subprocess.run([_pd(), "-nogui", "-nosound", "-batch", "-r", "44100", "-open", str(BEE_DIR / "bee_distractor.pd"),
+                                "-send", "bee-batch 1", "-send", f"bee-type {BEE_PD['type']}", "-send", f"bee-n {BEE_PD['n']}",
+                                "-send", f"bee-dist {BEE_PD['dist_m']:g}", "-send", f"bee-dur {BEE_PD['dur_s']:g}",
+                                "-send", f"bee-rec symbol {wav.as_posix()}", "-send", "bee-go bang"],
+                               capture_output=True, text=True, timeout=600)
+            if not wav.exists() or wav.stat().st_size < 1000:
+                raise RuntimeError(f"Pure Data wrote no bee render:\n{r.stdout}{r.stderr}")
+            PD_CACHE.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(wav), str(f))
+    return _read_44k(f)
+
+
 def _pd_layer_state() -> dict:
     """(available, note) of the two Pure Data layers: Pd and what it needs, or a kept render of the defaults."""
     pd = _pd()
@@ -264,7 +315,16 @@ def _pd_layer_state() -> dict:
     cars = (ok, "Pure Data pass-bys, one per engine, looped" if ok else
             "engine recordings missing: data/processed/stems/distracter/idling" if not have_stems else
             "Pure Data not found on this machine")
-    return dict(wind=wind, cars=cars)
+    have_loop = _bee_loop().exists()
+    ok_heli = bool(pd) or _heli_file().exists()
+    heli = (ok_heli, f"Pure Data helicopter_flyby.py: one fly-by at {HELI_PD['speed_kmh']:g} km/h, closest "
+                     f"{HELI_PD['distance_m']:g} m, {HELI_PD['duration']:g} s, looped" if ok_heli else "Pure Data not found on this machine")
+    ok_bees = have_loop and (bool(pd) or _bees_file().exists())
+    bees = (ok_bees, f"Pure Data bee_distractor.pd: {BEE_PD['n']} bumblebees about {BEE_PD['dist_m']:g} m away, "
+                     f"{BEE_PD['dur_s']:g} s, looped" if ok_bees else
+            "bee loop missing: run Pure-data+Script/BeeDistractor/make_tables.py" if not have_loop else
+            "Pure Data not found on this machine")
+    return dict(wind=wind, cars=cars, helicopter=heli, insects=bees)
 
 
 PD_RENDER = {"wind (Pd)": (WIND_PD, _wind_pd), "cars": (CAR_PD, _cars)}
@@ -279,8 +339,8 @@ def pd_config(name: str, pd: dict) -> dict:
 
 
 def make_layers(war_file: str | None = None) -> dict[str, Layer]:
-    """Every background layer the GUI lists, available or not (helicopter, insects: not yet). The two
-    Pure Data layers here are at the patches' own values; Test.layers_for gives a round's. The war
+    """Every background layer the GUI lists, available or not. The wind (Pd)
+    and cars layers here are at the patches' own values; Test.layers_for gives a round's. The war
     soundscape is WarSoundScape.wav unless `war_file` names another (an older run's 600 s track)."""
     pd = _pd_layer_state()
     war = war_path(war_file) if war_file else WAR_SOUNDSCAPE
@@ -295,8 +355,8 @@ def make_layers(war_file: str | None = None) -> dict[str, Layer]:
                       "stem missing on this machine: run scripts/build_stems.py", WIND_STEM.exists(), _wind),
         "wind (Pd)": Layer("wind (Pd)", pd["wind"][1], pd["wind"][0], lambda: _wind_pd(WIND_PD)),
         "cars": Layer("cars", pd["cars"][1], pd["cars"][0], lambda: _cars(CAR_PD)),
-        "helicopter": Layer("helicopter", "not set up yet", False),
-        "insects": Layer("insects", "not set up yet", False),
+        "helicopter": Layer("helicopter", pd["helicopter"][1], pd["helicopter"][0], _heli),
+        "insects": Layer("insects", pd["insects"][1], pd["insects"][0], _bees),
     }
 
 
