@@ -101,9 +101,22 @@ MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file
           # the same with the CRNN, seeds 0-2
           **{f"it24 CRNN 2s war s{s}": (ROOT / f"artifacts/runs/it24_2s_mad_s{s}.json",
                                         MODEL_DIR / f"it24_2s_mad_s{s}_none_simdist_colour_mad_crnn.pt") for s in (0, 1, 2)},
-          # it23 colour CRNN with pink and brown noise also under 30% of the drones (iteration 25, entries 238-239)
+          # it23 colour CRNN with pink and brown noise also under 30% of the drones (master's iteration 25, entries 238-239)
           "it25 CRNN relabel double colour s1": (ROOT / "artifacts/runs/it25_relabel_double_colour_s1.json",
-                                                 MODEL_DIR / "it25_relabel_double_colour_s1_none_simdist_dcolour_crnn.pt")}
+                                                 MODEL_DIR / "it25_relabel_double_colour_s1_none_simdist_dcolour_crnn.pt"),
+          # the clean-drone world simulator, 1 s, seed 0 (iteration 25, entries 239-241; simulated validation only)
+          "it25 CRNN worldsim s0": (ROOT / "artifacts/runs/it25_worldsim_s0.json", MODEL_DIR / "it25_worldsim_s0_crnn.pt"),
+          # the same with UAV16 as a second drone rig (iteration 26, entries 243-244; failed stage 1b on false alarms)
+          "it26 CRNN uav16sim s0": (ROOT / "artifacts/runs/it26_uav16sim_s0.json", MODEL_DIR / "it26_uav16sim_s0_crnn.pt"),
+          # iteration 25 plus quiet scenes (silence, faint floors, a confuser alone), seeds 0-2 (iteration 27, entries 247-248)
+          **{f"it27 CRNN quiet s{s}": (ROOT / f"artifacts/runs/it27_quiet_s{s}.json", MODEL_DIR / f"it27_quiet_s{s}_crnn.pt")
+             for s in (0, 1, 2)},
+          # iteration 27 plus road vehicles driving past the microphone, seeds 0-2 (iteration 28, entries 250-251)
+          **{f"it28 CRNN vehicle s{s}": (ROOT / f"artifacts/runs/it28_vehicle_s{s}.json", MODEL_DIR / f"it28_vehicle_s{s}_crnn.pt")
+             for s in (0, 1, 2)},
+          # iteration 27 with half the training windows without a drone (ladder 1), seeds 0-2 (iteration 30, entries 258-260)
+          **{f"it30 CRNN half s{s}": (ROOT / f"artifacts/runs/it30_half_s{s}.json", MODEL_DIR / f"it30_half_s{s}_crnn.pt")
+             for s in (0, 1, 2)}}
 OFF = float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
 NO_DRONE = 0.0                                               # drone "speed" of the no-drone row (war only)
 

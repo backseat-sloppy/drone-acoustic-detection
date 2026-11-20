@@ -46,6 +46,12 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 22 | 210 to 228 | Two frontend probes on `600k`: PCEN (T 60 ms) in place of the log, three seeds; and whether 8-11 kHz adds drone information, on raw Nightjar and FPV before any store rebuild | Mads asked for both; PCEN has been the named next frontend since entry 095; the microphone samples at 42 kHz | **PCEN fails; the frozen frontend stays.** Council (entry 210). PCEN passes its CPU gate at T 60 ms only; the band probe is inconclusive (+0.018 AUC in grouped CV; transfer AUCs at chance) (entry 211). On the development test PCEN loses 0.008 AUC in war for both networks, and wind alone without a drone gives 37-50 % confidence against 1-3 %; the CRNN's cars-alone confidence falls 64 to 47 % (entry 213). The six models are in Complete_Test_Gui as a failed arm (entry 212). **22.05 kHz: not adopted.** A CRNN on Nightjar and FPV gains +0.015 AUC from 8-11 kHz on near drones (entry "215 (probe B2)"), but on Lund from 100 m on B is 0.1-0.6 points below A on all three seeds (probe B3, entry 228); both arms detect at most 1 % there, so B3 also shows the probe networks are too weak to test range. `Complete_Test_Gui22k.py` holds the probe networks (entry 227). |
 | Iteration 23 | 226 to 232, after master's 236 (entry 237) | Ten Nightjar no-drone segments Mads heard as drones relabelled drone (100 s), three left out (50 s); CRNN only, `600k` and `colour` arms, seed 1 | Nightjar's no-drone label means "no logged DJI flight"; Mads heard drones in a listening list (entries 226-227) | **No effect, no harm.** Drone confidence in war +0.8 and +0.7 points, inside the 1.6-point seed spread; no-drone confidence equal or lower; AUC in war -0.009 (600k) and +0.001 (colour). Run-file Lund and mower readouts move with the threshold in opposite directions (entry 230). Entry numbers 226-232 are used twice (entries 231, 237). Both CRNNs are in the test GUIs (entry 232). |
 | Iteration 25 | 238 to 239 | Pink and brown noise under 30% of the drones as well as 15% of the no-drone windows (`simdist_dcolour`), on the relabelled `colour` arm, CRNN seed 1 | Mads's request: noise that only ever means no drone may teach the network to suppress drones in noise | **Rejected, with harm.** Drone in war 58.6 (it23 colour 61.5), Lund recall 0.291 (0.383), mower false alarms 0.152 (0.072). Noise under drones is what cost recall in iteration 11. |
+| Iteration 25 | 239 to | The clean-drone world simulator: only Glasgow hover drones (1 m, 5 m) through a simulated outdoor path (Doppler, 1/r, air absorption, ground reflection) over FSD50K-dev beds (war, wind, background) in ladder families, with Glasgow's noise through the same path as "chain twin" negatives; trained on the Mac | Since entry 127 every recipe on the real pool separates equally; UAV16 cost Lund recall, a sign of chain learning; Marius's choice; the pool is not on this Mac | **Stage 1 passed; stage 2 not run.** Council (entry 239): modified version. On simulated validation (held-out drones and stems), CRNN and DS-CNN AUC 0.976, drone confidence 0.999 at 0 to +10 dB, no-drone confidence on war beds 0.08-0.12, chain twins not taken for drones; `it19_colour` scores 0.77-0.80 on the same windows (entry 241). Real verdict waits for the development test |
+| Iteration 26 | 243 to 244 | UAV16's closest hovers (7-14 m) as a second drone rig in the iteration 25 simulator, its four plain-environment recordings as a second chain-twin source | Iterations 21-23: UAV16 in the real pool cost Lund recall; Glasgow is one indoor microphone; Marius's choice | **Failed stage 1b.** Simulated AUC 0.936 (it25 0.930). On real held UAV16 hovers recall 0.711 (it25 0.613), but false alarms on UAV16's unseen backgrounds 0.135 (it25 0.073, limit +0.02), and war-bed no-drone confidence 0.153 (0.085). `it25_worldsim_s0` stays (entry 244) |
+| Iteration 27 | 246 to 249 | Quiet scenes in the iteration 25 simulator: 20% of scenes are digital silence or a faint noise floor, often with one confuser alone; three seeds on the server | Entry 246: in Marius's Complete Test GUI run it25's false alarms came from near-empty scenes (a faint car alone; 0.532 on silence) | **Passes stage 1.** Silence 0.002 (it25 0.532), quiet-bed FA 0.039, war no-drone 0.085 (0.074), drone confidence and AUC (0.984) unchanged, real UAV16 unchanged (recall 0.628, FA 0.078). In the Complete Test GUI as `it27 CRNN quiet s0-s2`; stage 2 is open (entry 248). GUI re-run (entry 249): silence fixed, but a lone Pd car passing close still gives 8-24 false alarms in 153 windows (it25: 31) |
+| Iteration 28 | 249 to 251 | Road vehicles (FSD50K car, truck, motorcycle, idling, scooter) driven past the microphone through the drone path, as 30% of confusers; three CRNN seeds on the server | Entry 249: in the GUI it27 still alarms on a lone car while it passes close | **Fails rule 2** (quiet/silence FA 0.064/0.058 > 0.05; it27 0.060/0.053 on the same windows). Vehicle FA 0.053 vs it27 0.056, which is noise. In simulation a moving real vehicle was never the problem; the GUI Pd car alarm is likely specific to that car. In the GUI as `it28 CRNN vehicle s0-s2` (entry 251) |
+| Iteration 29 | 256 to 258 | Steady no-drone noises in the iteration 27 simulator: procedural coloured noise (-6 to +3 dB/octave, half low-passed) and synthetic wind, 10 % of beds and 25 % of confusers; ladder kept at 3; threshold on it27's validation set | Entry 256: it27/it28 score steady sounds 0.15-0.55 and wobble 0.1-0.6 in the live demo; council entry 257 | **Stopped at step 0: gate fails.** On validation, it27/it28 give steady beds 0.21-0.31, but also the FSD50K background and wind beds they trained on 0.31-0.34 (war 0.08-0.10): the no-drone level is high on almost every non-war scene, not only steady noise. Not trained (entry 258) |
+| Iteration 30 | 258 to 264 | Training families of 1 scene + 1 drone copy (`--ladder 1`): 50 % drone windows instead of 75 %; everything else as it27; threshold on it27's unchanged validation set | Entry 258: it27/it28 give about 0.3 to almost every non-war no-drone scene; Marius chose to train | **Fails as written, narrowly** (background bed 0.161 > 0.15; UAV16 recall 0.591 < 0.598). No-drone confidence halves (0.193 to 0.102; war 0.085 to 0.039) at unchanged AUC 0.984 and recall 0.915, so mostly a rescaling by the prior; drone confidence at -20 to -10 dB 0.848 to 0.755 (entry 260). In the GUI live mix: mean 0.060, sd 0.065 (it27 0.173 / 0.146), a third less wobble even against its own threshold (entry 262). Steady negatives on top skipped: no weakness on validation (entries 263-264) |
 
 ## Templates
 
@@ -15116,3 +15122,1451 @@ Synthetic scaffolding.
 
 **Next.** Fetch stems 59451 and 79931 if the honeybee types are wanted; per-round helicopter
 speed/distance if Mads wants them swept.
+
+# Iteration 25 - The clean-drone world simulator: Glasgow drones through a simulated outdoor path
+
+> **Changed from iteration 24:** the training data, nothing else. Drone windows come only from the
+> Glasgow hover recordings (24 drones at 1 m and 5 m, one microphone, probably indoors), each 2 s
+> crop rate-perturbed (0.8-1.25) and sent through a simulated outdoor path (`dronesynth.real_drone`:
+> approach or fly-by at 0-60 m/s, 10-400 m, height 5-120 m over a microphone at 1.5 m, direct path
+> plus one ground reflection, each with 1/r, Doppler and ISO 9613-1 air absorption). They are laid
+> over FSD50K-dev stems (beds: background, wind or war, each a third; with p = 0.4 a war or distracter
+> confuser at -10 to +15 dB) at -20 to +10 dB in-band SNR, with the usual random EQ and level
+> normalisation. Windows come as ladder families: one scene alone, then the same scene with one
+> drone at three SNRs. Half of the no-drone windows carry Glasgow's own no-drone recording sent
+> through the same simulated path at the drone's SNR range ("chain twins"), so the dataset's
+> microphone and the simulator's processing occur in both classes. No rig recording is used.
+> **Why:** since entry 127 every recipe on the real pool separates about equally (AUC 0.930-0.937
+> on the ARIS readout) and only moves the operating point; adding a rig (UAV16, iterations 21-23)
+> lowered Lund recall by 0.07-0.11, which suggests the networks learn recording chains. Marius
+> chose this simulator from a brainstorm (2026-11-14): every drone and every background passes one
+> chain, so there is no rig to learn. Practical reason too: the usual pool is not on this Mac and
+> there is no JupyterLab access now; Glasgow and the stems are here.
+> **Kept the same:** the frozen frontend (16 kHz, 1 s window, 64 log-mel, 25/10 ms), the CRNN and
+> DS-CNN of the zoo, `NetScorer.fit` (AdamW, one-cycle, SpecAugment, `buried` variant),
+> 600,000 training windows (iteration 19's size), threshold at 5 % false alarms on validation.
+> **Hypothesis:** with no rig to learn, a network trained only on simulated Glasgow drones detects
+> drones on real recordings at least as well as `it19_colour`, and keeps low confidence without a
+> drone in war.
+> **Judged by** (fixed before the full run; a smoke run of 12,800 windows had been seen, entry 240):
+> Stage 1, on this Mac, simulated validation (drones 6, 12, 18, 24; the "val" fifth of the FSD50K-dev
+> stems; the last 20 % of the Glasgow noise recording; 1,500 families = 6,000 windows, seed 25000),
+> CRNN and DS-CNN seed 0. It can only reject: it says the model learned the simulator, not the world.
+> 1. AUC at least 0.95.
+> 2. Chain-shortcut tripwire: at the frozen threshold, false alarms on twin negatives at most those
+>    on plain negatives plus 0.05.
+> 3. Mean confidence with a drone at 0 to +10 dB SNR at least 0.8; without a drone on war beds at most 0.2.
+> Failing any of 1-3 ends the iteration as failed. Passing all three makes the networks candidates.
+> Stage 2, the real verdict, only when Marius asks for it: `scripts/dev_test.py` (the development
+> copy of test 1, Lund and Halmstad drones, entry 207) against `it19 CRNN colour s1`, pinned. The
+> simulator CRNN passes if its mean drone confidence in war is at least it19's and its AUC in war
+> is no more than 0.005 below it19's. Not run in this iteration so far.
+
+## 239 - Council: replace the training pool with a clean-drone world simulator
+- Date: 2026-11-14
+- Iteration: 25
+- Type: Council
+- Commit: uncommitted, on c4c4ab2
+
+**Question.** Should the next iteration (A) replace the training pool with the clean-drone world
+simulator (Glasgow positives only, simulated propagation, FSD50K-dev beds, ladder families), (B) a
+modified version, or (C) keep the current approach (`simdist_colour` on the pooled rigs)?
+
+**Devil's Advocate.** Against A.
+- Decisive: (a) the label is confounded with the Glasgow chain: every positive carries its microphone
+  and room, no negative does (iteration 1 again). **Answered in part:** half the no-drone windows now
+  carry Glasgow's own no-drone recording through the identical simulated path ("chain twins"), and
+  their false alarms are a tripwire in the box (rule 2). Not answered: the room tone inside the drone
+  files is not the noise recording (entry 240 measures the noise file about 20 dB louder than the
+  drone files' floor below 800 Hz), so the twin carries the microphone and the processing, not the
+  drone files' exact room. (b) validation runs through the same simulator, so it cannot see (a).
+  **Stands.** No real outdoor drone audio is on this Mac outside ITU ARIS, which may not be used.
+  Therefore stage 1 can only reject, nothing is selected on it (one fixed recipe, no early stopping,
+  no knob tuned), and the verdict is stage 2 on real held-out drones. (c) processing artefacts appear
+  only in positives. **Answered:** the twins get the same resampling, Doppler, reflection and air
+  absorption.
+- Serious: (d) near-field downwash, indoor reverb, hover only. **Stands**, stated as a known weakness;
+  test 2's dives are likely the hardest case. (e) it reverses Mads's decision of entries 087-089.
+  **Partly:** the decision was against the Pd synth and was Mads's; this uses real drone audio and
+  was chosen by Marius. Mads is told in the summary. (f) the premise reads an operating-point shift
+  as chain learning. **Open**; stage 2 tests the consequence, not the premise. (g) one iteration with
+  no real readout. **Stands**; it is cheap on this Mac (about 2 h of training).
+
+**Scholar** (no context). Best practice is a hybrid: real field recordings from as many chains as
+possible plus simulated multi-condition data (clean sources through propagation or room responses
+plus real noise at sampled SNRs), with augmentation and broad pretraining; hold out whole setups.
+Checked: Ko et al., ICASSP 2017 (simulated far-field speech; real plus simulated best, the noise
+model mattered more than the propagation detail); Turpault et al., DCASE 2019 (synthetic Scaper
+soundscapes always beside real data; systems "struggle to generalize" to unseen conditions); Reuter
+et al., arXiv 2605.31329 (drones; pretraining dominant, augmentation helps out of domain).
+Placement: option A (simulated close-range drones as the sole source) is a defensible variation,
+not established as a sole source; paired families are a sound control against shortcuts. Pitfalls
+named: chain shortcut, double reverb from indoor recordings, few drones, too easy an SNR range;
+report confidence by SNR.
+
+**Problem Solver.** Try a modified version: build it as an arm and a measuring tool, not as the
+replacement, until a real comparison says so. Gate 0 (no training): Glasgow's drone-to-floor
+ratio and the sampler's speed. Gate 1 (Mac): add Glasgow noise through the same path as
+negatives and check the network does not key on it. Gate 2 (server): pool, simulator-only, and
+pool + simulator, scored on Lund / the development test; replace the pool only if the
+simulator-only arm wins. Confidence medium.
+
+**Where they disagree.** The Scholar and the Problem Solver agree: simulated data belongs beside
+real data, and sole use needs real proof. What turns on it here is a fact of this machine: the
+pool is not on it, so the hybrid cannot be trained now.
+
+**Decision (Claude).** B, in this order. On the Mac now: the simulator-only arm, with the twin
+negatives (DA a, c; Problem Solver gate 1), Gate 0 measured before training (entry 240), one fixed
+recipe with nothing selected on simulated validation, and stage 1 used only to reject. The pool is
+not replaced by this iteration: replacing it needs stage 2 on real drones, and the hybrid arm
+(pool + simulator) is proposed for the server. Departure from the Scholar's hybrid: the pool is
+absent from this machine, not a preference.
+
+## 240 - The simulator in code; Gate 0; a smoke run
+- Date: 2026-11-14
+- Iteration: 25
+- Type: Data, Infrastructure
+- Commit: uncommitted, on c4c4ab2
+
+**What changed.**
+- `src/dad/dronesynth.py`: `glasgow_drones(ids)` (raw Glasgow WAVs at 16 kHz, int16 in memory, with
+  the recording distance from the file name), `glasgow_noise(split)` (the 60.5 min noise recording:
+  first 80 % train, last 20 % val), `real_drone()` (the path of the box). `SynthSampler` gained
+  options, all off by default: `drones` (replaces the Pd drone), `twin` and `p_twin`, `ladder`,
+  `stem_split` (FSD50K-dev stems only, one in five by CRC32 of the clip id to "val"), `bed_groups`
+  and `confuser_groups`. Beds and confusers are now chosen by group first, then by stem; before,
+  by stem, so the old Pd configuration draws wind less often than before (17 % to 50 % of stem
+  beds). That configuration has never trained a model. `family()` returns a ladder family with
+  each window's SNR and scene.
+- `scripts/run_worldsim.py`: trains and scores on a fixed simulated validation set, writes a run
+  file and checkpoints.
+- `tests/test_dronesynth.py::test_real_drone_path_and_stem_split`: a three-line source through
+  `real_drone` stays finite, unit RMS, with no silent lead-in and its strongest bin on one of the
+  lines; the stem split has no clip in both halves and no FSD50K-eval clip.
+
+**Provenance check (box, step 2).** Read for training: `data/extracted/Glasgow` (CC BY 4.0, the
+dataset's own files) and the FSD50K-dev rows of `data/processed/stems/manifest.csv` (groups
+background, wind, war, distracter). All 899 manifest rows pass `forbid_in_training`, and every
+reader calls it. Left out: the 61 FSD50K-eval stems (the unseen test material of entries 105 and
+127), the 24 Glasgow drone stems in the manifest (raw files are used instead), `data/processed/war`
+(`war_track.wav` is the unseen war track of entry 127), `data/processed/scenes` (test and listening
+mixes, some built from test material; not needed), and `data/recordedDroneClipped` (23 files added
+by Mathias in 4cbaf36 with no provenance in `docs/datasets.md` or this report; unclear, so out).
+
+**Gate 0.** Scratch scripts, not repo scripts. Welch spectra (4096 points) of all 256 drone files
+against the noise recording, band level of drone minus noise, median over files:
+
+| Band (Hz) | 50-100 | 100-200 | 200-400 | 400-800 | 800-1600 | 1600-3200 | 3200-8000 |
+|---|---|---|---|---|---|---|---|
+| 1 m (128 files) | -12.6 | -14.5 | +1.8 | -0.7 | +3.1 | +11.3 | +16.7 |
+| 5 m (128 files) | -14.3 | -16.6 | -0.7 | -5.4 | -0.4 | +7.8 | +12.0 |
+
+At first sight the drone files are quieter than the noise below 800 Hz. A spectrum of drones 3 and
+14 (8192 points, first 30 s) shows why: the drone files are clean. Their harmonic lines (about 160,
+320, 640 Hz and up) stand 30-40 dB above their own floor (about -110 dB), and that floor is about
+20 dB below the noise recording's floor. So the noise recording was made in a louder condition
+than the drone recordings, and the drones are loud in their own recordings (Problem Solver's gate
+0: passes; no files dropped). The 5 m files are only 3-5 dB below the 1 m files above 1.6 kHz,
+which fits a reverberant room. Load: all 256 drone files in 27 s, 8.70 h. One 64-window ladder
+batch: 0.2 s on one core.
+
+**Smoke run** (12,800 windows, 60 validation families, before the two fixes below; not a result):
+```
+uv run python -u scripts/run_worldsim.py --name smoke_it25 --models comb lgbm crnn dscnn --windows 12800 \
+    --lgbm-windows 1280 --val-families 60 --reference it19_colour_s1_none_simdist_colour_crnn.pt
+```
+Everything ran on MPS: CRNN 188 windows/s, DS-CNN 280 windows/s, limited by drawing the windows
+(threads, 131 % CPU). So 600,000 windows take about 53 min (CRNN) and 36 min (DS-CNN): the full
+size of iteration 19 is affordable, one seed. Two faults found and fixed before the full run: the
+validation family lost its twin flag (twin readouts were empty), and war was only a confuser; it
+is now one of three bed groups, as in test 1.
+
+**Next.** The full run, seed 0, CRNN and DS-CNN, with comb, lgbm and the it19 colour CRNN and
+DS-CNN s1 scored on the same validation windows.
+
+## 241 - Iteration 25 stage 1: both simulator networks pass on simulated validation; the it19 networks score 0.77-0.80 on it
+- Date: 2026-11-14
+- Iteration: 25
+- Type: Evaluation
+- Commit: uncommitted, on c4c4ab2
+
+**What changed.** The full run of the box: CRNN and DS-CNN, seed 0, 600,000 windows each, with
+`comb`, `lgbm` (40,000 windows) and the two `it19_colour` s1 networks scored on the same validation
+windows.
+
+**How.** On this Mac (M1 Pro, MPS), 4,166 s in all; CRNN 2,569 s of training, DS-CNN 1,403 s, lgbm 92 s.
+Log in `artifacts/logs/it25_worldsim_s0.log`, numbers in `artifacts/runs/it25_worldsim_s0.json`,
+checkpoints `artifacts/models/it25_worldsim_s0_{crnn,dscnn}.pt` and `_lgbm.pkl`.
+```
+uv run python -u scripts/run_worldsim.py --name it25_worldsim_s0 --models comb lgbm crnn dscnn --windows 600000 \
+    --lgbm-windows 40000 --val-families 1500 \
+    --reference it19_colour_s1_none_simdist_colour_crnn.pt it19_colour_s1_none_simdist_colour_dscnn.pt
+```
+
+**Result.** Simulated validation only: held-out Glasgow drones 6, 12, 18, 24 (42 recordings) through
+the simulator, over the "val" fifth of the FSD50K-dev stems (beds: war 23, background 36, wind 5;
+confusers: war 23, distracter 94) and the last 20 % of the Glasgow noise recording. 1,500 ladder
+families = 6,000 windows: 4,500 drone (three SNRs per family, -20 to +10 dB in band), 1,500 no drone
+(783 plain, 717 chain twins). 1 s window, one window per scene (no hop). Thresholds set at 5 %
+false alarms on these no-drone windows, so recall at the threshold is in-distribution. `comb`
+scores are not confidences.
+
+| Model | AUC | Recall at 5 % FA | FA plain / twin at that threshold | Mean conf. with drone, SNR 0 to +10 / -10 to 0 / -20 to -10 dB | Mean conf. no drone, all / plain / twin | War bed: AUC, conf. drone / no drone | Wind bed: AUC, conf. no drone |
+|---|---|---|---|---|---|---|---|
+| `comb` | 0.606 | 0.298 | 0.060 / 0.038 | (score) | (score) | 0.615 | 0.594 |
+| `lgbm` | 0.932 | 0.729 | 0.066 / 0.033 | 0.991 / 0.924 / 0.767 | 0.381 / 0.399 / 0.361 | 0.967, 0.903 / 0.238 | 0.942, 0.381 |
+| `it19_colour` CRNN s1 (reference) | 0.772 | 0.256 | 0.010 / 0.092 | 0.768 / 0.693 / 0.507 | 0.312 / 0.209 / 0.425 | 0.814, 0.642 / 0.253 | 0.786, 0.362 |
+| `it19_colour` DS-CNN s1 (reference) | 0.801 | 0.339 | 0.009 / 0.095 | 0.870 / 0.752 / 0.505 | 0.311 / 0.208 / 0.423 | 0.821, 0.697 / 0.269 | 0.814, 0.331 |
+| **simulator CRNN** | **0.976** | 0.888 | 0.057 / 0.042 | 0.999 / 0.973 / 0.822 | 0.210 / 0.244 / 0.173 | 0.994, 0.961 / 0.079 | 0.978, 0.214 |
+| **simulator DS-CNN** | **0.976** | 0.869 | 0.064 / 0.035 | 0.998 / 0.967 / 0.808 | 0.207 / 0.243 / 0.168 | 0.991, 0.959 / 0.116 | 0.981, 0.193 |
+
+(Plain false alarms computed from the all and twin figures: (0.05 x 1,500 - twin x 717) / 783.)
+
+**Box, stage 1.**
+1. AUC at least 0.95: CRNN 0.976, DS-CNN 0.976. **Pass.**
+2. Twin false alarms at most plain + 0.05: CRNN 0.042 against 0.057, DS-CNN 0.035 against 0.064. **Pass.**
+   The networks do not take Glasgow's chain through the simulator for a drone; they rank it below
+   the plain beds.
+3. Drone at 0 to +10 dB at least 0.8: 0.999 and 0.998; no drone on war beds at most 0.2: 0.079 and
+   0.116. **Pass.**
+
+Both networks are candidates. Stage 2 (the development test against `it19 CRNN colour s1`) has not
+been run.
+
+**Assessment.**
+- This shows the networks learned the simulator, with held-out drones and held-out stems. It does
+  not show they detect real drones outdoors; entry 239's objection (b) stands until stage 2.
+- The `it19_colour` networks, trained on the real pool, find simulated Glasgow drones much less well
+  (AUC 0.77-0.80; mean confidence 0.51 at -20 to -10 dB). Two readings, which this run cannot tell
+  apart: either the pool networks rely on cues of their rigs that the simulated drones lack, or the
+  simulator's drones differ from real outdoor drones. They also alarm on twin windows (0.092-0.095
+  at a threshold where they alarm on 1 % of plain beds), so Glasgow's noise through the simulated path
+  looks drone-like to them. Stage 2 is where the two readings separate.
+- Without a drone the simulator networks average 0.21 (0.24 on plain beds). On war beds it is low
+  (0.08-0.12), on wind beds 0.19-0.21. Wind is the second background of REQUIREMENTS.md, so wind is a
+  weak spot, on 5 validation wind stems.
+- One seed, one validation set. The CRNN and DS-CNN agree to within 0.02 on every readout.
+- Known weaknesses, unchanged: Glasgow is hovering only and probably indoors, so the room's reverb
+  is inside every positive and no manoeuvre is represented (test 2's dives); the ground reflection
+  coefficient and the speed range are set, not measured; these networks are not comparable to
+  `it19_colour` until both are scored on the same real held-out material.
+
+**Next.** Stage 2 when Marius asks: `scripts/dev_test.py` with `it25_worldsim_s0` CRNN and DS-CNN
+against `it19 CRNN colour s1`, pinned (needs the networks registered in `drone_war_grid.MODELS`, and
+the Lund and Halmstad drones the development test reads). Proposed for the server when access
+returns: the hybrid arm of entry 239 (pool + simulator) against `it19_colour`, three seeds.
+Nothing is decided on these numbers beyond "candidate".
+
+## 242 - The iteration 25 CRNN added to the Complete Test GUI
+
+- Date: 2026-11-15
+- Iteration: 25
+- Type: Tooling (asked by Marius)
+- Commit: uncommitted, on c4c4ab2
+
+**What changed.** `scripts/drone_war_grid.py` `MODELS` gains `"it25 CRNN worldsim s0"`:
+`artifacts/models/it25_worldsim_s0_crnn.pt` with its run file `artifacts/runs/it25_worldsim_s0.json`
+(1 s window, plain frontend). `scripts/Complete_Test_Gui.py` colours it `#d500f9`, which is not used
+by `it19 CRNN colour s1`, the network it will be compared against. `dad.wavio.threshold_from_run`
+learned the checkpoint name `scripts/run_worldsim.py` writes (`<run>_<arch>.pt`, with no held-out
+unit or recipe), so the GUI picks up the frozen threshold from entry 241: 0.760, which is 5% false
+alarms on simulated validation. The DS-CNN stays out of the GUI, per the rule that only iteration
+24's DS-CNNs are offered.
+
+**Verified.** `detector_names()` offers the new model. `drone_war_grid._detectors("it25 CRNN worldsim s0")`
+loads it with threshold 0.760 and a 1 s window. No test was run through the GUI, and nothing was scored.
+Because `MODELS` is shared, the model is now also registered for `dev_test.py`, which stage 2 needs.
+
+**Caveat.** The 0.760 threshold comes from the simulator's validation set, not from real recordings.
+False-alarm rates in the GUI on real audio may differ from the 5% it was set at.
+
+# Iteration 26 - UAV16 as a second drone rig in the world simulator
+
+> **Changed from iteration 25 (`it25_worldsim_s0`):** the simulator gains a second drone source.
+> UAV16's DJI Flip hovers within 15 m slant range become drones next to Glasgow's: the four closest
+> grid points, 5-10 m out and 5-10 m up. That is 20 recordings from the six training batches, and 16
+> from the two held batches for validation. UAV16's four plain-environment recordings become a
+> second chain-twin source, split 80/20 in time. Twins are picked per rig, half and half.
+>
+> **Why:** Glasgow is one microphone, indoors. Every simulated drone carried that one chain, and
+> only the twins taught the network that the chain alone is not a drone. In iterations 21-23,
+> UAV16 in the real pool cost Lund recall (0.07-0.11), a sign the network learned the array rather
+> than the drone. Here UAV16 enters only through the simulator, and its own no-drone audio comes
+> through the same path as twins, so the array is on both sides of the label. Marius chose this
+> option (2026-11-15) over repeating the pool run and over UAV16-only training.
+>
+> **Kept the same:** the frozen frontend, CRNN, the propagation path and its ranges, beds and
+> confusers (FSD50K-dev, CRC32 split), ladder families of 1 + 3, SNR -20 to +10 dB, the Glasgow
+> validation drones (6, 12, 18, 24), seed 0, 600,000 windows, threshold at 5% false alarms on
+> validation.
+>
+> **Hypothesis:** a second rig on the drone side keeps simulated performance and raises
+> confidence on real outdoor drones without raising false alarms.
+>
+> **Judged by** (fixed before any number), CRNN seed 0 against `it25_worldsim_s0` CRNN on the same
+> windows, with `comb`, `lgbm` and `it19 CRNN colour s1` beside them:
+> - **Stage 1a** (simulated validation, now including the 16 held UAV16 drones and the UAV16 plain
+>   val twin): AUC no more than 0.01 below it25's. Twin false alarms no higher than plain false alarms
+>   (the chain tripwire of iteration 25).
+> - **Stage 1b** (real UAV16, not simulated): every hover of the two held batches (5-70 m) as drone;
+>   the 24 backgrounds that are not plain environment, never trained on, as no drone; 1 s windows,
+>   no overlap. Recall at the frozen threshold above it25's, and false alarms no more than 0.02 above
+>   it25's. This set is from the same array the new network trained on, so it favours it26. A pass
+>   here is necessary, not sufficient.
+> - **Stage 2** (as iteration 25, needs the processed store, so not on this Mac): `scripts/dev_test.py`
+>   against `it19 CRNN colour s1`, with Lund recall as the readout that UAV16 hurt three times.
+>
+> **No council:** adding a source to an existing simulator's training data is not on the CLAUDE.md
+> section 4 list (no new model family, frontend, algorithm, protocol or abandoned line).
+
+## 243 - UAV16 in the simulator: code and a smoke run
+- Date: 2026-11-15
+- Iteration: 26
+- Type: Code
+- Commit: uncommitted, on c4c4ab2
+
+**Data.** Marius's copy of the UAV16 base archive, extracted at
+`~/Downloads/UAV_Acoustic_Dataset_v1.1.0_Data_and_Experiments_compressed`, linked as
+`data/extracted/UAV16`. Nothing in it is modified. The 2026-11-09 maintenance patch (`docs/datasets.md`)
+is not in this copy and was not applied. The `recordings.csv` fields used here (batch, distance,
+height, recording id, `data_origin`) are present. Whether the patch changes any of them was not
+checked. Licence CC BY 4.0. The loudspeaker replays (FSD50K clips) are not read, as before. Every
+UAV16 file goes through `forbid_in_training` in `dronesynth._u16_audio`.
+
+**Code.**
+- `src/dad/dronesynth.py`: `uav16_drones(split)` (split by acquisition batch, the held batches of
+  `prepare_new_data.py`, slant range at most 15 m, r_ref = slant range) and `uav16_noise(split)`.
+  `SynthSampler`'s `twin` now takes a list of sources, one picked evenly per twin window.
+- `scripts/run_worldsim.py --uav16` uses both in training and validation, and adds the stage 1b
+  readout (`uav16_real`) for every scorer.
+- `tests/test_dronesynth.py::test_uav16_sources_split_by_batch`: batches do not overlap, and the
+  noise split is 80/20. Passes.
+
+**Smoke run** (2,000 windows, 60 validation families; numbers not a result):
+```
+uv run python -u scripts/run_worldsim.py --name it26_smoke --models comb crnn --uav16 --windows 2000 \
+    --val-families 60 --device mps --reference it25_worldsim_s0_crnn.pt
+```
+Validation has 58 drone recordings (Glasgow 42, UAV16 16); training has 234 (Glasgow 214, UAV16 20).
+The stage 1b set has 4,435 drone and 5,158 no-drone windows. The run took 102 s. Smoke artifacts were deleted.
+
+**Caveats.** UAV16 hovers are outdoor recordings at 7-14 m, so the simulator adds a second path on
+top of a real one. Its field noise, and the ground reflection already in it, travel with the
+drone. Like Glasgow, it is hover only, and it is one drone model.
+
+## 244 - Iteration 26 stage 1: recall on real UAV16 rises, false alarms double; fails 1b
+- Date: 2026-11-15
+- Iteration: 26
+- Type: Evaluation
+- Commit: uncommitted, on c4c4ab2
+
+**What changed.** The full run of the box: CRNN, seed 0, 600,000 windows, with `comb`, `lgbm`
+(40,000 windows) and the `it25_worldsim_s0` and `it19_colour_s1` CRNNs scored on the same windows.
+
+**How.** On this Mac (M1 Pro, MPS): 2,673 s in all, of which CRNN training took 2,484 s (240 windows/s).
+Log in `artifacts/logs/it26_uav16sim_s0.log`, numbers in `artifacts/runs/it26_uav16sim_s0.json`, and
+checkpoints `artifacts/models/it26_uav16sim_s0_crnn.pt` and `_lgbm.pkl`.
+```
+uv run python -u scripts/run_worldsim.py --name it26_uav16sim_s0 --models comb lgbm crnn --uav16 --windows 600000 \
+    --device mps --reference it25_worldsim_s0_crnn.pt it19_colour_s1_none_simdist_colour_crnn.pt
+```
+
+**Stage 1a.** Simulated validation: 1,500 families, 6,000 1 s windows (4,500 drone, 742 plain and
+758 twin no-drone), with Glasgow drones 6/12/18/24 and the 16 held UAV16 hovers. Threshold at 5% false
+alarms on these no-drone windows. Bins are in-band SNR.
+
+| Scorer | AUC | Recall @thr | Twin FA | Conf. drone 0..+10 / -10..0 / -20..-10 dB | Conf. no drone: all / war bed / wind bed |
+|---|---|---|---|---|---|
+| `comb` | 0.576 | 0.232 | 0.041 | (raw score) | (raw score) |
+| `lgbm` | 0.872 | 0.614 | 0.033 | 0.918 / 0.846 / 0.714 | 0.424 / 0.295 / 0.448 |
+| `it19 CRNN colour s1` | 0.753 | 0.217 | 0.090 | 0.752 / 0.674 / 0.478 | 0.329 / 0.277 / 0.367 |
+| `it25` CRNN | 0.930 | 0.768 | 0.044 | 0.908 / 0.869 / 0.719 | 0.203 / 0.085 / 0.216 |
+| **it26 CRNN** | **0.936** | 0.767 | 0.040 | 0.927 / 0.890 / 0.745 | 0.267 / 0.153 / 0.277 |
+
+AUC is 0.006 above it25's, which passes. Twin false alarms (0.040) are below the 5% overall rate, so
+also below the plain rate, which passes the chain tripwire.
+
+**Stage 1b.** Real UAV16, not simulated. Drone windows: 4,435 one-second windows from every hover in
+the two held batches. No-drone windows: 5,158 from the 24 non-plain backgrounds. Each scorer uses its
+threshold from stage 1a.
+
+| Scorer | AUC | Recall | <20 m | 20-40 m | 40-80 m | FA | Conf. drone / no drone |
+|---|---|---|---|---|---|---|---|
+| `comb` | 0.538 | 0.070 | 0.131 | 0.051 | 0.008 | 0.044 | (raw) |
+| `lgbm` | 0.779 | 0.227 | 0.393 | 0.178 | 0.051 | 0.041 | 0.677 / 0.430 |
+| `it19 CRNN colour s1` | 0.788 | 0.405 | 0.369 | 0.506 | 0.198 | 0.080 | 0.826 / 0.579 |
+| `it25` CRNN | 0.863 | 0.613 | 0.688 | 0.656 | 0.359 | 0.073 | 0.713 / 0.252 |
+| **it26 CRNN** | **0.879** | **0.711** | 0.798 | 0.750 | 0.444 | **0.135** | 0.803 / 0.370 |
+
+Recall is 0.098 above it25's, which passes. False alarms are 0.062 above it25's (limit +0.02), which
+**fails**. AUC rises only 0.016: most of the recall gain is the whole score distribution moving up,
+not better separation. Mean confidence without a drone rises from 0.252 to 0.370 on these
+backgrounds, and on simulated war beds from 0.085 to 0.153. War is the first-priority background
+in `REQUIREMENTS.md`.
+
+**Verdict.** **Fails stage 1** (rule 1b, false alarms). `it25_worldsim_s0` stays the simulator
+network. Stage 2 is not proposed for it26. As in iterations 21-23, UAV16 buys recall on UAV16, but
+here it costs no-drone confidence rather than (measured) Lund recall. Lund was not measured. Not
+added to the Complete Test GUI.
+
+**Caveats.** One seed. The 24 non-plain backgrounds include fans and exhaust pipes, which are
+drone-like. They were never in training for either network, so the comparison is fair, but they
+are hard. it25's own result here (AUC 0.863, recall 0.613 at FA 0.073 on real outdoor audio from an
+array it never heard) is the first real-audio readout of the simulator line. That is new evidence
+for iteration 25, not a test score: UAV16 is not a test source.
+
+**Next.** Possible: train with UAV16's drones but without its twins, or the reverse, to see which
+half raises the no-drone confidence. Or stop adding sources and run stage 2 of iteration 25 when
+the processed store is available. This is Marius's call. Nothing was started.
+
+## 245 - The iteration 26 CRNN added to the Complete Test GUI
+- Date: 2026-11-15
+- Iteration: 26
+- Type: Tooling (asked by Marius)
+- Commit: uncommitted, on c4c4ab2
+
+**What changed.** `"it26 CRNN uav16sim s0"` was added to `scripts/drone_war_grid.py` `MODELS`
+(`artifacts/models/it26_uav16sim_s0_crnn.pt`, run file `artifacts/runs/it26_uav16sim_s0.json`, 1 s).
+It is coloured `#2962ff` in `scripts/Complete_Test_Gui.py`. The threshold is 0.757, frozen at 5%
+false alarms on iteration 26's simulated validation (entry 244).
+
+**Verified.** `detector_names()` offers it, and `_detectors` loads it with that threshold and a 1 s
+window. Nothing was scored. The network failed stage 1b (entry 244), and it is in the GUI for
+listening, not as a candidate.
+
+## 246 - Where `it25` CRNN raises false alarms in the Complete Test GUI: near-silent scenes
+- Date: 2026-11-16
+- Iteration: 26
+- Type: Analysis (Marius: "the 25 CRNN gets a lot of false alarms")
+- Commit: uncommitted, on c4c4ab2
+
+**Source.** Marius's own Complete Test GUI run `artifacts/complete_test/20261116_092723_modified`
+(modified drone test). Drone: `recordedDroneClipped/drone1-2_1.wav` at 80 dB, 50 and 150 km/h.
+Layers: war soundscape 60 dB, Pd wind 50 dB, Pd cars 5 dB, each also off. 20 s rounds, 1 s step.
+Thresholds are each model's own frozen one. I ran nothing; this entry reads `rounds.csv`.
+
+**No-drone rounds** (153 windows each):
+
+| Layers on | it19 colour s1: FP / conf | it25 CRNN: FP / conf | it26 CRNN: FP / conf |
+|---|---|---|---|
+| war + wind (± cars) | 0 / 0.033 | 1 / 0.178 | 0 / 0.232 |
+| war (± cars) | 0 / 0.021 | 0 / 0.048 | 0 / 0.120 |
+| wind (± cars) | 0 / 0.047 | 0 / 0.141 | 0 / 0.185 |
+| **cars at 5 dB only** | 22 / 0.318 | **31 / 0.641** | 10 / 0.607 |
+| **nothing (silence)** | 0 / 0.011 | 0 / **0.532** | 0 / 0.536 |
+
+In the drone rounds the pattern is the same. In the no-drone stretches of the cars-only rounds,
+it25 raised 113 false alarms in 13 of 23 rounds, and its confidence in silence was 0.53.
+
+**Reading.** it25's false alarms are not from war or wind, where it stays low. They come from
+scenes that are nearly empty: a faint car or silence. Level normalisation scales such a window up
+to full level, so its noise floor, or the car's engine harmonics, fill the input. The simulator
+never shows that. Every bed is a non-silent FSD50K stem (`SynthSampler._bed` rejects quiet crops),
+and the confusers are mixed at a level relative to the bed. The real-pool networks (it19) trained
+on quiet rig recordings, and in silence they give 0.011.
+
+**Not verified.** One GUI run, one drone file. The cause is inferred from the pattern and was not
+tested by changing the input.
+
+**Next (proposed, not started).** Iteration 27, one change: quiet scenes as no-drone beds in the
+simulator. That means low-level noise floors and quiet FSD50K crops at their own low level, plus
+confusers (vehicles) heard alone over them. Judge it on the same GUI settings as above, and on
+simulated validation against it25.
+
+# Iteration 27 - Quiet scenes in the world simulator
+
+> **Changed from iteration 25 (`it25_worldsim_s0`, not iteration 26, which failed):** 20% of scenes
+> are near-empty (`--p-quiet 0.2`). A quarter of those are exact digital silence. The rest are a
+> white or pink noise floor at -90 to -50 dB. In 70% of them one confuser stem is heard alone,
+> 10-50 dB over the floor (any level over silence). The confusers include car, truck, idling,
+> motorcycle, mower, scooter and generator. As in every scene, the ladder family adds the same
+> drone at three SNRs. A drone over exact silence is heard alone.
+>
+> **Why:** entry 246. In Marius's Complete Test GUI run, it25's false alarms came from near-empty
+> scenes: 31 of 153 windows with only a faint car, and confidence 0.53 in silence. Checked since:
+> it25 gives 0.532 on a window of exact zeros, the GUI's empty layer. It gives 0.24-0.76 on white
+> noise at -40 dB. The simulator never showed it either: `_bed` rejects quiet crops, and confusers
+> were always mixed relative to a full bed.
+>
+> **Kept the same:** everything else in iteration 25. Glasgow drones only (no UAV16), the same
+> path, beds, twins, ladder, SNR range, CRNN, 600,000 windows, and the threshold at 5% false alarms.
+>
+> **Run:** on the JupyterLab server (Marius, 2026-11-16: the server is reachable again), seeds 0, 1
+> and 2, one per GPU. `it25_worldsim_s0` CRNN and `it19 CRNN colour s1` are scored on the same
+> windows. The validation set now holds quiet scenes too, so it25 is re-scored on it.
+>
+> **Hypothesis:** quiet scenes teach "near-empty means no drone" without costing drone confidence
+> elsewhere.
+>
+> **Judged by** (fixed before any number), on the mean of the three seeds against it25 on the same
+> windows:
+> 1. Confidence on exact silence below 0.2 (it25: 0.53), and false alarms on quiet and silence beds
+>    at most 0.05.
+> 2. War first: no-drone confidence on war beds no more than 0.02 above it25's, and drone
+>    confidence in each SNR bin no more than 0.02 below it25's.
+> 3. AUC no more than 0.01 below it25's.
+> 4. Real UAV16 readout (neither network trained on UAV16): recall no more than 0.05 below it25's,
+>    false alarms no more than 0.02 above.
+>
+> If all pass, the next check is Marius re-running his GUI settings of entry 246 (cars-only and
+> silence rounds). I do not run that myself. The GUI's cars are test material, so they are not used
+> for any choice here.
+
+## 247 - Iteration 27: quiet scenes in code, and the run set up on the server
+- Date: 2026-11-16
+- Iteration: 27
+- Type: Code and setup
+- Commit: uncommitted, on c4c4ab2
+
+**Code.**
+- `src/dad/dronesynth.py`: `SynthSampler(p_quiet, p_quiet_confuser)` and `_quiet`, with the constants
+  `QUIET_FLOOR_DB` and `QUIET_CONFUSER_DB`. `mix` hears a drone alone over exact silence.
+- `scripts/run_worldsim.py`: `--p-quiet`, readouts for the `quiet` and `silence` beds, and
+  `conf_empty_silence`, which is silence with no confuser and no twin.
+- `tests/test_dronesynth.py::test_quiet_scenes` (training stems) passes on the Mac and on the server.
+
+**Smoke run on the Mac** (2,000 windows, 100 validation families; not a result). It ran end to end.
+One check came out of it: it25 scores exactly 0.532 on a window of zeros, and 0.522-0.532 on white
+noise at 1e-9 to 1e-6 RMS. That is the value in Marius's GUI run (entry 246). The smoke readout's
+`silence` bed had averaged in windows with a twin or a confuser, which is why `conf_empty_silence`
+was added.
+
+**Server** (JupyterLab, `jupyter-mariusq`, 3 x TITAN X, torch 2.14.1+cu126). The run is in a new
+folder, `~/dad27`, so the existing checkouts (`~/dad`, `~/dad21`) are untouched.
+- Code and the it25 checkpoint were uploaded by Marius as `code.tgz` (MD5
+  `a9ae2d943ed2a5f2b30e1d96a3e16e4c`, matches the Mac). The direct routes (the browser page reading
+  localhost, or the server pulling from the Mac) were blocked.
+- Stems: the Mac's 813 FSD50K-dev non-drone stems and their manifest, uploaded as `stems.tar` (MD5
+  `652170058efe9ff653fcef33d6440dde`, matches). The FSD50K-eval stems were left out on purpose; with
+  `stem_split` set, training and validation never read them.
+- Glasgow: the server's old copy was incomplete (drones 17-24, 40 files). The archive was fetched
+  again from its source (`researchdata.gla.ac.uk/1348`) to `~/data/Glasgow_Drone_Authentication/`
+  and extracted to `~/data/extracted/Glasgow`. `it27_launch.sh` refuses to start unless the archive
+  MD5 is `49136cf99204b5b84d6c103f1c2a40c1` (the Mac's, `docs/datasets.md`) and there are 256 drone
+  files.
+- References: `it25_worldsim_s0_crnn.pt` (MD5 `aa9fbd95…`) and `it19_colour_s1_…_crnn.pt` (MD5
+  `652794a5…`), both identical to the Mac's.
+- UAV16 (real readout only) is the server's copy, which has the 2026-11-09 patch.
+
+```
+CUDA_VISIBLE_DEVICES=S .venv/bin/python -u scripts/run_worldsim.py --name it27_quiet_sS --models comb lgbm crnn \
+    --p-quiet 0.2 --windows 600000 --device cuda --seed S --workers 8 \
+    --reference it25_worldsim_s0_crnn.pt it19_colour_s1_none_simdist_colour_crnn.pt      # S = 0, 1, 2
+```
+
+## 248 - Iteration 27 result: quiet scenes remove the silence alarm at no cost; passes stage 1
+- Date: 2026-11-16
+- Iteration: 27
+- Type: Evaluation
+- Commit: uncommitted, on c4c4ab2
+
+**How.** The three runs of entry 247 on the server, 10:24-11:42. CRNN training took 3,665, 3,976 and
+3,771 s (about 155 windows/s each, CPU-bound: three processes with 8 sampler workers share 24
+cores). Results were fetched as `it27_results.tgz` (MD5 `28fb002845bdd4f348b9cce6a10c434e`, the same
+on both ends) into `artifacts/{models,runs,logs}/it27_quiet_s{0,1,2}*`.
+
+**Validation.** 1,500 families, 6,000 1 s windows, the same for every scorer and seed. Glasgow drones
+6/12/18/24, FSD50K-dev "val" stems, and 20% quiet scenes. Each scorer's threshold is at 5% false
+alarms on these no-drone windows. Bins are in-band SNR. "Empty silence" means exact zeros with no
+confuser and no twin. Below, the it27 row is the mean of three seeds, with the per-seed values in
+brackets. Every other row is a single scorer.
+
+| Scorer | AUC | Empty silence conf. | Quiet bed: conf / FA | Silence bed: conf / FA | War bed: conf / FA | Drone conf. 0..+10 / -10..0 / -20..-10 dB |
+|---|---|---|---|---|---|---|
+| `comb` | 0.607 | (raw 0) | (raw) / 0.107 | (raw) / 0.025 | (raw) / 0.053 | (raw) |
+| `lgbm` (s0) | 0.948 | 0.005 | 0.317 / 0.023 | 0.196 / 0.037 | 0.219 / 0.033 | 0.991 / 0.939 / 0.774 |
+| `it19 CRNN colour s1` | 0.773 | 0.011 | 0.253 / 0.033 | 0.276 / 0.050 | 0.282 / 0.046 | 0.745 / 0.689 / 0.522 |
+| `it25` CRNN | 0.983 | **0.532** | 0.190 / 0.019 | 0.172 / 0.025 | 0.074 / 0.028 | 0.999 / 0.977 / 0.841 |
+| **it27 CRNN** | 0.984 (0.984, 0.984, 0.983) | **0.002** (0.003, 0.001, 0.002) | 0.207 / 0.039 | 0.075 / 0.017 | 0.085 / 0.022 | 0.999 / 0.980 / 0.848 |
+
+**Real UAV16** (not trained on by any scorer; held-batch hovers 5-70 m against the 24 non-plain
+backgrounds, 1 s windows, each scorer's threshold from above):
+
+| Scorer | AUC | Recall | FA |
+|---|---|---|---|
+| `comb` | 0.538 | 0.071 | 0.045 |
+| `lgbm` (s0) | 0.763 | 0.212 | 0.039 |
+| `it19 CRNN colour s1` | 0.788 | 0.415 | 0.086 |
+| `it25` CRNN | 0.863 | 0.622 | 0.076 |
+| **it27 CRNN** | 0.860 (0.861, 0.853, 0.866) | 0.628 (0.617, 0.640, 0.628) | 0.078 (0.076, 0.096, 0.063) |
+
+**Rules of the box:**
+1. Empty silence 0.002 < 0.2, and false alarms on quiet and silence beds 0.039 and 0.017 ≤ 0.05:
+   **pass**.
+2. War: no-drone confidence 0.085, which is 0.011 above it25 (limit 0.02). Drone confidence in each
+   SNR bin is at or above it25's: **pass**.
+3. AUC 0.984 against 0.983: **pass**.
+4. UAV16 recall 0.628 against 0.622 (limit -0.05), and false alarms 0.078 against 0.076 (limit
+   +0.02): **pass**.
+
+**Verdict.** **Iteration 27 passes stage 1.** Quiet scenes took the silence response from 0.53 to
+0.002, and nothing measured got worse beyond noise. The three seeds agree closely (AUC range 0.001).
+The it27 CRNNs replace it25 as the simulator networks.
+
+**Not shown yet.**
+- The GUI case behind this iteration, a faint Pd car over silence, is test material. It was not
+  used here and is not measured. Marius's re-run of the entry 246 settings is the check.
+- The real-drone verdict is still stage 2 (`dev_test.py`, Lund and Halmstad), which has not been run
+  for any simulator network.
+- Seed 1 has the highest UAV16 false-alarm rate (0.096). The rule was judged on the seed mean, as
+  fixed in the box.
+
+**GUI.** `"it27 CRNN quiet s0/s1/s2"` were added to `drone_war_grid.MODELS` and
+`Complete_Test_Gui.py` (oranges `#e65100`, `#ff3d00`, `#ff9e80`). Their thresholds are 0.740,
+0.749 and 0.749. Each loads, and on a window of zeros gives 0.003, 0.001 and 0.002.
+
+## 249 - GUI check of iteration 27: silence fixed, a lone car passing still raises alarms
+
+**Type:** Evaluation (Complete Test GUI, run by Marius). **Commit:** working tree on
+`iteration-21-uav16` (c4c4ab2 + uncommitted it25-it27 changes). **Run:**
+`artifacts/complete_test/20261116_130930_modified`. It used the same settings as entry 246:
+- one 20 s round per background combination (war 60 dB, Pd wind 50 dB, Pd cars 5 dB, each on or off);
+- one drone, `drone1-2_1.wav` at 50 and 150 km/h, level 80;
+- 1 s window, 0.125 s hop, each detector's frozen threshold.
+
+The figures below were read from `rounds.csv` and `scores.npz` with a short script (not committed).
+This is test material: it was read to describe the behaviour, and it set no threshold or setting.
+
+**No-drone rounds, false alarms out of 153 windows:**
+
+| Background | it25 | it27 s0 | it27 s1 | it27 s2 | it23 relabel s1 |
+|---|---|---|---|---|---|
+| silence | 0 (conf 0.532) | 0 (0.003) | 0 (0.001) | 0 (0.002) | 0 |
+| cars only | **31** | **17** | **8** | **24** | 8 |
+| war+wind (with or without cars) | 1 | 0 | 2 | 0 | 0 |
+| every other combination | 0 | 0 | 0 | 0 | 0 |
+
+**Drone rounds:**
+- The cars-only background gives false-alarm rates of 0.030, 0.001 and 0.028 for it27 s0, s1 and
+  s2, against 0.061 for it25. Every other background gives 0.000 for each seed, except war+wind
+  with s1 (0.019).
+- Recall with it27 is about the same as with it25: 0.82 against 0.85 over silence, 0.39-0.45
+  against 0.51 over war, and 0.58-0.63 against 0.60 over wind.
+
+**Where the cars-only alarms fall.** Scores per hop, no-drone cars-only round:
+- it25 is at 0.43-0.50 from the start of the round. It goes over threshold from 7.4 s to 15.6 s.
+- it27 starts at 0.01-0.02 and rises only as the car comes close. It goes over threshold between
+  about 7.9 s and 13 s: 7.9-10.8 s for s0, 10.0-11.0 s for s1 and 8.6-13.0 s for s2. It falls back
+  to 0.02 once the car has passed.
+
+**Reading.**
+- Iteration 27 fixed what it targeted. The near-empty start and end of the round, and silence, no
+  longer raise alarms.
+- What is left is a separate failure. When a single car engine passes close, with no other sound,
+  the networks score it as a drone, at 0.8-0.9 at the closest point.
+- The level setting does not change this. `level_normalise` removes absolute level, so a car at
+  5 dB looks the same as a loud one once it is the only sound.
+- Training already holds lone confusers. 70% of quiet beds carry one, at 10-50 dB above the floor
+  (entry 247), and the distracter group includes car, truck and idling. So the open question is
+  whether the networks confuse real lone vehicles, or only the Pd car. The Pd car is a synthetic,
+  strongly harmonic engine, and harmonics are the drone cue.
+
+**Not run.** The response to real lone-vehicle audio from the validation stems has not been
+measured. That needs a scoring run, which waits for Marius's go-ahead.
+
+**Next.** Measure first. Score lone real vehicles (validation-split FSD50K vehicle stems, and the
+UAV16 traffic backgrounds) over a quiet floor. If real lone cars also score high, the next
+iteration is about vehicles. If they do not, the remaining alarm is specific to the Pd car, and is
+reported as that.
+
+# Iteration 28 - Road vehicles driving past the microphone
+
+> **Changed from iteration 27 (`it27_quiet_s0-s2`):** when a scene gets a confuser, 30% of the time
+> (`--p-vehicle 0.3`) it is a road vehicle driving past, not a static stem crop.
+> - **Audio:** a real FSD50K-dev car, truck, motorcycle, idling or scooter stem. That is 102
+>   training stems; validation has 31 of its own, split by clip id as before.
+> - **Path:** the same outdoor path the drones take (`real_drone`), with ground geometry (`VEHICLE_PATH`):
+>   - a fly-by, height 0.3-2 m, closest approach 2-40 m, speed 3-30 m/s;
+>   - Doppler, 1/r, air absorption and one ground reflection;
+>   - an engine-speed change of 0.8-1.25.
+> - **Where vehicles appear:** on full beds and on iteration 27's quiet beds (alone, 70%). Because
+>   the ladder adds the drone to the same scene, vehicles also appear under drones, so "vehicle"
+>   cannot become a shortcut for "no drone".
+>
+> **Why:** entry 249. In the GUI, it27 still raises alarms on a lone car while it passes close
+> (score 0.8-0.9 at closest approach; 8-24 false alarms in 153 windows). Before this, every drone
+> moved (Doppler, rising and falling level) and every confuser stood still, so motion itself could
+> mark a drone.
+>
+> **Test material steered this choice.** The failure was seen in the GUI, which is test material.
+> The fix is generic: real vehicle recordings and ranges that are not taken from the GUI car. The
+> GUI's Pd car, its speeds, distances and levels are not used in training, and no threshold is set
+> on it.
+>
+> **Kept the same:** everything else in iteration 27: quiet scenes (p 0.2), Glasgow drones only,
+> beds, twins, ladder, SNR range, CRNN, 600,000 windows, and the threshold at 5% false alarms.
+>
+> **Run:** CRNN only (Marius: "only crnn"), seeds 0-2 on the JupyterLab server. `comb` and `lgbm`
+> run as the required baselines. `it27_quiet_s0` and `it25_worldsim_s0` are re-scored on the new
+> validation set, which also holds vehicle pass-bys.
+>
+> **Hypothesis:** a moving engine on its own is no longer read as a drone, at no cost to drones.
+>
+> **Judged by** (fixed before any number), on the seed mean against it27 s0 on the same windows:
+> 1. No-drone confidence and false alarms with a vehicle confuser below it27's.
+> 2. Empty silence below 0.2, and quiet-bed and silence-bed false alarms at most 0.05 (kept from
+>    iteration 27).
+> 3. War no-drone confidence no more than 0.02 above it27's, and drone confidence in each SNR bin
+>    no more than 0.02 below.
+> 4. AUC no more than 0.01 below it27's.
+> 5. Real UAV16 recall no more than 0.05 below it27's, and false alarms no more than 0.02 above.
+>    The UAV16 backgrounds include a real car; nothing here trains on them.
+>
+> If these pass, Marius re-runs the entry 249 GUI settings. That is the check on the cars-only
+> rounds.
+
+## 250 - Iteration 28: vehicle pass-bys in code, and a smoke run
+- Date: 2026-11-16
+- Iteration: 28
+- Type: Code
+- Commit: uncommitted, on c4c4ab2
+
+**Code.**
+- `src/dad/dronesynth.py`:
+  - `real_drone` takes the geometry as arguments (`height`, `speed`, `flyby_closest`, `p_flyby`).
+    The defaults keep iteration 25's ranges, and the random draws happen in the same order, so
+    earlier runs are unchanged.
+  - New `VEHICLE_CLS`, `VEHICLE_PATH` and `VEHICLE_R_REF` (5 m, a guess, since FSD50K gives no
+    distance).
+  - `_load_stems` takes a `classes` filter.
+  - `SynthSampler(p_vehicle=...)` loads the vehicle stems only when `p_vehicle > 0`. With
+    `p_vehicle=0` no extra random draw is made.
+- `scripts/run_worldsim.py`: new `--p-vehicle`. The readout already splits by confuser, so
+  `confuser_vehicle` appears in the results.
+- `tests/test_dronesynth.py`: new `test_vehicle_pass_bys`. `uv run pytest tests/test_dronesynth.py`
+  passes (5 tests).
+
+**Smoke run** (Mac): `uv run python scripts/run_worldsim.py --name smoke_it28 --models comb
+--val-families 300 --p-quiet 0.2 --p-vehicle 0.3 --reference it27_quiet_s0_crnn.pt
+it25_worldsim_s0_crnn.pt`. That gives 1,200 windows, so these numbers check that the code runs.
+They are not a result. The run file was deleted.
+
+| Scorer | AUC | FA, vehicle confuser | conf. no drone, vehicle | empty silence |
+|---|---|---|---|---|
+| `comb` | 0.604 | 0.062 | - | - |
+| it27 s0 | 0.976 | 0.062 | 0.262 | 0.003 |
+| it25 s0 | 0.976 | 0.104 | 0.257 | 0.532 |
+
+At this size the vehicle windows number only a few dozen, so neither network separates clearly
+from the overall 5%.
+
+**Launched on the server** (2026-11-16):
+- **Patch:** the it27 code in `~/dad27` was patched to this code with `it28.patch`, sent through
+  the JupyterLab contents API. Its MD5 on the server, `f28ce728…`, matches the Mac's. The one
+  rejected hunk was the iteration 27 test fix, which the server already had.
+- **Tests:** `pytest tests/test_dronesynth.py`: 5 passed on the server.
+- **Training:** `sh it28_launch.sh` starts `run_worldsim.py --name it28_vehicle_s{0,1,2}
+  --models comb lgbm crnn --p-quiet 0.2 --p-vehicle 0.3 --windows 600000 --seed S`, one seed per
+  GPU. Each run scores `it27_quiet_s0` and `it25_worldsim_s0` on its validation set.
+- **Logs:** `artifacts/logs/it28_vehicle_s*.log`. Iteration 27 took about 67 minutes per seed.
+
+## 251 - Iteration 28 result: vehicles barely move; quiet-bed rule fails on the new validation set
+- Date: 2026-11-16
+- Iteration: 28
+- Type: Evaluation (stage 1, simulated validation and real UAV16)
+- Commit: uncommitted, on c4c4ab2
+- Run: `artifacts/runs/it28_vehicle_s{0,1,2}.json`, logs `artifacts/logs/it28_vehicle_s*.log`. Trained
+  on the JupyterLab server and fetched in `it28_results.tgz` (MD5 `bc08560a…`, matching the server).
+  Training took 4,405-4,731 s per seed, against about 4,000 s for iteration 27. The vehicle path is
+  CPU work.
+
+**Validation:** Glasgow drones 6/12/18/24, VAL_SEED 25000, 1,500 ladder families, 6,000 windows,
+with quiet scenes (0.2) and vehicle pass-bys (0.3 of confusers). This holds 216 no-drone windows
+with a vehicle confuser. 1 s window. Threshold at 5% false alarms over all no-drone windows. Each
+reference was scored on the same windows, with its own threshold set on them.
+
+| Scorer | AUC | Vehicle: conf. no drone / FA | Quiet bed FA | Silence bed FA | Empty silence | War bed: conf. no drone | Drone conf. by SNR (0..10 / -10..0 / -20..-10) |
+|---|---|---|---|---|---|---|---|
+| `comb` | 0.598 | 1.190 / 0.056 | 0.069 | 0.067 | 0.000 | 0.725 | (comb scores are not probabilities) |
+| `lgbm` (s0/s1/s2) | 0.940 / 0.941 / 0.939 | 0.42 / 0.046-0.051 | 0.052-0.073 | 0.067-0.093 | ≤ 0.006 | 0.24 | 0.991 / 0.936 / 0.767 |
+| it25 s0 | 0.978 | 0.245 / 0.065 | 0.064 | 0.067 | 0.532 | 0.082 | 0.999 / 0.976 / 0.832 |
+| **it27 s0** (reference) | 0.979 | 0.251 / 0.056 | 0.060 | 0.053 | 0.003 | 0.085 | 0.999 / 0.978 / 0.838 |
+| it28 s0 | 0.979 | 0.238 / 0.042 | 0.060 | 0.053 | 0.007 | 0.082 | 0.999 / 0.977 / 0.845 |
+| it28 s1 | 0.980 | 0.233 / 0.065 | 0.064 | 0.067 | 0.005 | 0.081 | 0.999 / 0.979 / 0.844 |
+| it28 s2 | 0.979 | 0.232 / 0.051 | 0.069 | 0.053 | 0.005 | 0.081 | 0.999 / 0.980 / 0.839 |
+| **it28 mean** | 0.979 | **0.234 / 0.053** | 0.064 | 0.058 | 0.006 | 0.081 | 0.999 / 0.979 / 0.843 |
+
+**Real UAV16** (no scorer trained on it):
+
+| Scorer | AUC | Recall | FA |
+|---|---|---|---|
+| `comb` | 0.538 | 0.039 | 0.024 |
+| `lgbm` (s0) | 0.759 | 0.158 | 0.030 |
+| it25 s0 | 0.863 | 0.587 | 0.062 |
+| it27 s0 | 0.861 | 0.559 | 0.049 |
+| **it28 mean** | 0.857 | 0.575 (0.543, 0.598, 0.584) | 0.055 (0.058, 0.055, 0.052) |
+
+**Rules of the box** (seed mean against it27 s0):
+1. Vehicle confidence 0.234 against 0.251, and FA 0.053 against 0.056. **Passes as written, but
+   the gap is noise.** 0.003 of 216 windows is under one window, and the seeds range from 0.042 to
+   0.065.
+2. Empty silence 0.006 is below 0.2: pass. Quiet-bed FA 0.064 and silence-bed FA 0.058 are above
+   0.05: **fails.** it27 also fails on this validation set (0.060 and 0.053), so most of the gap
+   comes from the new validation set and its new threshold, not from the network. Against it27 on
+   the same windows, it28 is 0.004-0.005 worse.
+3. War no-drone confidence 0.081 against 0.085, and drone confidence in each SNR bin at or above
+   it27's: pass.
+4. AUC 0.979 against 0.979: pass.
+5. UAV16 recall 0.575 against 0.559, and FA 0.055 against 0.049 (+0.006, limit +0.02): pass.
+
+**Verdict.** **Iteration 28 does not show the effect it was built for.**
+- In simulation, a vehicle driving past was already scored about like any other confuser by it27
+  (FA 0.056 at a 5% threshold). Training on 30% vehicle confusers lowered the mean confidence by
+  only 0.017.
+- Rule 2 fails as written. That failure is shared with it27 on these windows.
+- Everything else is unchanged within noise.
+- So the simulator does not reproduce the GUI failure. A real FSD50K vehicle driven past through
+  the drone path does not look like a drone to it27. The GUI's Pd car does.
+
+**What this leaves.** The cars-only GUI alarm is now most likely specific to the Pd car. Its engine
+is a clean harmonic tone, which is the cue a drone gives. It could also come from a car geometry
+the ranges here do not cover. Marius's GUI re-run with it28 shows whether training on moving
+vehicles changed anything there. That check is on test material and is logged as such.
+
+**GUI.** `"it28 CRNN vehicle s0/s1/s2"` were added to `drone_war_grid.MODELS` and
+`Complete_Test_Gui.py` (greens `#33691e`, `#7cb342`, `#c5e1a5`). Their thresholds from the run
+files are 0.813, 0.784 and 0.793. On a window of zeros they score 0.007, 0.005 and 0.005.
+
+## 252 - Merge of master into `iteration-21-uav16`: two "iteration 25"s, entries 238-241 used again
+
+**What:** `origin/master` (up to 942195f, "Impulse Responses") was merged into `iteration-21-uav16`
+on 2026-11-20 (merge commit 0e2f6bb, Marius's request). The uncommitted iterations 25-28 work on
+this branch was stashed for the merge and restored on top of it; it is still uncommitted.
+
+**Conflicts, all in model registries, resolved by keeping both sides:**
+- `scripts/drone_war_grid.py` `MODELS`: this branch's six it24 networks, master's
+  `it25 CRNN relabel double colour s1`, then this branch's `it25 CRNN worldsim s0`,
+  `it26 CRNN uav16sim s0`, `it27 CRNN quiet s0-s2` and `it28 CRNN vehicle s0-s2` (50 models).
+- `scripts/Complete_Test_Gui.py` `COLORS` and `scripts/detect_gui.py` `MODEL_COLORS`: the colours
+  of both sides. `detect_gui.py` had no colours for the it25 worldsim to it28 networks, so its
+  "one colour per model" assert would have failed at import; they got the colours
+  `Complete_Test_Gui.py` already used. Checked: 50 models, 50 colours, every model named in
+  `Complete_Test_Gui.py`. The GUIs were not started.
+
+**`REPORT.md`** merged by union: no line of either side is missing (checked line by line).
+Master's entries 238-241 come after this branch's entry 238 (the previous merge), this branch's
+entries 239-251 after them.
+
+**Read with care:**
+- Two different iterations are called 25: master's double-colour noise (entries 238-239 on master,
+  rejected) and this branch's clean-drone world simulator (entries 239-242). Iterations 26-28 on
+  this branch follow the world simulator.
+- Entry numbers 238-241 appear on both sides with different content; cite them with their title.
+  Nothing was renumbered. New entries continue at 253.
+
+**Not run:** tests and the GUIs.
+
+## 253 - Complete Test GUI on macOS: coloured buttons, and sound without crackle
+
+**What (Marius, 2026-11-20):** two fixes for running `scripts/Complete_Test_Gui.py` on a Mac. No model,
+data or score changes.
+
+**1. White buttons.** On macOS, Tk's native `tk.Button`, `tk.Radiobutton` and `tk.Checkbutton` ignore
+`bg`, so the header tabs were white with white text, and the `indicatoron=False` toggles (source,
+drones, Final Evaluation) were blank. They are now ttk widgets with `clam` styles (`Nav`, `Tab`,
+`TabOn`, `Seg.Toolbutton`, `Final.Toolbutton`, `Send.TButton`), which keep their colours on every
+platform. Checked by screenshot on the Mac (header, live page toggles). `Complete_Test_Gui22k.py`
+was not changed.
+
+**2. Crackle in playback.** Measured on the MacBook Pro speakers: with `latency="high"`, PortAudio
+ran the 16 kHz output stream in 15-sample callbacks with 53 ms of buffer. In a headless live demo
+run (virtual source, one drone clip, play gain -60 dB, about 60 s) the longest gap between
+callbacks was 42 ms. The engine's audio itself was clean (peak 0.08, no clipping, no steps at the
+0.1 s block or round boundaries). So a busier moment can leave the device without samples, and
+CoreAudio plays the gap without reporting an underflow. The live speaker and microphone streams
+and the Results window's player now use `live_test_engine.STREAM = dict(latency=0.2,
+blocksize=512)`: 212 ms of buffer in 512-sample blocks. In the same run, the longest gap was 81 ms,
+with 0 underflows and at least 0.42 s queued. The live engine already reads the stream's latency
+for its timing, and the player's playhead follows the device clock.
+
+**Not verified:** not listened to by ear here. On Windows, the explicit 0.2 s replaces "high";
+not run there.
+
+## 254 - "Many false alarms" in the live demo: the logged rounds hold none
+
+**Type:** Evaluation readout (Complete Test GUI, live demo, run by Marius). **Commit:** working tree
+on `iteration-21-uav16` (0e2f6bb + uncommitted changes). **Runs:**
+`artifacts/complete_test/20261120_093854_live_virtual_automatic` (4 rounds, it27 s0-s2 and it28
+s0-s2) and `20261120_100203_live_virtual_automatic` (1 round, it9 CRNN and it27 s0/s1). Settings:
+virtual source, automatic drones, `drone1-1_1.wav` / `drone1-1_5.wav` at 150 km/h, level 80, every
+layer on (war 60, wind 50, Pd wind 50, cars 5, helicopter 50, insects 30 dB), each detector's
+frozen threshold (none set by the tester). The other 2026-11-20 live folders either have no
+finished round or are Claude's playback checks (entry 253, `drone1-2_5.wav`).
+
+**What Marius reported:** many false alarms in the live demo's graph and round log, with every
+layer on.
+
+**What the logged rounds show** (read from `rounds.csv` and `scores.npz` with a short script, not
+committed; test material, used to set nothing):
+- False-alarm windows per model and round: 0 in 22 of 24 (run 09:38), 1 in the other 2, out of
+  57-65 no-drone windows. Run 10:02: 0 for each model.
+- Every window at or above a model's threshold is labelled drone. The count of such windows equals
+  `tp` in each row.
+- Mean confidence without a drone: 0.05-0.30. With a drone: 0.26-0.41. Recall: 4-28 of 81 drone
+  windows. The models are weak on this drone at this level, but they do not alarm without it.
+- The live graph marks a model as alarming whenever its confidence is at or above its threshold,
+  with the drone or without it.
+
+**Open:** whatever was seen as false alarms was not in a logged round. It may have been the alarms
+during the drone, or runs stopped before a round finished (09:37, 09:38 x2, 10:00, 10:01: no
+rounds). Nothing was changed.
+
+## 255 - Live demo without a drone, every layer on: it9 CRNN and `comb` give the false alarms
+
+**Type:** Evaluation (Complete Test GUI, live demo, run headless by Claude at Marius's request after
+entry 254). **Commit:** working tree on `iteration-21-uav16` (0e2f6bb + uncommitted changes).
+**Run:** `artifacts/complete_test/20261120_100911_live_virtual_automatic`, about 5 min in real
+time.
+
+**Setup:**
+- Virtual source, automatic drones, `drone1-1_1.wav` at 150 km/h, level 80.
+- Every layer on: war soundscape 60, war-shaped noise 50 (off in Marius's runs), wind 50, Pd wind
+  50, cars 5, helicopter 50, insects 30 dB.
+- Each detector's frozen threshold. Playback gain -60 dB.
+- Live mode turns no-drone rounds off (`Complete_Test_Gui.py:1100`). For this run only, a script in
+  the scratchpad (not committed) turned them on and appended three no-drone rounds. Each is 20 s,
+  153 windows, and hears a different stretch of the looping soundscape.
+- The GUI's plan also expanded to 11 drone rounds.
+- `lgbm` is not offered in the live demo; `comb` is the only baseline.
+
+**False-alarm windows:**
+
+| Detector | threshold | no-drone rounds 12/13/14 (of 153 each) | drone rounds 1-11, summed (of 667 no-drone windows) |
+|---|---|---|---|
+| it9 CRNN | 0.483 | 17 / 20 / 5 | 72 |
+| comb | (0.5 on its confidence) | 16 / 64 / 39 | 189 |
+| it27 quiet s0 | 0.740 | 0 / 1 / 1 | 0 |
+| it27 quiet s1 | 0.749 | 7 / 1 / 2 | 7 |
+| it27 quiet s2 | 0.749 | 0 / 0 / 1 | 0 |
+| it28 vehicle s0 | 0.813 | 1 / 3 / 0 | 2 |
+| it28 vehicle s1 | 0.784 | 0 / 0 / 0 | 0 |
+| it28 vehicle s2 | 0.793 | 0 / 0 / 0 | 0 |
+
+**Reading:**
+- Without a drone and with every layer on, the false alarms come from it9 CRNN (about 9% of
+  windows) and `comb` (up to 42%).
+- it27 and it28 stay at 0-5% (it27 s1 is the worst seed). it28 s1 and s2 gave none.
+- This fits entry 254: Marius's 10:02 run had it9 CRNN ticked. The live graph marks every crossing,
+  so with it9 or `comb` shown, alarms appear throughout.
+- Which layer drives it9's alarms was not separated: every round had every layer on.
+
+**Note against `REQUIREMENTS.md`:** it9 CRNN is named there as the default model. In the live demo
+with every layer on, it is the model that alarms without a drone.
+
+**Not done:** no change to the GUI or the models. Drone confidence was not compared here.
+
+## 256 - Why the live-demo confidence wobbles: steady noise lifts the networks, and the window
+## normalisation makes faint layers count
+
+**Type:** Diagnosis (Marius: "something is deeply wrong ... it is also the models"). **Commit:** working
+tree on `iteration-21-uav16` (0e2f6bb + uncommitted changes). **How:** a scratchpad script (not
+committed) scores each Complete Test layer for 60 s, alone and in combinations, with the GUI's own
+scorers and frozen thresholds. It uses window 1 s, hop 0.125 s, the levels of the 2026-11-20 live
+runs and soundscape start `config.json` of `20261120_100911_live_virtual_automatic`. Development test
+material: it set no threshold or setting.
+
+**Each layer alone** (mean / standard deviation of confidence over 473 hops; it27 and it28 seeds
+agree within about 0.1):
+
+| Layer (dB SPL) | it27/it28 | it9 CRNN | comb > its threshold |
+|---|---|---|---|
+| war soundscape 60 | 0.05 / 0.08-0.11 | 0.04 | 56 % |
+| war-shaped noise 50 | 0.49-0.55 / 0.12-0.14 | **0.81, 100 % over threshold** | 1 % |
+| wind (FSD50K) 50 | 0.00 | 0.14 | 0 % |
+| wind (Pd) 50 | 0.15-0.23 / 0.07-0.11 | 0.04 | 32 % |
+| cars (Pd) 5 | 0.10-0.16 / 0.21-0.28 | 0.14 | 0 % |
+| helicopter (Pd) 50 | 0.00 | 0.07 | 0 % |
+| insects (Pd) 30 | 0.31-0.52 / 0.10-0.15 | 0.38 | 90 % |
+| digital silence | 0.00-0.01 | 0.06 | 0 % |
+
+**Marius's mix** (war 60, Pd wind 50, cars 5, helicopter 50, insects 30): it27/it28 mean 0.12-0.21,
+standard deviation 0.11-0.18. That is the 0.1-0.6 wobble in his screenshot. War alone gives 0.05 and
+0.08-0.11. Removing one layer at a time:
+- **Pd wind** is the main driver. Without it the mean is 0.09-0.12. War + Pd wind alone gives
+  0.13-0.21 and 0.12-0.19.
+- **Insects** at 30 dB SPL, 30 dB under the war, still lift war-only from 0.05 to 0.12-0.14, and the
+  spread from about 0.09 to 0.16-0.18.
+- Cars at 5 dB and the helicopter change nothing.
+
+**Reading. Two causes in the models, not in the GUI:**
+1. **Steady noise reads as part-drone.** Sounds that are steady over the window lift the
+   networks: war-shaped noise, insect buzz, synthetic wind. Sounds with transients (the war
+   soundscape) or that resemble FSD50K training beds (real wind) do not.
+   - The worldsim training (`dronesynth.SynthSampler.family`, ladder 3) gives each scene once
+     without a drone and three times with one, so 75 % of training windows hold a drone.
+   - Steady broadband noise appears as "no drone" only in the 20 % quiet scenes, as faint white or
+     pink floors.
+   - The drones are 20 Glasgow hovers: steady broadband sound plus harmonics.
+   - So "steady, stationary texture" is evidence for a drone. Anything steady the networks have not
+     seen as a negative lands near 0.5 instead of near 0. it9 CRNN shows the same on war-shaped
+     noise (0.81).
+2. **Faint layers count.** `realrun.level_normalise` rescales each window to its own level and keeps
+   50 dB below it. So a layer 30 dB under the war is still in the input wherever the war leaves a
+   band empty (insects at high frequencies). A layer alone is blown up to full level.
+3. **No temporal consistency, which amplifies both.** Each 1 s window is scored on its own every
+   0.125 s. Nothing in training or inference asks neighbouring scores to agree.
+
+**Ruled out:** a level mismatch between training and the GUI (level normalisation makes absolute
+level irrelevant), a feature mismatch (checkpoints carry their variant, thresholds come from the
+run files), and display versus scoring (the log, `rounds.csv` and `scores.npz` agree, entry 254).
+
+**Not done:** no change to models, GUI or thresholds. Next is a new training recipe, for Marius to
+decide (CLAUDE.md section 4: council first):
+- steady negatives: coloured noise over a range of slopes (brown, war-shaped), buzz and synthetic
+  wind as no-drone beds and confusers;
+- a lower drone share than 75 %;
+- possibly score smoothing on validation.
+
+## 257 - Council: steady noises as no-drone in the world simulator (iteration 29)
+
+**Type:** Council. **Asked by:** Marius ("Yes start it but train on the jupyter server", after entry 256).
+
+**Question:** should iteration 29 retrain the world-simulator CRNN with (A) steady negatives and a
+drone share cut from 75 % to 50 %, (B) another change, or (C) the current recipe, handling the
+wobble another way (temporal smoothing tuned on validation, or nothing)?
+
+**Fact checked before the council:** FSD50K-dev insect sound is already in training: the
+`background/insects` bed has 33 stems, and `distracter/buzzing_insect` and `mosquito` have 44. So
+"never seen as negative" holds for coloured noise and synthetic wind, not for real insects.
+
+**Devil's Advocate.** Decisive and serious objections, and how each is answered:
+1. *It puts drone confidence at risk to fix a wobble below threshold. History says steady-noise
+   changes cost recall (iterations 11 and 25). There is no stage 2 real-drone baseline.*
+   - Answered in the design. The steady noise enters through the scene, which each family uses
+     once without a drone and three times with one, so it appears in both classes.
+   - Iteration 25 put noise under 30 % of drones against 15 % of no-drone windows. That imbalance
+     made noise evidence for a drone, and it is not repeated here.
+   - Recall guards are part of the verdict: drone confidence in every SNR bin within the seed
+     spread of it27, and real UAV16 recall no more than 0.03 below it27's 0.628.
+   - Stage 2 (Lund/Halmstad) stays open, as for it25-it28. **This part stands.**
+2. *Two changes at once, and a validation set that changes with them.*
+   - Answered: the drone-share cut is dropped (ladder stays 3).
+   - The threshold is frozen on it27's unchanged validation set (same seed, same composition), so
+     the numbers stay comparable with it25-it28.
+   - The steady-noise probe is a separate validation readout.
+3. *Test steering: the idea came from GUI test layers.*
+   - Declared here: the motivation came from development-test material (entry 256).
+   - The generators are written from generic acoustics: spectral slopes from -6 to +3 dB/octave,
+     and wind as low-pass noise with 0.1-2 Hz gusts and a random corner. They are not shaped to
+     the GUI's Pd patches, and the Pd renders are never used.
+   - The GUI layers only illustrate the result at the end.
+4. *Procedural Gaussian noise invites a shortcut.*
+   - Partly answered: the noise appears under drones in the same families, and FSD50K real steady
+     stems stay in the pool.
+   - The probe also scores real FSD50K-dev val steady stems (rain, stream, wind, buzz), not only
+     the procedural noise. **The rest stands until the probe shows it.**
+5. *The level normalisation and per-hop independence are untouched.*
+   - Correct. Smoothing comes afterwards, tuned on validation. The Problem Solver notes it cannot
+     fix a steady 0.5.
+   - The normalisation floor would be its own iteration. **Stands, out of scope.**
+
+**Scholar** (context-free):
+- Outlier exposure (Hendrycks et al. 2019) is the established principle: diverse non-target data
+  for the "absent" class.
+- Synthetic coloured noise and wind are a *defensible variation*, as a supplement to real
+  backgrounds. To stay within practice, put the noise under positives too, and judge it on real
+  held-out steady backgrounds.
+- The class-ratio change is defensible but with little expected effect.
+- Smoothing tuned on validation is *standard*. Keeping the current approach is *against practice*.
+- **Departure from practice:** none on the main points. The family design puts the noise under
+  positives, and the probe includes real FSD50K-dev val steady stems.
+
+**Problem Solver:** *try a modified version*. Keep the steady negatives and drop the ladder change.
+Draw steady noise mostly as a confuser (at the existing confuser levels) and only about 10 % as a
+whole bed. Write the wind from physics.
+- **Step 0 before any training:** score it27/it28 on a validation steady probe from a disjoint
+  seed. If steady no-drone confidence is not about 0.4 or more, the diagnosis does not hold on
+  validation: stop.
+- **Success:** steady-probe no-drone mean below 0.15, drone confidence within the seed spread,
+  UAV16 recall drop no more than 0.03, UAV16 FA no more than 0.078, simulated AUC at least 0.98.
+
+**Decision:** modified A, one change: **steady negatives** (procedural coloured noise and
+procedural wind, about 10 % of scenes as a bed and a share of confusers). The ladder stays 3.
+Everything else is as it27: CRNN, 600k windows, 3 seeds, quiet scenes 0.2, the threshold at 5 % FA
+on it27's validation set, `comb` and `lgbm` reported alongside. Step 0 gates the server run. The
+GUI layers are an illustration only.
+
+# Iteration 29 - Steady noises as no-drone
+
+> **Changed from iteration 27 (`it27_quiet_s0-s2`):** steady no-drone sounds are added to the
+> scenes (`--p-steady 0.1`):
+> - 10 % of scenes have a steady noise as the whole bed.
+> - When a scene gets a confuser, it is a steady noise 25 % of the time
+>   (`STEADY_CONFUSER_SHARE`), at the usual confuser level (-10 to +15 dB over the bed).
+> - A steady noise is one of two generators (`dronesynth.steady`), equally likely:
+>   - `colour_noise`: stationary Gaussian noise with a power slope of -6 to +3 dB/octave, and in
+>     half the draws a low-pass (order 1-4, corner 150-3000 Hz);
+>   - `synth_wind`: low-pass noise (corner 60-800 Hz, order 1-3) under a gust envelope of three slow
+>     sines (0.1-2 Hz).
+> - Because the ladder adds the drone to the same scene, every steady noise also appears under
+>   drones, so it cannot become a shortcut for "no drone".
+>
+> **Why:** entry 256. With these layers alone, the it27/it28 networks score:
+> - war-shaped noise 0.49-0.55;
+> - Pd wind 0.15-0.23;
+> - Pd insects 0.31-0.52;
+> - the war soundscape 0.05.
+>
+> In Marius's live mix this gives a no-drone mean of 0.12-0.21 with a standard deviation up to
+> 0.18. In the it27 recipe, steady broadband noise is "no drone" only as faint floors in quiet
+> scenes, and 75 % of windows hold a drone. Council: entry 257.
+>
+> **Test material steered this choice.** The failure was seen on Complete Test GUI layers. The
+> generators come from generic acoustics, not the GUI's Pd patches, and no GUI render, level or
+> setting is used in training or for a threshold.
+>
+> **Kept the same:** everything else in iteration 27: Glasgow drones, beds, twins, quiet scenes
+> (p 0.2), ladder 3 (75 % drone windows; the council dropped the cut to 50 %), SNR range, CRNN,
+> 600,000 windows, and the threshold at 5 % false alarms on **it27's unchanged validation set**.
+> Vehicles (iteration 28) stay out.
+>
+> **New readout:** the steady probe (`run_worldsim.steady_probe`, seed 29,000, 500 families, the
+> held-out drones and val stems, no twins). Half its beds are steady noises, and all its confusers
+> are. It is a readout only and never sets a threshold.
+>
+> **Gate (step 0, before any training):** it27/it28 must score at least 0.4 mean no-drone
+> confidence on the probe's steady beds. If not, entry 256's diagnosis does not hold on validation,
+> and the run is stopped.
+>
+> **Hypothesis:** steady noises no longer read as part-drone, at no cost to drones.
+>
+> **Judged by** (fixed before any number), on the seed mean against it27 s0-s2 on the same windows:
+> 1. Steady probe: no-drone confidence on the steady beds below 0.15.
+> 2. Drone confidence in each SNR bin on it27's validation set no more than the it27 seed spread
+>    below it27's, and AUC no more than 0.01 below (it27: 0.984).
+> 3. Empty silence below 0.2, and quiet-bed and silence-bed false alarms at most 0.05 (from
+>    iteration 27).
+> 4. Real UAV16 recall no more than 0.03 below it27's (0.628), and false alarms at most 0.078.
+>
+> `comb` and `lgbm` run as the required baselines. Only after a verdict does Marius re-run the GUI
+> live mix as an illustration.
+
+## 258 - Iteration 29 step 0: the gate fails; no-drone confidence is about 0.3 on almost every bed, not only on steady noise
+
+**Type:** Evaluation (simulated validation, no training). **Commit:** working tree on
+`iteration-21-uav16` (0e2f6bb + the iteration 29 code: `dronesynth.colour_noise`, `synth_wind`,
+`steady`, `SynthSampler(p_steady)`, `run_worldsim.steady_probe`, `--p-steady`, `--probe-families`;
+`tests/test_dronesynth.py::test_steady_noises_slope` passes).
+**Run (Mac, MPS, 135 s):**
+
+```
+uv run python -u scripts/run_worldsim.py --name it29_step0_probe --models comb --device mps \
+    --val-families 1500 --probe-families 500 --reference it27_quiet_s0_crnn.pt it27_quiet_s1_crnn.pt \
+    it27_quiet_s2_crnn.pt it28_vehicle_s0_crnn.pt it28_vehicle_s1_crnn.pt it28_vehicle_s2_crnn.pt
+```
+
+Output: `artifacts/runs/it29_step0_probe.json`.
+
+**Caveat:** this run's main validation set used `--p-quiet 0` (the default), so it is *not* it27's
+validation set. Its thresholds (0.78-0.82) and AUC (0.975-0.976) are not it27's (0.74-0.75 and
+0.984). The probe does not depend on it. Each scorer's probe readout uses the threshold from this
+run, and the means below do not depend on any threshold. The server run must pass `--p-quiet 0.2`
+to rebuild it27's validation set.
+
+**Steady probe, mean no-drone confidence** (seed 29,000, held-out drones and val stems, no twins;
+number of no-drone windows in brackets):
+
+| Scorer | FSD50K background bed (83) | FSD50K wind bed (83) | FSD50K war bed (73) | colour noise bed (132) | synthetic wind bed (129) | no confuser (301) | colour noise confuser (93) | synthetic wind confuser (106) |
+|---|---|---|---|---|---|---|---|---|
+| it27 s0 / s1 / s2 | 0.34 / 0.34 / 0.34 | 0.32-0.34 | 0.08-0.10 | 0.30-0.31 | 0.21-0.23 | 0.25 | 0.31-0.34 | 0.23-0.25 |
+| it28 s0 / s1 / s2 | 0.31-0.34 | 0.31-0.32 | 0.08-0.09 | 0.28-0.29 | 0.21-0.22 | 0.24-0.25 | 0.30-0.31 | 0.22-0.23 |
+| comb | 0.64 | 0.89 | 0.91 | 0.00 | 0.00 | 0.55 | 0.15 | 0.13 |
+
+`lgbm` was not scored (no `lgbm` checkpoint is loadable as a reference). Drone confidence on the
+probe by SNR: 0.997-0.999 / 0.966-0.976 / 0.742-0.751.
+
+**Gate (iteration 29 box):** the steady beds' no-drone mean must be at least 0.4. It is 0.28-0.31
+(colour noise) and 0.21-0.23 (synthetic wind). **The gate fails, so iteration 29 is not trained.**
+
+**What it shows instead:**
+- On validation, steady noise is *not* special. The networks give about 0.3 to no-drone scenes on
+  almost every bed, including the FSD50K background and wind beds they trained on (0.31-0.34).
+- Only war beds are low (0.08-0.10).
+- So entry 256's GUI numbers (war 0.05, steady layers 0.15-0.55) reflect a general no-drone level of
+  about 0.3 outside war. Entry 256's cause 1 ("steady noise reads as part-drone") is withdrawn as
+  stated. The broader version holds: no-drone confidence is high on any non-war scene.
+- The obvious candidate is the class prior, which the council dropped from this iteration: 75 % of
+  training windows hold a drone (ladder 3). A network calibrated to a 75 % prior puts an unsure
+  no-drone window near the middle.
+- The requirement is the confidence itself ("as low as possible without a drone"), not only the
+  ranking, so the prior is not cancelled by the threshold here.
+
+**Not done:** no training and no change to the models. Next step for Marius to decide (entry 259 or
+the next iteration):
+- (a) train with a 50 % drone share (ladder 1, or ladder 3 with three no-drone scenes per family);
+- (b) a post-hoc prior correction of the existing networks' output, `p' = p / (p + 3 (1 - p))`. It
+  is monotone, so it keeps AUC and alarms and only rescales the confidence;
+- (c) both.
+
+# Iteration 30 - Half the training windows without a drone
+
+> **Changed from iteration 27 (`it27_quiet_s0-s2`):** training families are one scene without a
+> drone plus **one** copy with a drone (`--ladder 1`), not three copies. That makes 50 % drone
+> windows instead of 75 %. Nothing else changes. The steady noises of iteration 29 stay out
+> (`--p-steady 0`).
+>
+> **Why:** entry 258. On it27's validation set the it27 networks give no-drone scenes a mean of
+> 0.19. On FSD50K background beds they give 0.29-0.30, and on wind 0.20-0.21. Only war beds are
+> low (0.08-0.09). The steady probe gives the same picture. A network trained on 75 % drone windows
+> puts an unsure no-drone window near the middle. The requirement asks for no-drone confidence "as
+> low as possible", so this level is part of the requirement, not only the threshold. Marius chose
+> to train rather than rescale ("Train 50 % drone share").
+>
+> **Council:** entry 257 discussed the 50 % share. The Scholar called it a defensible variation,
+> mainly moving the score scale. The Devil's Advocate and the Problem Solver objected to it only
+> *alongside* the steady noises (two changes at once), and because it cuts drone examples. Here it
+> is the single change, and the cost to drones is part of the verdict. No new council: this is a
+> class-balance setting, not a new model, frontend, metric or split (CLAUDE.md section 4).
+>
+> **Kept the same:** Glasgow drones (20 for training, 4 held out), beds, confusers, twins, quiet
+> scenes (p 0.2), SNR range, the buried variant, CRNN, 600,000 windows (300,000 with a drone instead
+> of 450,000), and seeds 0-2 on the JupyterLab server.
+> - **Validation is it27's, unchanged:** ladder 3, `--p-quiet 0.2`, seed 25,000.
+> - The threshold is frozen at 5 % false alarms on it, so it27's thresholds and readouts compare
+>   directly. it27 s0 is re-scored as a reference.
+> - The steady probe (entry 258) is read out as well.
+> - `comb` and `lgbm` run as the required baselines.
+>
+> **Hypothesis:** no-drone confidence falls across beds. Ranking (AUC) and recall at the frozen 5 %
+> false alarms stay where they are. Drone confidence falls only where the network was unsure (the
+> lowest SNR bin).
+>
+> **Judged by** (fixed before any number), on the seed mean against it27's seed mean (no-drone
+> 0.193, background bed 0.297, AUC 0.984, recall at threshold 0.914, drone by SNR
+> 0.999/0.980/0.848, UAV16 recall 0.628 and false alarms 0.078):
+> 1. No-drone confidence on it27's validation set 0.12 or below, and on the background bed 0.15 or
+>    below.
+> 2. AUC 0.974 or above, and recall at the frozen threshold no more than 0.02 below 0.914.
+> 3. Drone confidence 0.95 or above in the 0 to +10 and -10 to 0 dB bins. The -20 to -10 dB bin is
+>    reported. A fall there is the expected price of the prior, and it is weighed against rule 1
+>    in the verdict.
+> 4. Empty silence below 0.2, and quiet-bed and silence-bed false alarms at most 0.05.
+> 5. Real UAV16 recall no more than 0.03 below 0.628, and false alarms at most 0.078.
+
+## 259 - Iteration 30: code, smoke run, and the run launched on the server
+- Date: 2026-11-20
+- Iteration: 30
+- Type: Code and setup
+- Commit: uncommitted, on 0e2f6bb
+
+**Code.** `scripts/run_worldsim.py --ladder K` sets the training families (default 3, as before).
+Validation and the steady probe stay ladder 3. The iteration 29 code (entry 258) is included but
+off (`--p-steady 0`).
+
+**Checks on the Mac.**
+- `SynthSampler.batch` labels over 10 batches of 64: ladder 3 gives a drone share of 0.75, ladder
+  1 gives 0.50.
+- A smoke run (`--windows 2000 --val-families 100 --probe-families 50 --ladder 1 --p-quiet 0.2`)
+  ran end to end in 93 s. Not a result; its files were deleted.
+
+**Server** (JupyterLab, `jupyter-mariusq`, 3 x TITAN X).
+- The browser page could not read files from the Mac (local file server reachable by curl, but the
+  page's fetch was blocked). Marius uploaded `it30_upload.tgz` (MD5 `aca818f9…`, matches the
+  Mac's).
+- `~/dad27` was copied to `~/dad30`, and `dronesynth.py`, `run_worldsim.py`,
+  `tests/test_dronesynth.py` and `it30_launch.sh` were put in. Each file's MD5 matches the Mac's.
+  `~/dad27` is untouched.
+- `pytest tests/test_dronesynth.py`: 6 passed on the server.
+- `sh it30_launch.sh` started, at 10:59, one seed per GPU:
+
+```
+run_worldsim.py --name it30_half_sS --models comb lgbm crnn --p-quiet 0.2 --ladder 1 \
+    --windows 600000 --device cuda --seed S --workers 8 --reference it27_quiet_s0_crnn.pt   # S = 0, 1, 2
+```
+
+- Logs: `~/dad30/artifacts/logs/it30_half_s*.log`. Iteration 27 took about 61-66 min of training
+  per seed.
+
+## 260 - Iteration 30 result: no-drone confidence halves at the same ranking; fails two rules narrowly
+- Date: 2026-11-20
+- Iteration: 30
+- Type: Evaluation (stage 1: simulated validation, steady probe, real UAV16)
+- Commit: uncommitted, on 0e2f6bb (code of entry 259)
+- Run: `~/dad30/artifacts/runs/it30_half_s{0,1,2}.json` on the JupyterLab server, read there through the
+  contents API; logs `~/dad30/artifacts/logs/it30_half_s*.log`. Training took 6,212, 6,962 and
+  6,706 s (it27: 3,665-3,976 s). Ladder 1 makes half as many windows per simulated scene, and
+  building windows is CPU work.
+
+**Validation is it27's.** The it27 s0 reference, re-scored in every run, gives exactly its original
+numbers: threshold 0.740, AUC 0.9836, no-drone confidence 0.189, UAV16 recall 0.617.
+
+**Results** (it27's validation set, 1 s window, 0.125 s hop, threshold at 5 % false alarms on its
+no-drone windows; UAV16 = real held-out hovers against its 24 non-plain backgrounds):
+
+| Scorer | threshold | AUC | recall at threshold | no-drone confidence | background / wind / war bed | drone confidence by SNR (0 to 10 / -10 to 0 / -20 to -10 dB) | UAV16 AUC / recall / false alarms |
+|---|---|---|---|---|---|---|---|
+| it27 s0-s2 (entry 248, mean) | 0.746 | 0.984 | 0.914 | 0.193 | 0.297 / 0.207 / 0.085 | 0.999 / 0.980 / 0.848 | - / 0.628 / 0.078 |
+| **it30 s0** | 0.509 | 0.9839 | 0.914 | 0.108 | 0.172 / 0.115 / 0.041 | 0.999 / 0.968 / 0.759 | 0.863 / 0.591 / 0.054 |
+| **it30 s1** | 0.465 | 0.9845 | 0.916 | 0.097 | 0.154 / 0.107 / 0.038 | 0.999 / 0.962 / 0.751 | 0.854 / 0.577 / 0.061 |
+| **it30 s2** | 0.479 | 0.9836 | 0.916 | 0.101 | 0.158 / 0.112 / 0.038 | 0.999 / 0.964 / 0.755 | 0.854 / 0.605 / 0.061 |
+| **it30 mean** | 0.484 | 0.984 | 0.915 | **0.102** | **0.161** / 0.111 / 0.039 | 0.999 / 0.965 / **0.755** | 0.857 / **0.591** / 0.059 |
+| `lgbm` s0-s2 | 0.667-0.673 | 0.949 | 0.779-0.785 | 0.201-0.205 | 0.29-0.30 / 0.20-0.21 / 0.12-0.13 | 0.98 / 0.88 / 0.62 | 0.75-0.76 / 0.21-0.25 / 0.04-0.06 |
+| `comb` | 3.914 | 0.607 | 0.293 | (raw score) | - | - | 0.538 / 0.071 / 0.045 |
+
+**Other readouts.**
+- Empty silence: 0.006 for each seed.
+- Quiet-bed false alarms: 0.037 / 0.028 / 0.033. Silence-bed false alarms: 0.025 / 0.037 / 0.025.
+- Steady probe, no-drone confidence, it30 s0-s2 against the it27 s0 reference:
+
+| Bed | it30 s0-s2 | it27 s0 |
+|---|---|---|
+| FSD50K background | 0.17-0.20 | 0.34 |
+| FSD50K wind | 0.17-0.18 | 0.32 |
+| colour noise | 0.13-0.17 | 0.30 |
+| synthetic wind | 0.10-0.12 | 0.21 |
+
+**Rules of the box:**
+1. No-drone confidence 0.102 is at or below 0.12: **pass**. The background bed is at 0.161, above
+   0.15: **fails narrowly**. It was 0.297.
+2. AUC 0.984, unchanged, and recall at threshold 0.915 against 0.914: **pass**.
+3. Drone confidence 0.999 and 0.965 in the top two bins, at or above 0.95: **pass**. The -20 to
+   -10 dB bin falls from 0.848 to 0.755. That was the price expected in the box.
+4. Silence and quiet: **pass**.
+5. UAV16 false alarms 0.059, at or below 0.078: pass. UAV16 recall 0.591 is below the 0.598 limit
+   (0.628 - 0.03), so this rule **fails narrowly**. it27's seeds range from 0.617 to 0.640;
+   it30's range from 0.577 to 0.605.
+
+**Verdict: fails as written (rules 1b and 5, both narrowly). Hypothesis partly confirmed.**
+- No-drone confidence halves on every bed (0.19 to 0.10, background 0.30 to 0.16, war 0.085 to
+  0.039).
+- Ranking and detection at the same false-alarm rate are unchanged (AUC 0.984, recall 0.915).
+- Drone confidence falls only in the faintest bin.
+- **Read with care: this is mostly a rescaling.** AUC and recall at a fixed false-alarm rate do not
+  move, and the thresholds fall from 0.74-0.75 to 0.47-0.51. Most of the effect is the class prior
+  moving every score down, the same effect the post-hoc correction of entry 258 (b) would give. It
+  is not a better separation of drone from no drone.
+- On UAV16 the networks rank as well as before (AUC 0.857 against it27 s0's 0.861) but lose about
+  0.04 recall at the threshold.
+
+**Next:** the GUI live mix (entry 256's settings) is the illustration Marius asked for. The models
+must be copied to the Mac first. Whether the lower and steadier no-drone curve is worth the lower
+faint-drone confidence is a requirements question for Marius and Mads, because REQUIREMENTS.md
+ranks drone confidence first.
+
+## 261 - The iteration 30 networks on the Mac and in the test GUIs
+- Date: 2026-11-20
+- Iteration: 30
+- Type: Setup
+
+- **Fetched:** `~/it30_results.tgz` was packed on the server (run files, CRNN and `lgbm`
+  checkpoints, logs). Marius downloaded it (MD5 `064bca02463922d6526a1e882e8c729b`, the same on
+  the server and the Mac) and it was unpacked into `artifacts/`. No existing file had those names.
+- **Registered:** `"it30 CRNN half s0/s1/s2"` were added to `drone_war_grid.MODELS`,
+  `Complete_Test_Gui.py` and `detect_gui.py` (blues `#01579b`, `#0288d1`, `#4fc3f7`).
+- **Checks:** thresholds from the run files are 0.509, 0.465 and 0.479. Each scores 0.006 on a
+  window of zeros. Both GUIs have one colour for each of the 53 models.
+- **Not run:** the GUI live mix. That is the illustration of entry 256's wobble, and it waits for
+  Marius.
+
+## 262 - The live mix with iteration 30: calmer in absolute terms, and still calmer against its own threshold
+- Date: 2026-11-20
+- Iteration: 30
+- Type: Evaluation (development test material, as an illustration; Marius asked for it)
+- Commit: uncommitted, on 0e2f6bb
+
+**How:** entry 256's measurement, re-run with a scratchpad script (`layers2.py`, not committed) on the
+Mac:
+- Sounds: 60 s of each Complete Test layer alone, war plus each layer, and Marius's live mix (war
+  60, Pd wind 50, Pd cars 5, Pd helicopter 50, Pd insects 30 dB SPL).
+- Each sound scored hop by hop (1 s window, 0.125 s hop, 473 hops) by the GUI's own scorers at the
+  frozen thresholds.
+- Plan, Pd settings and soundscape start come from
+  `artifacts/complete_test/20261120_100911_live_virtual_automatic/config.json`.
+- Columns: each group is the mean over its three seeds. "Hop jump" is the mean absolute change
+  between neighbouring scores. "Mean / threshold" puts models with different thresholds on one
+  scale.
+
+This is test material. It set no threshold and chose nothing. It shows what the GUI shows.
+
+**Thresholds:** it27 0.740-0.749, it28 0.784-0.813, it30 0.465-0.509, `comb` 0.5 on its confidence.
+
+| Sound | it27: mean / sd / hop jump / over threshold / mean÷threshold | it28 | it30 | comb |
+|---|---|---|---|---|
+| **Marius mix** | 0.173 / 0.146 / 0.071 / 0.6 % / 0.23 | 0.136 / 0.127 / 0.063 / 0.1 % / 0.17 | **0.060 / 0.065 / 0.028 / 0.1 % / 0.12** | 0.297 / 0.379 / 0.122 / 38.7 % / 0.59 |
+| war alone | 0.053 / 0.095 / 0.030 / 0 % / 0.07 | 0.049 / 0.094 / 0.032 / 0 % / 0.06 | 0.022 / 0.041 / 0.015 / 0 % / 0.05 | 0.434 / 0.396 / 0.147 / 56 % / 0.87 |
+| war + Pd wind | 0.186 / 0.160 / 0.076 / 0.3 % / 0.25 | 0.156 / 0.143 / 0.076 / 0.2 % / 0.20 | 0.070 / 0.075 / 0.035 / 0.3 % / 0.14 | 0.392 / 0.406 / 0.163 / 49 % / 0.78 |
+| war + insects | 0.132 / 0.168 / 0.071 / 0.6 % / 0.18 | 0.131 / 0.180 / 0.076 / 0.9 % / 0.16 | 0.058 / 0.091 / 0.038 / 0.9 % / 0.12 | 0.453 / 0.399 / 0.133 / 58 % / 0.91 |
+| war + helicopter / + cars | about war alone | about war alone | about war alone | 40 % / 56 % |
+| Pd wind alone | 0.194 / 0.092 / 0.054 / 0 % / 0.26 | 0.178 / 0.089 / 0.057 / 0 % / 0.22 | 0.068 / 0.046 / 0.023 / 0 % / 0.14 | 32 % |
+| Pd insects alone | 0.412 / 0.144 / 0.066 / 3.2 % / 0.55 | 0.476 / 0.125 / 0.062 / 2.8 % / 0.60 | 0.193 / 0.093 / 0.042 / 3.6 % / 0.40 | 90 % |
+| war-shaped noise alone | 0.539 / 0.127 / 0.080 / 6.3 % / 0.72 | 0.514 / 0.123 / 0.080 / 1.4 % / 0.64 | 0.293 / 0.131 / 0.080 / **9.9 %** / 0.60 | 0.8 % |
+| Pd cars alone (5 dB) | 0.112 / 0.229 / 0.012 / 3.5 % / 0.15 | 0.137 / 0.249 / 0.013 / 2.7 % / 0.17 | 0.103 / 0.191 / 0.016 / **8.7 %** / 0.21 | 0 % |
+| FSD50K wind, Pd helicopter alone | 0.00 | 0.00 | 0.00 | 0 % |
+
+**Reading:**
+- **On Marius's mix**, it30 is about a third of it27 in mean (0.060 against 0.173) and less than half
+  in spread (0.065 against 0.146) and hop jump (0.028 against 0.071).
+- **This is more than the rescaling of entry 260.** Against its own threshold it30 sits at 0.12
+  against it27's 0.23. Its spread relative to the threshold is 0.13 against 0.20. The wobble falls
+  by about a third even after the scale change.
+- Threshold crossings on the mix stay rare for every network (0.1-0.6 %).
+- **Two layers are worse alone:** war-shaped noise (9.9 % of hops over threshold, against 6.3 % for
+  it27 and 1.4 % for it28) and the Pd car (8.7 % against 3.5 % and 2.7 %).
+  - Both are steady or slowly changing sounds.
+  - The lower threshold (about 0.48) lets their upper tail through.
+  - Neither appears alone in the live mix.
+- `comb` stays the worst baseline: 39-58 % of hops over its threshold whenever war is on.
+
+**What it leaves:**
+- For the live demo, it30 gives the calmer curve that was asked for, at entry 260's cost: drone
+  confidence for the faintest drones drops from 0.848 to 0.755, and UAV16 recall from 0.628 to
+  0.591.
+- Steady noise alone at a lower threshold is it30's new weak spot. That is where iteration 29's
+  steady negatives could help on top of iteration 30.
+- Whether to make it30 the default is Marius's and Mads's decision. REQUIREMENTS.md ranks drone
+  confidence first.
+
+## 263 - Before iteration 31: it30 shows no steady-noise weakness on validation
+- Date: 2026-11-20
+- Iteration: 30 (check before a proposed iteration 31)
+- Type: Evaluation (simulated validation, read from the existing run files)
+- Commit: uncommitted, on 0e2f6bb
+
+**Background:** Marius asked to add iteration 29's steady negatives to the it30 recipe ("Add steady
+noises to it30"). The motivation is entry 262: alone, war-shaped noise and the Pd car cross it30's
+threshold on 9.9 % and 8.7 % of hops. Both are GUI test layers.
+
+**Check:** the steady probe in `artifacts/runs/it30_half_s{0,1,2}.json` (entry 260's runs, seed
+29,000, 500 families) gives mean no-drone confidence and the share at or above each network's own
+threshold:
+
+| Probe group | it27 s0 (reference) | it30 s0 | it30 s1 | it30 s2 |
+|---|---|---|---|---|
+| FSD50K background bed | 0.34, 6.0 % | 0.20, 7.2 % | 0.17, 6.0 % | 0.17, 4.8 % |
+| FSD50K wind bed | 0.32, 1.2 % | 0.18, 3.6 % | 0.17, 8.4 % | 0.18, 9.6 % |
+| colour noise bed | 0.30, 0.8 % | 0.17, 3.0 % | 0.13, 0.8 % | 0.14, 0.0 % |
+| synthetic wind bed | 0.21, 0.8 % | 0.12, 1.6 % | 0.10, 0.8 % | 0.11, 1.6 % |
+| colour noise confuser | 0.31, 2.2 % | 0.18, 3.2 % | 0.15, 3.2 % | 0.16, 2.2 % |
+| synthetic wind confuser | 0.23, 0.9 % | 0.12, 1.9 % | 0.10, 0.9 % | 0.11, 1.9 % |
+
+**Reading:**
+- On validation, procedural steady noise is *not* a weak spot for it30. It sits below the 5 %
+  false-alarm level the threshold was set at, and below the FSD50K beds.
+- The weakness seen in entry 262 shows only on the GUI's war-shaped noise and Pd car.
+- Training on steady noise would therefore be steered by test material alone. Validation could not
+  show an improvement, because it shows nothing to improve; the only judge would be the same GUI
+  layers.
+- This is the same situation as iteration 29's failed gate (entry 258).
+
+**Not done:** iteration 31 was not started. Raised with Marius before using server time.
+
+## 264 - Iteration 31 (steady noises on it30) skipped
+- Date: 2026-11-20
+- Iteration: 30 (closing)
+- Type: Decision
+
+**Decision (Marius, "No, skip it"):** iteration 31 is not trained.
+- Entry 263 shows it30 has no steady-noise weakness on validation: 0-3 % of steady-probe no-drone
+  windows over threshold.
+- An iteration aimed at the GUI's war-shaped noise and Pd car could only be judged on those test
+  layers.
+
+**Where iteration 30 leaves the line:**
+- it30 is the calmest network in the live demo (entry 262).
+- Its cost is drone confidence: 0.755 in the -20 to -10 dB bin and UAV16 recall 0.591 (entry 260).
+- It is in both GUIs. Whether it becomes the default model is open for Marius and Mads.
+- The iteration 29 steady-noise code stays in `dronesynth.py` and `run_worldsim.py`, off by default
+  (`--p-steady 0`). The steady probe stays as a readout.
+
+**Next candidate (not started):** drone confidence for faint and moving drones, which REQUIREMENTS.md
+ranks first. The training drones are 20 Glasgow hovers.

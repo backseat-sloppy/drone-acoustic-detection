@@ -105,7 +105,11 @@ COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it
           "it24 CNN 2s war s0": "#827717", "it24 CNN 2s war s1": "#afb42b",
           "it24 CNN 2s war s2": "#c0ca33",
           "it24 CRNN 2s war s0": "#004d40", "it24 CRNN 2s war s1": "#00897b", "it24 CRNN 2s war s2": "#80cbc4",
-          "comb": "#1baf7a"}   # it20-it25: the same colours as detect_gui
+          "it25 CRNN worldsim s0": "#d500f9", "it26 CRNN uav16sim s0": "#2962ff",
+          "it27 CRNN quiet s0": "#e65100", "it27 CRNN quiet s1": "#ff3d00", "it27 CRNN quiet s2": "#ff9e80",
+          "it28 CRNN vehicle s0": "#33691e", "it28 CRNN vehicle s1": "#7cb342", "it28 CRNN vehicle s2": "#c5e1a5",
+          "it30 CRNN half s0": "#01579b", "it30 CRNN half s1": "#0288d1", "it30 CRNN half s2": "#4fc3f7",
+          "comb": "#1baf7a"}   # it20-it30: the same colours as detect_gui
 PD_CONTROLS = {"wind (Pd)": ("wind", (("speed_ms", "speed (m/s, assumed)", "quiet: 1  ·  storm: 25"),
                                       ("reso", "resonance (0-127)", "open field: 10  ·  city: 90"))),
                "cars": ("cars", (("speed_kmh", "speed (km/h)", "town: 50  ·  motorway: 130"),
@@ -474,8 +478,8 @@ class Page(ttk.Frame):
         final = ttk.Frame(g)
         final.grid(row=r, column=1, columnspan=7, sticky="w", padx=4, pady=(8, 0))
         self.v_final = tk.BooleanVar(value=False)
-        self.b_final = tk.Checkbutton(final, text="The Final Evaluation: OFF", variable=self.v_final, indicatoron=False, width=26,
-                                      font=("Segoe UI", 10, "bold"), selectcolor="#f4c7c3", command=self._flip_final)
+        self.b_final = ttk.Checkbutton(final, text="The Final Evaluation: OFF", variable=self.v_final, width=26,
+                                       style="Final.Toolbutton", command=self._flip_final)
         self.b_final.pack(side="left")
         ttk.Label(final, text="on: the car is the sealed car, which no model has trained on; off: the development car (idle)",
                   style="Muted.TLabel").pack(side="left", padx=8)
@@ -877,9 +881,8 @@ class LivePage(Page):
             box = ttk.Frame(f)
             box.grid(row=row, column=1, sticky="w", padx=8, pady=2)
             for o in opts:
-                tk.Radiobutton(box, text=o.capitalize(), value=o, variable=var, indicatoron=False, width=12,
-                               font=("Segoe UI", 10, "bold"), selectcolor="#cfe0f7", bg=PANEL, relief="ridge",
-                               command=self._mode_changed).pack(side="left")
+                ttk.Radiobutton(box, text=o.capitalize(), value=o, variable=var, width=12, style="Seg.Toolbutton",
+                                command=self._mode_changed).pack(side="left")
         self.l_mode = ttk.Label(f, text="", wraplength=950, justify="left")
         self.l_mode.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 10))
         self.outs, self.ins = audio_devices("output"), audio_devices("input")
@@ -963,9 +966,7 @@ class LivePage(Page):
         self.b_start.grid(row=0, column=0, padx=(0, 4))
         self.b_stop = ttk.Button(bar, text="■  Stop", command=self.stop, state="disabled")
         self.b_stop.grid(row=0, column=1, padx=4)
-        self.b_send = tk.Button(bar, text="✈  Send drone", command=self.send, fg="white", disabledforeground="#f5f5f5",
-                                activebackground="#b3261e", activeforeground="white", relief="flat",
-                                font=("Segoe UI", 11, "bold"), padx=16, pady=3)
+        self.b_send = ttk.Button(bar, text="✈  Send drone", command=self.send, style="Send.TButton")
         self.b_send.grid(row=0, column=2, padx=4)               # manual only: _mode_changed hides it otherwise
         self._send_ready(False)
         self.b_results = ttk.Button(bar, text="Results window", command=self.open_results, state="disabled")
@@ -981,7 +982,7 @@ class LivePage(Page):
     def _send_ready(self, ready: bool):
         """Send drone: red when a press would fly a drone in now, grey otherwise."""
         if str(self.b_send.cget("state")) != ("normal" if ready else "disabled") or not hasattr(self, "_send_set"):
-            self.b_send.configure(state="normal" if ready else "disabled", bg="#d93025" if ready else "#c4c7cc")
+            self.b_send.configure(state="normal" if ready else "disabled")   # Send.TButton greys itself when disabled
             self._send_set = True
 
     def _build_view(self, f):
@@ -2660,7 +2661,7 @@ class Sound:
         import sounddevice as sd
         self._stop = sd.CallbackStop
         self.x, self.pos, self.dac0 = np.ascontiguousarray(x, dtype=np.float32), 0, None
-        self.stream = sd.OutputStream(samplerate=E.SR, channels=1, dtype="float32", callback=self._fill)
+        self.stream = sd.OutputStream(samplerate=E.SR, channels=1, dtype="float32", callback=self._fill, **L.STREAM)
         self.stream.start()
 
     def _fill(self, out, frames, ti, status):
@@ -2720,20 +2721,16 @@ class App(tk.Tk):
         bar = tk.Frame(self, bg="#1f2937", height=52)
         bar.pack(fill="x")
         tk.Label(bar, text="  ◉  Complete Test", bg="#1f2937", fg="white", font=("Segoe UI", 14, "bold")).pack(side="left", pady=10)
-        tk.Button(bar, text="Open results...", command=self.open_results, bg="#374151", fg="white", relief="flat",
-                  activebackground="#4b5563", activeforeground="white", padx=12).pack(side="right", padx=12, pady=10)
+        ttk.Button(bar, text="Open results...", command=self.open_results, style="Tab.TButton").pack(side="right", padx=12, pady=10)
         nav = tk.Frame(bar, bg="#1f2937")
         nav.pack(side="right", padx=20)
-        tk.Button(nav, text="◀", command=lambda: self.go(-1), bg="#1f2937", fg="white", relief="flat",
-                  font=("Segoe UI", 12), activebackground="#374151").pack(side="left")
+        ttk.Button(nav, text="◀", width=3, command=lambda: self.go(-1), style="Nav.TButton").pack(side="left")
         self.tabs = []
         for i, (_, title) in enumerate(PAGES):
-            b = tk.Button(nav, text=title, command=lambda i=i: self.show(i), relief="flat", padx=14,
-                          font=("Segoe UI", 10, "bold"), activebackground="#374151")
+            b = ttk.Button(nav, text=title, command=lambda i=i: self.show(i), style="Tab.TButton")
             b.pack(side="left", padx=2)
             self.tabs.append(b)
-        tk.Button(nav, text="▶", command=lambda: self.go(1), bg="#1f2937", fg="white", relief="flat",
-                  font=("Segoe UI", 12), activebackground="#374151").pack(side="left")
+        ttk.Button(nav, text="▶", width=3, command=lambda: self.go(1), style="Nav.TButton").pack(side="left")
         self.dots = tk.Label(bar, text="", bg="#1f2937", fg="#9ca3af", font=("Segoe UI", 10))
         self.dots.pack(side="right")
 
@@ -2762,7 +2759,7 @@ class App(tk.Tk):
         self.cur = i % len(self.pages)
         self.pages[self.cur].pack(fill="both", expand=True)
         for j, b in enumerate(self.tabs):
-            b.configure(bg=ACCENT if j == self.cur else "#374151", fg="white")
+            b.configure(style="TabOn.TButton" if j == self.cur else "Tab.TButton")
         self.dots.configure(text="  ".join("●" if j == self.cur else "○" for j in range(len(self.pages))))
 
     def go(self, step):
@@ -2802,6 +2799,22 @@ def style(root):
     s.map("Accent.TButton", background=[("disabled", "#9db8e0"), ("active", "#1d5fb4")])
     s.configure("Link.TButton", background=PANEL, foreground=ACCENT, borderwidth=0, padding=0)
     s.map("Link.TButton", background=[("active", PANEL)])
+    # tk.Button and friends ignore bg on macOS (white buttons, white text); clam ttk styles keep their colours
+    s.configure("Nav.TButton", background="#1f2937", foreground="white", borderwidth=0, font=("Segoe UI", 12))
+    s.map("Nav.TButton", background=[("active", "#374151")])
+    s.configure("Tab.TButton", background="#374151", foreground="white", borderwidth=0,
+                font=("Segoe UI", 10, "bold"), padding=(14, 4))
+    s.map("Tab.TButton", background=[("active", "#4b5563")])
+    s.configure("TabOn.TButton", background=ACCENT, foreground="white", borderwidth=0,
+                font=("Segoe UI", 10, "bold"), padding=(14, 4))
+    s.map("TabOn.TButton", background=[("active", "#1d5fb4")])
+    s.configure("Seg.Toolbutton", background=PANEL, font=("Segoe UI", 10, "bold"), anchor="center", relief="ridge")
+    s.map("Seg.Toolbutton", background=[("selected", "#cfe0f7"), ("active", "#eef3fb")])
+    s.configure("Final.Toolbutton", background=PANEL, font=("Segoe UI", 10, "bold"), anchor="center", relief="ridge")
+    s.map("Final.Toolbutton", background=[("selected", "#f4c7c3"), ("active", "#f7f7f7")])
+    s.configure("Send.TButton", background="#d93025", foreground="white", font=("Segoe UI", 11, "bold"), padding=(16, 3))
+    s.map("Send.TButton", background=[("disabled", "#c4c7cc"), ("active", "#b3261e")],
+          foreground=[("disabled", "#f5f5f5")])
     s.configure("Treeview", rowheight=20, font=("Segoe UI", 9))
     s.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"))
 

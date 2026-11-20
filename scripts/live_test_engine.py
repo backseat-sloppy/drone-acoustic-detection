@@ -71,6 +71,9 @@ TAIL_S = 0.5                                                 # background after 
 MAX_LAG_S = 2.0                                             # microphone mode: the longest delay searched (device
                                                              # latencies, the gap between the two streams' starts, air)
 MIN_CORR = 0.05                                              # below this the delay is not trusted: the last good one is kept
+STREAM = dict(latency=0.2, blocksize=512)                   # ~0.2 s at the device: with latency="high" macOS gave
+                                                             # 15-sample callbacks and 53 ms of buffer, and a busy
+                                                             # moment played a gap (heard as crackle) without an underflow
 RING_S = 600.0                                               # how much of the stream is kept in memory (2 x 38 MB): a
                                                              # manual round (its wait included) must fit
 HOP = DEFAULT.samples_per_hop
@@ -499,12 +502,12 @@ class LiveRun:
         # arrives later in the recording; each round's delay is measured (estimate_lag), which also absorbs
         # the gap between the two starts and any drift between the two devices' clocks.
         out_stream = sd.OutputStream(device=self.out_dev, samplerate=sr, channels=out_ch, dtype="float32",
-                                     latency="high", callback=cb_out)
+                                     callback=cb_out, **STREAM)
         streams = [out_stream]
         name = sd.query_devices(self.out_dev, "output")["name"]
         if self.mic:
             streams.insert(0, sd.InputStream(device=self.in_dev, samplerate=in_sr, channels=in_ch, dtype="float32",
-                                             latency="high", callback=cb_in))
+                                             callback=cb_in, **STREAM))
             name = f"{sd.query_devices(self.in_dev, 'input')['name']} ({in_sr} Hz) -> {name}"
         self.plan.live.update(sample_rate=sr, input_sample_rate=in_sr, device=name)
         out_lat = float(out_stream.latency)

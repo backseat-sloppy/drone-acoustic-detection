@@ -226,6 +226,10 @@ def threshold_from_run(run_json, checkpoint, window_s: float) -> float:
         raise ValueError(f"{name} was not written by run {run['args']['name']!r}")
     rest = stem[len(prefix):]
     arch = rest.rsplit("_", 1)[-1]
+    if rest == arch:   # scripts/run_worldsim.py: `<run>_<arch>.pt`, one result per arch, no held-out unit
+        hit = [r for r in rows if r["scorer"] == arch]
+        if hit:
+            return float(hit[0]["deploy_threshold"])
     for recipe in RECIPES:
         tail = f"_{recipe}_{arch}"
         if rest.endswith(tail):
