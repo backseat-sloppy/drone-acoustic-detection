@@ -14991,3 +14991,45 @@ heavy weight for so little audio. It favours memorising these clips, which is th
 **How judged.** Not yet run. A scores on ITU ARIS and B on Mathias's clips. The reference CRNN scores on both,
 and so does each run on its own training set as a memorisation ceiling. The figures are the gap and AUC in war as
 in dev_test. None of it is a detection result (entry 250).
+
+## 253 - The crossed runs: each model learns its own clips and gains nothing on the other set
+
+- Date: 2026-11-20
+- Iteration: none (the experiment of entries 250-252; not a detection result)
+- Type: Experiment, Result
+- Commit: scoring with `scripts/exp251_cross.py`'s rounds, rebuilt on the server by `~/exp251/exp251_gpu.py` with
+  this PC's `src/dad` (uploaded). The rebuilt audio's MD5 equals this PC's `artifacts/dev_test/exp251/rounds.json`.
+
+**Conditions.** 1392 rounds of 10 s, hop 0.125 s, 1 s window. 72 no-drone rounds: dev_test's backgrounds
+(entries 244-246), war at 90 dB SPL (-20 dBFS) plus wind and cars. 1320 drone rounds: each clip mixed as
+dev_test mixes a drone, into 2 stretches x 4 war backgrounds x 5 levels (100-60 dB SPL). The clips are Mathias's
+23 clips and 10 ITU ARIS clips (`sealed_peek/Drone_01-10`; `CleanDrone.wav`, which run B trained on, is not on
+this PC and is not scored). Confidence = mean hop score in %. "war" = drone in war alone against war alone;
+"all-war" = all four war backgrounds. One seed, no intervals. Scored on the server: GPU 2 for the networks.
+
+| Model | none war % | Mathias gap war | Mathias AUC war | ITU ARIS gap war | ITU ARIS AUC war |
+|---|---|---|---|---|---|
+| A (trained with Mathias) | 3.9 | 87.3 (trained on) | 0.990 (trained on) | 40.0 | 0.890 |
+| B (trained with ITU ARIS) | 14.9 | 29.2 | 0.773 | 63.4 (trained on) | 0.888 (trained on) |
+| reference it23 CRNN relabel colour s1 | 4.4 | 27.3 | 0.876 | 42.3 | 0.904 |
+
+All-war figures, gap / AUC: A 83.0 / 0.984 Mathias, 38.0 / 0.862 ITU ARIS. B 25.3 / 0.741 Mathias, 59.2 / 0.879
+ITU ARIS. Reference 26.1 / 0.826 Mathias, 40.0 / 0.877 ITU ARIS.
+
+**Baselines.** comb and it6 lgbm were still scoring on the server when this entry was written. Not reported yet.
+
+**Reading.**
+- *A memorised Mathias's clips* (AUC 0.990, gap 87) and *did not get better on ITU ARIS*: gap 40.0 against the
+  reference's 42.3, AUC 0.890 against 0.904. Same seed and recipe, so the drop is small and may be seed noise.
+- *B did not learn ITU ARIS in a way that separates better.* Its gap on ITU ARIS rose to 63.4, but its AUC there
+  (0.888) is below the reference's (0.904), which never heard ITU ARIS. The rise came from scores lifted
+  everywhere: B's confidence on war alone is 14.9% against 4.4%. That is a shift, not separation (entry 245).
+  On Mathias's clips B is clearly worse than the reference: AUC 0.773 against 0.876.
+- Adding 2-4 minutes of one drone type as positives buys memory of that type, not detection of another. As Mads
+  said, the two sets are very different drones. A model has to generalise across them, and these extra clips did
+  not help it to.
+- Run B's numbers on ITU ARIS are scores on its own training audio (entry 250).
+
+**Next.** Read the comb and lgbm baselines from `~/exp251/cross.json` on the server (rerun
+`.venv/bin/python ~/exp251/readout.py`). The scoring of the 50 detectors on t246 (entry 246's Next) stops when this PC
+does. It can continue with `dev_test.py run t246 --extend t243` for the models not yet scored.
