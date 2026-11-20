@@ -524,7 +524,8 @@ class Page(ttk.Frame):
     def _build_detectors(self, f):
         self.v_det = {}
         for i, d in enumerate(detector_names()):
-            v = tk.BooleanVar(value=d in ("it9 CRNN", "comb"))
+            v = tk.BooleanVar(value=False)                   # none ticked on open; the tester picks
+
             self.v_det[d] = v
             tk.Checkbutton(f, text="DSP (comb)" if d == "comb" else d, variable=v, command=self.update_count,
                            fg=COLORS.get(d, "#333"), bg=PANEL, activebackground=PANEL, selectcolor=PANEL,

@@ -45,6 +45,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 24 | 230 to | The 2 s colour recipe of iteration 23 with MAD war audio (461 training videos of military-video audio, Kaggle/CC BY 4.0) as 25% of the negatives and under 30% of the drones | Marius asked to train on war sounds without a drone; war is the first-priority background | Training (started 2026-11-12) |
 | Iteration 22 | 210 to 228 | Two frontend probes on `600k`: PCEN (T 60 ms) in place of the log, three seeds; and whether 8-11 kHz adds drone information, on raw Nightjar and FPV before any store rebuild | Mads asked for both; PCEN has been the named next frontend since entry 095; the microphone samples at 42 kHz | **PCEN fails; the frozen frontend stays.** Council (entry 210). PCEN passes its CPU gate at T 60 ms only; the band probe is inconclusive (+0.018 AUC in grouped CV; transfer AUCs at chance) (entry 211). On the development test PCEN loses 0.008 AUC in war for both networks, and wind alone without a drone gives 37-50 % confidence against 1-3 %; the CRNN's cars-alone confidence falls 64 to 47 % (entry 213). The six models are in Complete_Test_Gui as a failed arm (entry 212). **22.05 kHz: not adopted.** A CRNN on Nightjar and FPV gains +0.015 AUC from 8-11 kHz on near drones (entry "215 (probe B2)"), but on Lund from 100 m on B is 0.1-0.6 points below A on all three seeds (probe B3, entry 228); both arms detect at most 1 % there, so B3 also shows the probe networks are too weak to test range. `Complete_Test_Gui22k.py` holds the probe networks (entry 227). |
 | Iteration 23 | 226 to 232, after master's 236 (entry 237) | Ten Nightjar no-drone segments Mads heard as drones relabelled drone (100 s), three left out (50 s); CRNN only, `600k` and `colour` arms, seed 1 | Nightjar's no-drone label means "no logged DJI flight"; Mads heard drones in a listening list (entries 226-227) | **No effect, no harm.** Drone confidence in war +0.8 and +0.7 points, inside the 1.6-point seed spread; no-drone confidence equal or lower; AUC in war -0.009 (600k) and +0.001 (colour). Run-file Lund and mower readouts move with the threshold in opposite directions (entry 230). Entry numbers 226-232 are used twice (entries 231, 237). Both CRNNs are in the test GUIs (entry 232). |
+| Iteration 25 | 238 to 239 | Pink and brown noise under 30% of the drones as well as 15% of the no-drone windows (`simdist_dcolour`), on the relabelled `colour` arm, CRNN seed 1 | Mads's request: noise that only ever means no drone may teach the network to suppress drones in noise | **Rejected, with harm.** Drone in war 58.6 (it23 colour 61.5), Lund recall 0.291 (0.383), mower false alarms 0.152 (0.072). Noise under drones is what cost recall in iteration 11. |
 
 ## Templates
 
@@ -14960,3 +14961,158 @@ renumbered.
 - Entry 232's "iteration 23's networks out of the GUIs" means this branch's 2 s colour networks.
   Master's `it23 CRNN relabel 600k s1` and `it23 CRNN relabel colour s1` stay in
   `drone_war_grid.MODELS` and both GUIs, next to the six it24 networks.
+---
+
+# Iteration 25 - Pink and brown noise under drones as well (double colours)
+
+> **Changed from iteration 23's `colour` arm:** 30% of the drone training windows also get pink or brown
+> noise under the drone (drone over noise at -5 to +15 dB in-band SNR, the `buried` range), the same
+> generator and level as the 15% of no-drone windows that are pink or brown noise alone (recipe
+> `simdist_dcolour`). Iteration 24 exists on another branch, not on `master` (Mads, 2026-11-13).
+> **Why:** Mads's request (2026-11-13). In `simdist_colour` pink and brown noise only ever appear as no
+> drone, so the network can learn "coloured broadband noise means no drone", which pulls the score down
+> when a drone sits in a noisy war soundscape. Under drones too, the noise carries no label information.
+> Iteration 11's `simdist_steady` also put noise under 30% of drones but mixed random slopes and phase
+> copies in, and halved Lund recall (entry 125); which part cost the recall was never separated. This
+> isolates the "under drones" part with pink and brown only.
+> **Kept the same:** everything of `it23_relabel_colour_s1`: the relabelled manifest
+> (`--relabel labels/nightjar_relabel.csv`, now required by CLAUDE.md), 600k windows, speed 0.8-1.25, 1 s
+> window, MFE frontend, seed 1, CRNN only, threshold at 5% false alarms on validation.
+> **Hypothesis:** confidence with a drone in war rises, and Lund recall does not fall.
+> **Judged by:** against `it23_relabel_colour_s1`: the run-file readouts (validation recall, Lund recall,
+> mower false alarms) and the development test on the tune half (mean confidence with a drone in war,
+> without a drone, AUC in war). One seed: a change smaller than the seed spread (1.6 points in war,
+> entry 230) is read as no effect. Lund recall more than 0.03 below the reference counts as harm.
+
+## 238 - The `simdist_dcolour` recipe
+- Date: 2026-11-13
+- Iteration: 25
+- Type: Data
+- Commit: uncommitted on `master` after 89541e8
+
+**What changed.**
+- `src/dad/rangerun.py` RECIPES: `simdist_dcolour` = `simdist_colour` plus `steady_mask=0.30`. The
+  masking code path is iteration 11's (`RangeSampler.positive`), unchanged; with `steady_slopes` set it
+  draws only -3 or -6 dB/octave noise.
+- CLAUDE.md section 6: every training run from iteration 23 on passes the Nightjar relabel CSV, at Mads's
+  request.
+
+**Result.** No run yet.
+
+**Next.** Upload the recipe to the server and train `it25_relabel_double_colour_s1`.
+
+## 239 - Iteration 25 result: noise under drones costs real-drone recall; hypothesis rejected
+- Date: 2026-11-13
+- Iteration: 25
+- Type: Evaluation
+- Commit: uncommitted on `master` after 89541e8; server clones patched in place (`rangerun.py.pre_it25`)
+
+**How.** On the server: `it25_patch.py` (inserts `simdist_dcolour` into `src/dad/rangerun.py`, asserts it
+is absent first) in `~/drone-acoustic-detection` and in `~/ct_9_11`; then
+```
+cd ~/drone-acoustic-detection
+CUDA_VISIBLE_DEVICES=0 nohup setsid .venv/bin/python -u scripts/run_range.py --name it25_relabel_double_colour_s1 \
+    --pool --arms none --recipes simdist_dcolour --models crnn --device cuda --windows 600000 --speed 0.8 1.25 \
+    --deploy-fa 0.05 --seed 1 --frontend mfe --relabel labels/nightjar_relabel.csv
+CUDA_VISIBLE_DEVICES=2 .venv/bin/python -u scripts/it19_colour_check.py it23_relabel_colour_s1 \
+    it25_relabel_double_colour_s1 > artifacts/runs/it25_colour_check.log
+# run JSON and checkpoint copied to ~/ct_9_11, then:
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=$PWD/src .venv/bin/python -u artifacts/dev_test/score_it25.py
+PYTHONPATH=$PWD/src .venv/bin/python scripts/dev_test.py judge gate --ref 'it16 CRNN 600k' > artifacts/dev_test/judge_it25.log
+```
+Training 591 s (600k windows, final loss 0.331). The log shows the relabel applied (Nightjar 0-50 m
+positives 37.7 min, as in iteration 23) and "steady noise: 15% of negatives, under 30% of positives".
+
+**Result.** CRNN, seed 1, against `it23_relabel_colour_s1` (entry 230).
+
+| Model | Threshold | Validation recall | Lund recall (all / 100-200 m) | Mower false alarms | Pink / brown at -30 dBFS |
+|---|---|---|---|---|---|
+| it23 CRNN relabel colour s1 | 0.694 | 0.785 | 0.383 / 0.410 | 0.072 | 0 / 0 |
+| it25 CRNN relabel double colour s1 | 0.708 | 0.778 | 0.291 / 0.292 | 0.152 | 0 / 0 |
+
+Development test, tune half, mean confidence in %, unpinned (pinned to drone in war 59.0 in brackets):
+
+| Model | drone war | drone Lund | drone Halmstad | drone all | none war | none wind | none war+cars | none with cars | helicopter | AUC war | AUC all |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| it23 relabel colour s1 | 61.5 | 48.4 (46.1) | 72.0 (69.3) | 63.0 | 4.0 | 4.6 (3.7) | 16.2 (13.9) | 38.4 (35.4) | 25.1 (21.9) | 0.921 | 0.801 |
+| it25 relabel double colour s1 | 58.6 | 43.9 (44.2) | 70.5 (70.8) | 61.4 | 3.6 | 12.6 (13.0) | 19.5 (19.9) | 41.5 (41.9) | 25.8 (26.2) | 0.923 | 0.780 |
+
+**Assessment.**
+- Drone confidence in war fell 2.9 points (61.5 to 58.6), more than the seed spread (1.6). The hypothesis
+  predicted a rise.
+- Lund recall at the frozen threshold fell 0.092 (0.383 to 0.291), three times the box's harm limit of
+  0.03. Mower false alarms doubled (0.072 to 0.152), and after the pin no drone with wind rose from 3.7 to
+  13.0 and with cars from 35.4 to 41.9. AUC in war is unchanged (0.923 against 0.921); AUC over all
+  conditions fell 0.021.
+- This answers the question iteration 11 left open (entry 125): steady noise *under drones* is what costs
+  real-drone recall, even when the noise is only pink and brown. A likely reason: at -5 dB in-band SNR the
+  noise hides much of the drone, so many of these positives teach the network to call broadband noise
+  "drone", which then shows as wind and mower alarms, and pushes the frozen threshold up.
+- One seed. Not judged on ITU ARIS.
+- **Verdict: hypothesis rejected, with harm.** `simdist_colour` stays the colour recipe. The checkpoint is
+  registered in the test GUIs (`it25 CRNN relabel double colour s1`, `#6a1b9a`) at Mads's request so he
+  can listen and compare, not as a proposal.
+
+**Next.** No further noise-under-drone variants unless Mads wants one; if so, the masking SNR range
+(-5 to +15 dB) is the knob to try first, e.g. +5 to +20 dB.
+
+## 240 - The iteration 25 CRNN in the test GUIs
+- Date: 2026-11-13
+- Iteration: 25
+- Type: Infrastructure
+- Commit: uncommitted on `master` after 89541e8
+
+**What changed.** `it25 CRNN relabel double colour s1` added to `scripts/drone_war_grid.py` MODELS (so it
+appears in `Complete_Test_Gui`, `detect_gui` and the Live demo page), colour `#6a1b9a` in both GUIs'
+colour maps. Checkpoint (MD5 bf18ce4d…) downloaded by Mads; run JSON downloaded from the server through
+Chrome (13,166 bytes, same as on the server). The run log, `it25_colour_check.log` and `judge_it25.log`
+stay on the server.
+
+**Result.** `drone_war_grid._detectors` loads it with threshold 0.708 (the run's deployment threshold);
+pytest passes. Not run by hand in the GUI.
+
+## 241 - Helicopter and insect layers in the Complete Test GUI
+- Date: 2026-11-16
+- Iteration: 25 (tooling)
+- Type: Infrastructure
+- Commit: uncommitted on `master` after 030670c
+
+**What changed.**
+- **Brought in from two unmerged branches** (files only; their `.DS_Store`, Reaper peak files and report
+  edits left out). The helicopter and bee distractors are their authors' work, copied unchanged except
+  where noted below: the helicopter by Liriano24, the bees by Garioo. Claude only wired them into the GUI.
+  - `origin/Synth_Distractors` (7d65495): `Distrators/Helicopter/Helicopter/helicopter_flyby.py` and `.pd`
+    (a Pd helicopter fly-by fitted to reference recordings), the updated `Helicipter.pd`, `mdel.pd`,
+    `vrdel.pd` and the reference spectrogram figure.
+  - `origin/Insect-Distractors` (e3b68c3): `Pure-data+Script/BeeDistractor/` (bee patch, `make_tables.py`,
+    credits, comparison figures). That branch logs the bee work as its own entries 155-163, numbered
+    before master's later entries 155-240; they are not copied here. Read them on that branch.
+- **`make_tables.py`** skips a bee type whose FSD50K stem is not on the machine and keeps its line in
+  `bee_types.txt`. Only 233783 (bumblebee, type 1) is in `data/processed/stems/distracter/buzzing_insect`
+  here; 59451 and 79931 are not.
+- **`scripts/complete_test_engine.py`**: the `helicopter` and `insects` layers, until now "not set up yet",
+  are rendered once and kept in `artifacts/complete_test/layers/` like the other Pd layers:
+  - helicopter: `helicopter_flyby.render_flyby`, preset A, 200 km/h, closest 100 m at 15 s of a 30 s
+    file, looped. Pd renders it in real time (about 35 s).
+  - insects: `bee_distractor.pd` in batch mode, type 1, 2 bees about 2 m away, 60 s, looped.
+  - No per-round settings (speed, distance) yet: one fixed render each.
+- **`scripts/Complete_Test_Gui.py`**: default levels (helicopter 50, insects 30 dB SPL), colours, a
+  summary row for each in Conclusions, a guideline note. `Complete_Test_Gui22k.py` and its engine are
+  not changed.
+
+**Result.** (`uv run python Pure-data+Script/BeeDistractor/make_tables.py`, then
+`complete_test_engine.make_layers()`):
+- `make_tables.py` reproduces the branch's type 1: f0 147.5 Hz, loop 4.60-8.30 s, 0.1 dB removed.
+- Both layers available. Helicopter render 30.0 s, per-second level from -43 dBFS at the ends to
+  -26 dBFS at the pass (a 3 dB step at the loop seam); bee render 60.0 s, -69 to -58 dBFS per second,
+  no gaps. A 12 s window set to 60 dB SPL reads 62.0 (helicopter, the louder pass in that stretch) and
+  59.8 dB SPL (bees).
+- The GUI starts, both layers can be ticked with their defaults, and `mix_round` mixes them. pytest:
+  169 passed. No full test run with detectors, and no listening by Claude.
+
+**Caveat.** The bee is cleaned FSD50K dev 233783, which is also a training distracter stem
+(`build_stems.py`): low confidence on insects may partly be memory, as for the cars (entry 199).
+Synthetic scaffolding.
+
+**Next.** Fetch stems 59451 and 79931 if the honeybee types are wanted; per-round helicopter
+speed/distance if Mads wants them swept.

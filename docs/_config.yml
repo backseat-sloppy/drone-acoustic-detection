@@ -16,3 +16,4 @@ exclude:
   - Gemfile
   - Gemfile.lock
   - vendor
+  - serve-site.bat
