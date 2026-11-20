@@ -1108,9 +1108,9 @@ class LivePage(Page):
         f.columnconfigure(0, weight=1)
         self.l_round = ttk.Label(f, text="", style="Bold.TLabel")
         self.l_round.grid(row=0, column=0, sticky="w")
-        self.fig = Figure(figsize=(11, 5.4), dpi=90)
-        self.fig.subplots_adjust(left=0.07, right=0.985, top=0.98, bottom=0.08)
-        gs = self.fig.add_gridspec(4, 1, height_ratios=[0.55, 1.6, 1.3, 0.55], hspace=0.12)
+        self.fig = Figure(figsize=(11, 6.4), dpi=90)
+        self.fig.subplots_adjust(left=0.07, right=0.985, top=0.98, bottom=0.07)
+        gs = self.fig.add_gridspec(4, 1, height_ratios=[0.55, 1.5, 1.2, 1.2], hspace=0.12)
         self.ax_ban = self.fig.add_subplot(gs[0])
         self.ax_spec = self.fig.add_subplot(gs[1])
         self.ax_score = self.fig.add_subplot(gs[2], sharex=self.ax_spec)
@@ -1137,9 +1137,8 @@ class LivePage(Page):
         self.ax_score.set_ylabel("confidence", fontsize=8)
         self.ax_score.grid(color="#e5e5e5", lw=0.5)
         self.ax_score.tick_params(labelbottom=False, labelsize=7)
-        (self.level_line,) = self.ax_level.plot([], [], color="#777777", lw=1.0)
-        self.ax_level.set(ylim=(-100, 0), xlim=(0, LIVE_SPAN_S))
-        self.ax_level.set_ylabel("dBFS", fontsize=8)
+        self.ax_level.set(ylim=(0, 100), xlim=(0, LIVE_SPAN_S))
+        self.ax_level.set_ylabel("dB SPL (1 s windows)", fontsize=8)
         self.ax_level.set_xlabel("seconds since Play  (red: a drone is flying; orange: the buffer after impact, still "
                                  "counted as drone; with the microphone, moved by its delay)", fontsize=8)
         self.ax_level.grid(color="#e5e5e5", lw=0.5)
@@ -1168,13 +1167,27 @@ class LivePage(Page):
                           "the alarm threshold in force. Time before impact: the first alarm from the drone, counted back "
                           "from the impact.", style="Muted.TLabel", wraplength=1000, justify="left").grid(
             row=4, column=0, sticky="w", pady=(2, 0))
-        self.lines, self.thr_lines, self.view_extra = {}, [], []
+        self.lines, self.thr_lines, self.view_extra, self.part_lines = {}, [], [], {}
         self._reset_view([])
         self.canvas.draw_idle()
 
-    def _reset_view(self, detectors: list[str]):
+    def _reset_view(self, detectors: list[str], parts: list[str] = ()):
+        """A new run: empty graphs, a line per detector, and in the level graph a line per part (each background
+        layer and the drone, as sent) plus the mix the detectors hear (dotted)."""
         self.spec[:] = np.nan
         self.vt, self.vlevel, self.vconf = [], [], {d: [] for d in detectors}
+        for ln in self.part_lines.values():
+            ln.remove()
+        self.part_lines = {p: self.ax_level.plot([], [], color=PART_COLORS.get(p, SPARE_COLORS[i % len(SPARE_COLORS)]),
+                                                 lw=1.4 if p == "drone" else 1.1, label=p)[0] for i, p in enumerate(parts)}
+        if parts:
+            self.part_lines["mix"] = self.ax_level.plot([], [], color=PART_COLORS["mix"], lw=1.0, ls=":",
+                                                        label="mix heard")[0]
+        self.vlev = {p: ([], []) for p in parts}
+        if self.ax_level.get_legend():
+            self.ax_level.get_legend().remove()
+        if parts:
+            self.ax_level.legend(loc="upper left", fontsize=7.5, frameon=False, ncol=len(self.part_lines))
         self.spans, self.bounds, self.log = [], [], []
         self.lag_s, self.thr_view, self.cols_shown, self.t_now = 0.0, {}, 0, 0.0
         for ln in list(self.lines.values()) + self.thr_lines:
@@ -1302,7 +1315,7 @@ class LivePage(Page):
         self.events = queue.Queue()
         self.run = L.LiveRun(p, self.events, out_dev=out, in_dev=inp, in_channel=ch, play_gain_db=play, mic_gain_db=mic)
         self.test = self.run.test
-        self._reset_view(p.detectors)
+        self._reset_view(p.detectors, self.run.part_names)
         self.pb.configure(maximum=len(self.run.order), value=0)
         self.b_start.state(["disabled"])
         self.b_stop.state(["!disabled"])
@@ -1357,6 +1370,13 @@ class LivePage(Page):
             elif kind == "round_done":
                 self.pb.configure(value=x["scored"])
                 self._log_round(x)
+            elif kind == "levels":                           # each part's level, as it was sent
+                for p, v in x["db"].items():
+                    if p in self.vlev:
+                        self.vlev[p][0].append(x["t"])
+                        self.vlev[p][1].append(v)
+                        keep = int(LIVE_SPAN_S / 0.1) + 30   # a block is 0.1 s
+                        del self.vlev[p][0][:-keep], self.vlev[p][1][:-keep]
             elif kind == "lag":
                 self.lag_s = x / 1000
                 self.dirty = True
@@ -1437,7 +1457,21 @@ class LivePage(Page):
         for k, ln in self.lines.items():
             y = np.asarray(self.vconf.get(k, []), dtype=float)
             ln.set_data(t[:len(y)], np.clip(y, 0, 1.02))
-        self.level_line.set_data(t, self.vlevel)
+        lag_now = self.lag_s if self.run and self.run.mic else 0.0
+        shown = []
+        for p, (pt, pv) in self.vlev.items():                # made ahead of the speaker: drawn up to now only
+            x, y = np.asarray(pt) + lag_now, np.asarray(pv, dtype=float)
+            ok = x <= t_now
+            self.part_lines[p].set_data(x[ok], y[ok])
+            shown.append(y[ok])
+        if "mix" in self.part_lines:                         # what the detectors heard (the mic in microphone mode)
+            heard = np.asarray(self.vlevel, dtype=float) + E.FULL_SCALE_DB
+            self.part_lines["mix"].set_data(t, heard)
+            shown.append(heard)
+        vals = np.concatenate(shown) if shown else np.array([])
+        vals = vals[np.isfinite(vals)]
+        if vals.size:
+            self.ax_level.set_ylim(max(0.0, float(vals.min()) - 5), min(130.0, float(vals.max()) + 8))
         for a in self.view_extra:
             a.remove()
         self.view_extra = []

@@ -14725,3 +14725,30 @@ A closing note says the numbers are chosen, not measured, and that runs with and
 | 241 | "Helicopter and insect layers" | "Correction to entry 240's reading of 99 %" |
 
 The local entries 238-245 come from a session that is not this one, and the local 237-239 from this one. A reference to one of these numbers should give the title. The next free number is 247.
+
+## 247 - Live demo test: the level graph shows every channel on its own
+
+- Date: 2026-11-20
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: on `master` at de70057; uncommitted `scripts/live_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What.** The live view's bottom graph showed one grey line, the dBFS of the window the detectors heard. It now shows, in dB SPL over 1 s windows, as the Results window's level graph does:
+- one line per background layer of the plan (war soundscape, cars, wind, helicopter, insects ...);
+- one line for the drone, as sent to the speaker, with no line while no drone flies;
+- a dotted "mix heard": the detectors' window, which in microphone mode is what the microphone heard at the plan's full scale (110 dB SPL). It is not calibrated.
+
+The y-axis follows what is shown.
+
+**How.**
+- `LiveRun._next_chunk` adds up each part's energy in every 0.1 s block it makes: a round's parts from its mix, or the background layers between rounds (`_idle` now returns them layer by layer).
+- `_part_levels` turns the last second of blocks into dB SPL and sends a `levels` event.
+- The page draws each part only up to the moment the detectors have reached, since the audio is made about 0.5 s ahead of the speaker. In microphone mode the parts are moved by the measured delay, like the drone spans.
+- The colours are the Results window's `PART_COLORS`.
+
+**Check** (`gui_check2.py` in the session scratchpad, virtual automatic, war soundscape 60 dB + cars 40 dB, it9 CRNN and comb; run `20261120_111345_live_virtual_automatic`). The saved figure was looked at:
+- war soundscape, cars, drone and mix heard each have their own line.
+- the drone line starts with each drone and rises toward impact. It stays high through the 1 s buffer, because the 1 s window still holds the loud end.
+- the mix follows the loudest part.
+- the war soundscape line drops below 0 dB SPL twice. Those are silent stretches in WarSoundScape.wav itself (black in the spectrogram), not a fault.
+
+`uv run pytest`: all pass. A display only: nothing in the results changes.

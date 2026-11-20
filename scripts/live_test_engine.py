@@ -301,6 +301,8 @@ class LiveRun:
         if self.manual:
             self.test.rounds = []
         self.k_tpl = 0                                       # manual: the next drone setting
+        self.part_names = [*plan.layers, "drone"]            # the parts the live view draws a level for
+        self._energy_hist: list = []
         self.R0 = int(LEAD_IN_S * SR)                        # manual: where the current round began (timeline sample)
         self.end_pos = None                                  # timeline sample where the stream ends (plan done)
         self.L = int(round(plan.length_s * SR))
@@ -342,17 +344,18 @@ class LiveRun:
             return self.templates[self.k_tpl % len(self.templates)]
         return self.order[min(self.next_i, len(self.order) - 1)]
 
-    def _idle(self, t: int, n: int) -> np.ndarray:
-        """Background only, timeline samples t..t+n, at the next round's levels: the looped layers, and in manual
-        mode a layer that plays once (the car) from the current round's start, as mix_round will rebuild it."""
+    def _idle(self, t: int, n: int) -> dict[str, np.ndarray]:
+        """Background only, timeline samples t..t+n, at the next round's levels, layer by layer: the looped layers,
+        and in manual mode a layer that plays once (the car) from the current round's start, as mix_round will
+        rebuild it."""
         r = self._bg_round()
         layers = self.test.layers_for(r)
-        out = np.zeros(n)
+        out = {}
         for name, lv in r["background"].items():
             if not layers[name].once:
-                out += layers[name].window(n, (self.s0 + t) / SR, lv)
+                out[name] = layers[name].window(n, (self.s0 + t) / SR, lv)
             elif self.manual and t >= self.R0:
-                out += layers[name].window(t - self.R0 + n, 0.0, lv)[t - self.R0:]
+                out[name] = layers[name].window(t - self.R0 + n, 0.0, lv)[t - self.R0:]
         return out
 
     def _place(self, r: dict, t: int) -> None:
@@ -424,7 +427,9 @@ class LiveRun:
             level=r["drone_level_db"], background=dict(r["background"]))))
 
     def _next_chunk(self, pos: int, n: int) -> np.ndarray:
+        """The mix of timeline samples pos..pos+n; each part's energy in it goes to the live view (_part_levels)."""
         out = np.zeros(n)
+        energy = dict.fromkeys(self.part_names, 0.0)         # sum of squares of each part over this block
         i = 0
         while i < n:
             t = pos + i
@@ -439,12 +444,32 @@ class LiveRun:
                 cur = self.current
             if cur is not None:
                 k = min(n - i, cur["T"] + cur["n"] - t)
-                out[i:i + k] = cur["m"]["mix"][t - cur["T"]:t - cur["T"] + k]
+                a = t - cur["T"]
+                out[i:i + k] = cur["m"]["mix"][a:a + k]
+                parts = {name: x[a:a + k] for name, x in cur["m"]["parts"].items()}
             else:
                 k = n - i                                    # idle to the end of the block: a press waits for the next one
-                out[i:i + k] = self._idle(t, k)
+                parts = self._idle(t, k)
+                for x in parts.values():
+                    out[i:i + k] += x
+            for name, x in parts.items():
+                energy[name] = energy.get(name, 0.0) + float(np.sum(np.square(x)))
             i += k
+        self._part_levels(pos + n, energy, n)
         return out
+
+    def _part_levels(self, t_end: int, energy: dict, n: int) -> None:
+        """Each part's level (dB SPL, full scale = 110) over the last second up to timeline sample t_end, as the
+        Results window's level graph; NaN for a part that is silent there (the drone between drones)."""
+        hist = self._energy_hist
+        hist.append((energy, n))
+        del hist[:-int(round(DEFAULT.window_seconds * SR / n))]
+        total = sum(m for _, m in hist)
+        db = {}
+        for name in self.part_names:
+            e = sum(h.get(name, 0.0) for h, _ in hist)
+            db[name] = E.FULL_SCALE_DB + 10 * np.log10(e / total) if e > 0 else float("nan")
+        self.events.put(("levels", dict(t=t_end / SR, db=db)))
 
     # ---------- the threads
     def _main(self):
