@@ -60,6 +60,7 @@ import time
 import tkinter as tk
 from contextlib import nullcontext
 from dataclasses import asdict
+from dataclasses import replace as dataclasses_replace
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -209,6 +210,31 @@ def fa_pct(s: str) -> float:
     return p
 
 
+HOP_S = DEFAULT.samples_per_hop / E.SR                      # one window every 0.125 s
+
+
+def pct_for_hours(hours: float) -> float:
+    """1 false alarm per `hours` as the false-alarm %: one window above the threshold in hours x 3600 / hop
+    windows (an alarm counted as one window; alarms that last several windows are fewer for the same %)."""
+    if not hours > 0:
+        raise ValueError("1 false alarm per: a number of hours above 0")
+    n = hours * 3600 / HOP_S
+    if n <= 2:                                               # 50 % or below: outside the box's range
+        raise ValueError(f"1 false alarm per: at least {3 * HOP_S:g} s")
+    return 100 * (1 - 1 / n)
+
+
+def hours_for_pct(pct: float) -> float | None:
+    """The false-alarm % as 1 false alarm per this many hours (None at 100 % and above: no rate)."""
+    return None if pct >= 100 else HOP_S / ((1 - pct / 100) * 3600)
+
+
+def fmt_hours(h: float | None) -> str:
+    if h is None:
+        return ""
+    return f"{h:.4g}" if h >= 0.01 else f"{h * 3600:.3g} s"
+
+
 def pd_steps(name: str, lo: str, hi: str, n: str) -> list[float]:
     """A Pure Data setting's values from its min, max and # boxes, by the same rule as layer_steps;
     Plan.check holds the setting's range."""
@@ -323,6 +349,7 @@ class Page(ttk.Frame):
                 self.v_speeds = (tk.StringVar(value="50"), tk.StringVar(value="150"), tk.StringVar(value="3"))
                 self.v_closest = tk.StringVar(value=f"{E.APPROACH['closest_m']:g}")
                 self.v_doppler = tk.BooleanVar(value=E.APPROACH["doppler"])
+                self.v_reverb = tk.BooleanVar(value=E.APPROACH["reverb"])
                 ttk.Label(f, text="Speeds (km/h):").grid(row=1, column=0, sticky="w", pady=(8, 0))
                 sp = ttk.Frame(f)
                 sp.grid(row=1, column=1, sticky="w", padx=(8, 0), pady=(8, 0))
@@ -363,7 +390,8 @@ class Page(ttk.Frame):
                 self.l_approach.grid(row=6, column=1, sticky="w", padx=(8, 0), pady=(2, 0))
                 for v in (*self.v_speeds, self.v_closest):
                     v.trace_add("write", lambda *_: self.update_count())
-                r = 7
+                self._build_outdoors(f, row=7)
+                r = 9                                        # rows 7-8: the sound effects, listen
         else:
             self.v_speeds = tk.StringVar(value="100 150 200")
             self.v_seed, self.v_pscale, self.v_elev = tk.StringVar(value="1"), tk.StringVar(value="0.85"), tk.StringVar(value="40")
@@ -401,6 +429,94 @@ class Page(ttk.Frame):
                            if self.kind == "modified" else "RMS over the drone's sound; ")
                   + "# values from min to max, both included, evenly spaced; # 1 needs min = max",
                   style="Muted.TLabel").grid(row=r + 1, column=1, sticky="w", padx=(8, 0))
+
+    def _build_outdoors(self, f, row: int):
+        """The modified drone's sound effects, together and independent: the room reverb for an anechoic recording
+        (Mads, E.add_reverb), the ground reflection and the outdoor reverb (E.outdoors); then the listen button."""
+        self.v_ground, self.v_outrev = tk.BooleanVar(value=False), tk.BooleanVar(value=False)
+        self.v_angle = tk.StringVar(value=f"{E.GROUND['angle_deg']:g}")
+        self.v_mic_h = tk.StringVar(value=f"{E.GROUND['mic_h']:g}")
+        self.v_crit = tk.StringVar(value=f"{E.OUTDOOR_REVERB['critical_m']:g}")
+        ttk.Label(f, text="Sound effects\n(each on its own;\nall off = as recorded):").grid(row=row, column=0, sticky="nw",
+                                                                                             pady=(10, 0))
+        box = ttk.Frame(f)
+        box.grid(row=row, column=1, sticky="w", padx=(8, 0), pady=(10, 0))
+        rows = [("Room reverb", self.v_reverb, (),
+                 f"for a drone recorded in an anechoic room: a short tail ({E.REVERB['rt60_s']:g} s) "
+                 f"{-E.REVERB['wet_db']:g} dB below the drone, the same at every distance"),
+                ("Ground reflection", self.v_ground, (("approach angle (°)", self.v_angle), ("microphone height (m)", self.v_mic_h)),
+                 f"the sound also arrives off the ground (grass), later and weaker: notches that sweep as the drone "
+                 f"dives in at that angle"),
+                ("Outdoor reverb", self.v_outrev, (("critical distance (m)", self.v_crit),),
+                 f"reflections from buildings, trees and terrain ({E.OUTDOOR_REVERB['rt60_s']:g} s): equal to the drone "
+                 f"at the critical distance, dry close in, mostly reverb far off")]
+        for i, (text, var, fields, note) in enumerate(rows):
+            line = ttk.Frame(box)                            # the box, then its own numbers, on one line
+            line.grid(row=2 * i, column=0, sticky="w", pady=(4 if i else 0, 0))
+            ttk.Checkbutton(line, text=text, variable=var, command=self.update_count, width=18).pack(side="left")
+            for lbl, v in fields:
+                ttk.Label(line, text=lbl, style="Muted.TLabel").pack(side="left", padx=(0, 4))
+                ttk.Entry(line, textvariable=v, width=5).pack(side="left", padx=(0, 12))
+                v.trace_add("write", lambda *_: self.update_count())
+            ttk.Label(box, text=note, style="Muted.TLabel", wraplength=820, justify="left").grid(
+                row=2 * i + 1, column=0, sticky="w", padx=(22, 0))
+        ttk.Label(box, text="The numbers behind them (grass, tail lengths, the room) are chosen, not measured. With any on, "
+                            "results are not comparable with runs without it; each run's config says which were on.",
+                  style="Muted.TLabel", wraplength=820, justify="left").grid(row=6, column=0, sticky="w", pady=(8, 0))
+        lis = ttk.Frame(f)
+        lis.grid(row=row + 1, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
+        ttk.Button(lis, text="▶  Listen to the drone", command=self.listen).pack(side="left")
+        ttk.Button(lis, text="■  Stop", command=self.stop_listen).pack(side="left", padx=(6, 0))
+        self.v_listen_bg = tk.BooleanVar(value=False)
+        ttk.Checkbutton(lis, text="with the background layers", variable=self.v_listen_bg).pack(side="left", padx=(12, 0))
+        self.l_listen = ttk.Label(lis, text="the first file at the first speed, pitch and level, with the settings above; "
+                                            "turned up so you can hear it", style="Muted.TLabel", wraplength=400,
+                                  justify="left")
+        self.l_listen.pack(side="left", padx=(12, 0))
+        self._listen_sound = None
+
+    def listen(self):
+        """Play one modified drone as the plan would make it now (E.Drones: approach, Doppler, pitch, reverb, ground,
+        outdoor reverb), alone or in the ticked background layers at their first levels. Turned up to a peak of
+        0.9: the real level far off is often too low to hear."""
+        self.stop_listen()
+        try:
+            p = self.plan()
+        except ValueError as e:
+            self.l_listen.configure(text=str(e), style="Warn.TLabel")
+            return
+        if not p.drones:
+            self.l_listen.configure(text="add a drone file first", style="Warn.TLabel")
+            return
+        self.l_listen.configure(text="making the drone...", style="Muted.TLabel")
+        self.update_idletasks()
+        try:
+            one = E.Plan("modified", E.DRONE_S, p.drones[:1], p.drone_levels[:1], {}, ["comb"], speeds=p.speeds[:1],
+                         pitches=p.pitches[:1], pitch_random=p.pitch_random, approach=dict(p.approach))
+            d = E.Drones(one, progress=lambda s: None)
+            k = one.drone_keys()[0]
+            x = d.get(k, p.drone_levels[0])
+            what = f"{E.drone_label(k)}, {p.drone_levels[0]:g} dB SPL at 1 m"
+            if self.v_listen_bg.get() and p.layers:
+                r = dict(drone=k, drone_level_db=p.drone_levels[0], start_s=0.0, round=1, pd=p.pd_combos()[0],
+                         background={n: lv[0] for n, lv in p.layers.items()})
+                test = E.Test(dataclasses_replace(p, length_s=E.DRONE_S + 1.0, drones=p.drones[:1], speeds=p.speeds[:1],
+                                                  pitches=p.pitches[:1], drone_levels=p.drone_levels[:1]))
+                x = E.mix_round(r, test.plan, test.layers_for(r), d, test.start_s or 0.0)["mix"]
+                what += " in " + ", ".join(f"{n} {lv[0]:g} dB" for n, lv in p.layers.items())
+            on = [s for s, k_ in (("Doppler", "doppler"), ("room reverb", "reverb"), ("ground", "ground"),
+                                  ("outdoor reverb", "outdoor_reverb")) if p.approach.get(k_)]
+            peak = float(np.max(np.abs(x))) or 1.0
+            self._listen_sound = Sound(x / peak * 0.9)
+            self.l_listen.configure(text=f"playing {what}" + (f" · {', '.join(on)}" if on else " · no extras")
+                                         + f" · turned up {20 * np.log10(0.9 / peak):+.0f} dB", style="Muted.TLabel")
+        except Exception as e:                               # noqa: BLE001  (shown, not raised)
+            self.l_listen.configure(text=f"cannot play: {type(e).__name__}: {e}", style="Warn.TLabel")
+
+    def stop_listen(self):
+        if self._listen_sound is not None:
+            self._listen_sound.stop()
+            self._listen_sound = None
 
     def _as_rendered(self):
         for e in self.e_drone_levels:
@@ -613,9 +729,17 @@ class Page(ttk.Frame):
                 speeds = speed_steps(*(v.get() for v in self.v_speeds))
                 pitches = pd_steps("pitch", *(v.get() for v in self.v_pitches))
                 try:
-                    approach = dict(closest_m=float(self.v_closest.get()), doppler=bool(self.v_doppler.get()))
+                    approach = dict(closest_m=float(self.v_closest.get()), doppler=bool(self.v_doppler.get()),
+                                    reverb=bool(self.v_reverb.get()))
                 except ValueError:
                     raise ValueError("distance at impact must be a number") from None
+                try:
+                    if self.v_ground.get():
+                        approach.update(ground=True, angle_deg=float(self.v_angle.get()), mic_h=float(self.v_mic_h.get()))
+                    if self.v_outrev.get():
+                        approach.update(outdoor_reverb=True, critical_m=float(self.v_crit.get()))
+                except ValueError:
+                    raise ValueError("approach angle, microphone height and critical distance must be numbers") from None
         else:
             try:
                 drones = [float(v) for v in self.v_speeds.get().replace(",", " ").split()]
@@ -2083,10 +2207,18 @@ class Conclusions(tk.Toplevel):
         ttk.Button(bar, text="Save PNG", command=self.save).pack(side="right")
         ttk.Label(bar, text="false alarms").pack(side="left", padx=(20, 4))   # the threshold's percentile, from the plan
         self.v_fa = tk.StringVar(value=f"{getattr(test.plan, 'fa_percentile', 95.0):g}")
-        e_fa = ttk.Entry(bar, textvariable=self.v_fa, width=5)
+        e_fa = ttk.Entry(bar, textvariable=self.v_fa, width=11)
         e_fa.pack(side="left")
-        ttk.Label(bar, text="%  (Enter to apply)", style="Muted.TLabel").pack(side="left", padx=(2, 0))
-        e_fa.bind("<Return>", lambda e: self.draw())
+        ttk.Label(bar, text="%  or 1 false alarm per").pack(side="left", padx=(2, 4))
+        self.v_fa_h = tk.StringVar()
+        e_h = ttk.Entry(bar, textvariable=self.v_fa_h, width=7)
+        e_h.pack(side="left")
+        ttk.Label(bar, text="hours  (Enter to apply)", style="Muted.TLabel").pack(side="left", padx=(2, 0))
+        self.l_fa_note = ttk.Label(bar, text="", style="Muted.TLabel")
+        self.l_fa_note.pack(side="left", padx=(8, 0))
+        e_fa.bind("<Return>", lambda e: self._apply_fa_pct())
+        e_h.bind("<Return>", lambda e: self._apply_fa_hours())
+        self._sync_fa_hours()
         holder = ttk.Frame(self)
         self.scroll = tk.Canvas(holder, bg="white", highlightthickness=0)
         sb = ttk.Scrollbar(holder, orient="vertical", command=self.scroll.yview)
@@ -2263,6 +2395,50 @@ class Conclusions(tk.Toplevel):
         """The comparison page's colour: the validated categorical order by the detector's place in the plan
         (COLORS has near-identical purples for it9 CRNN and the it17 CRNNs, which cannot be told apart)."""
         return SPARE_COLORS[self.test.plan.detectors.index(det) % len(SPARE_COLORS)]
+
+    def _nodrone_windows(self) -> int:
+        """Windows in the no-drone rounds (the first detector's): what the false-alarm threshold is taken from."""
+        t = self.test
+        det = t.plan.detectors[0] if t.plan.detectors else None
+        return int(sum(np.sum(~np.isnan(self.scores[f"{r}|{det}"])) for r in t.results
+                       if t.by_round[r]["drone"] is None and f"{r}|{det}" in self.scores))
+
+    def _sync_fa_hours(self) -> None:
+        """The hours box and the note from the % box: the rate it means, and whether this run can resolve it."""
+        try:
+            pct = fa_pct(self.v_fa.get())
+        except ValueError:
+            self.v_fa_h.set("")
+            self.l_fa_note.configure(text="")
+            return
+        self.v_fa_h.set(fmt_hours(hours_for_pct(pct)))
+        try:
+            n = self._nodrone_windows()
+        except (AttributeError, KeyError):                   # a run without results or scores: no note
+            n = 0
+        if pct >= 100 or not n:
+            self.l_fa_note.configure(text="")
+            return
+        need = 1 / (1 - pct / 100)                           # windows per false alarm
+        note = f"= 1 window in {round(need, 6):,.0f}; this run has {n:,} no-drone windows ({n * HOP_S / 60:.1f} min)"
+        if need > n:
+            note += ": too few to measure it, the threshold is just the highest no-drone peak"
+        self.l_fa_note.configure(text=note)
+
+    def _apply_fa_pct(self) -> None:
+        self._sync_fa_hours()
+        self.draw()
+
+    def _apply_fa_hours(self) -> None:
+        try:
+            pct = pct_for_hours(float(self.v_fa_h.get().strip().replace(",", ".")))
+        except ValueError as e:
+            messagebox.showerror("False alarms", str(e) if "false alarm" in str(e) else
+                                 "1 false alarm per: a number of hours, for example 5", parent=self)
+            return
+        self.v_fa.set(f"{pct:.10g}")
+        self._sync_fa_hours()
+        self.draw()
 
     def _fa_section(self, dets: list) -> dict:
         """The top section: from the false-alarm % (front page, or the box here), each detector's threshold =
