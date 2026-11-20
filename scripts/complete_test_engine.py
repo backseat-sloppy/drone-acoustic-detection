@@ -8,7 +8,8 @@ A test is a grid:
                  rendered by drone_war_grid.render_drones, 10 s from start to impact), or modified
                  drone files: each file x each speed, the file's last 10 s moved straight at the
                  microphone so that its last sample is the impact (approach(): spreading and air
-                 absorption from the distance at each moment, optional Doppler)
+                 absorption from the distance at each moment, optional Doppler; optionally outdoors():
+                 the ground reflection and a reverb that grows with distance)
     drone levels dB SPL, the RMS of the drone's 10 s; or "as rendered" for synthetic drones; for
                  modified drones the level at 1 m (the file's RMS is set to it, then the approach
                  lowers it by distance: at the start a drone at v km/h is v / 3.6 x 10 m away)
@@ -70,7 +71,10 @@ SR = DEFAULT.sample_rate
 FULL_SCALE_DB = dwg.es.FULL_SCALE_DB                         # 1.0 in a WAV = 110 dB SPL
 DRONE_S = 10.0                                               # every drone sound is at most 10 s
 MIN_DRONE_S = 5.0                                            # a real drone file may be 5-10 s (Mads, 2026-11-06)
-APPROACH = dict(closest_m=1.0, doppler=False)                # modified drones: distance at impact, Doppler on/off
+APPROACH = dict(closest_m=1.0, doppler=False, reverb=False)  # modified drones: distance at impact, Doppler and reverb on/off
+# Synthetic reverb for a drone recorded in an anechoic room (Mads, 2026-11-20): a tail of decaying noise, low-passed,
+# mixed far below the dry sound so it is close to inaudible. The same tail at every distance (not a room model).
+REVERB = dict(rt60_s=0.35, wet_db=-20.0, lowpass_hz=4000.0, predelay_ms=8.0)
 OUT_ROOT = dwg.ROOT / "artifacts/complete_test"
 WAR_TRACK = dwg.es.WAR / "war_track.wav"                     # the old 600 s war track (scripts/war_track.py): runs before 2026-11-11
 WAR_SOUNDSCAPE = dwg.ROOT / "WarSoundScape/WarSoundScape.wav"   # the war soundscape since 2026-11-11 (Mads): 38.5 s, looped
@@ -486,6 +490,13 @@ class Plan:
                 out.append(f"pitch must be from {PITCH_LIMITS[0]:g} to {PITCH_LIMITS[1]:g} (1 = as recorded)")
             if not self.approach.get("closest_m", 0) > 0:
                 out.append("the distance at impact must be above 0 m")
+            if self.approach.get("ground"):
+                if not 0 <= self.approach.get("angle_deg", GROUND["angle_deg"]) <= 89:
+                    out.append("ground reflection: the approach angle must be from 0 to 89 degrees")
+                if not 0 < self.approach.get("mic_h", GROUND["mic_h"]) <= 50:
+                    out.append("ground reflection: the microphone height must be above 0 and at most 50 m")
+            if self.approach.get("outdoor_reverb") and not 1 <= self.approach.get("critical_m", OUTDOOR_REVERB["critical_m"]) <= 1000:
+                out.append("outdoor reverb: the critical distance must be from 1 to 1000 m")
         if not self.detectors:
             out.append("tick at least one detector")
         if not self.layers and not self.drones:
@@ -514,6 +525,7 @@ class Drones:
         if plan.kind == "modified":
             files = {}
             cl, dop = float(plan.approach.get("closest_m", 1.0)), bool(plan.approach.get("doppler", False))
+            rev = bool(plan.approach.get("reverb", False))       # absent in runs before 2026-11-20: off
             for k in plan.drone_keys():
                 p, v, pitch = split_modified(k)
                 if (p, pitch) not in files:
@@ -524,9 +536,12 @@ class Drones:
                     if len(x) < MIN_DRONE_S * SR:
                         raise ValueError(f"{Path(p).name} at pitch {pitch:g} is {len(x) / SR:.1f} s; it must stay at least "
                                          f"{MIN_DRONE_S:g} s (use a longer file or a lower pitch)")
+                    if rev:                                      # on the whole file, so the cut below starts with a tail
+                        x = add_reverb(x, seed=Path(p).name)
                     x = x[-int(DRONE_S * SR):]                   # the end of the file is the impact
                     files[p, pitch] = x / (float(np.sqrt(np.mean(x ** 2))) or 1.0)   # pitch does not change the level
                 y, heard = approach(files[p, pitch], v, cl, dop)
+                y = outdoors(y, files[p, pitch], v, plan.approach, seed=Path(p).name)   # ground, outdoor reverb (if on)
                 self.sig[k] = y
                 self.span[k] = (heard, len(y) / SR, len(y) / SR)  # impact at the last sample
                 self.unit.add(k)
@@ -593,6 +608,27 @@ def split_modified(k: str) -> tuple[str, float, float]:
 def split_key(k: str) -> tuple[str, float]:
     p, v, _ = split_modified(k)
     return p, v
+
+
+def add_reverb(x: np.ndarray, seed: str = "", rt60_s: float = REVERB["rt60_s"], wet_db: float = REVERB["wet_db"],
+               lowpass_hz: float = REVERB["lowpass_hz"], predelay_ms: float = REVERB["predelay_ms"]) -> np.ndarray:
+    """x (16 kHz) with a subtle synthetic reverb: x + g * (x convolved with an impulse response of white noise
+    decaying by 60 dB in rt60_s, low-passed at lowpass_hz, after predelay_ms), the reverb `wet_db` below the dry
+    sound in RMS, then scaled back to x's RMS. The noise is seeded by `seed` (the file name), so a file always
+    gets the same tail. Length unchanged; the tail past the end is cut."""
+    from scipy.signal import butter, fftconvolve, sosfilt
+    rng = np.random.default_rng(int(hashlib.md5(f"reverb|{seed}".encode()).hexdigest()[:8], 16))
+    n = int(rt60_s * 1.5 * SR)
+    t = np.arange(n) / SR
+    ir = rng.standard_normal(n) * np.exp(-6.908 * t / rt60_s)           # 10^(-3) = -60 dB at rt60_s
+    ir = sosfilt(butter(2, lowpass_hz, "lowpass", fs=SR, output="sos"), ir)
+    ir = np.concatenate([np.zeros(int(predelay_ms / 1000 * SR)), ir])
+    wet = fftconvolve(x, ir)[: len(x)]
+    rx, rw = float(np.sqrt(np.mean(x ** 2))), float(np.sqrt(np.mean(wet ** 2)))
+    if rx == 0 or rw == 0:
+        return x
+    y = x + wet * (rx / rw) * 10 ** (wet_db / 20)
+    return y * (rx / float(np.sqrt(np.mean(y ** 2))))
 
 
 def pitch_shift(x: np.ndarray, factor: float, random: bool = False, seed: str = "") -> np.ndarray:
@@ -663,6 +699,75 @@ def approach(x: np.ndarray, speed_kmh: float, closest_m: float = 1.0, doppler: b
     Z *= 10 ** (-prop.air_absorption_db_per_m(f)[:, None] * (frame_r[None, :] - 1.0) / 20)
     _, out = istft(Z, SR, nperseg=prop.NPERSEG, noverlap=prop.NPERSEG - prop.HOP, boundary=True)
     return out[: len(x)], 0.0
+
+
+# Outdoors (Nicolai, 2026-11-20, report entry 237). Both are off unless the plan's approach asks for them, and the
+# numbers below are chosen, not measured: a grass-like ground and a semi-open site.
+GROUND = dict(angle_deg=10.0, mic_h=1.5, q=0.7, lowpass_hz=3000.0)   # the drone dives at angle_deg to the microphone
+OUTDOOR_REVERB = dict(critical_m=100.0, rt60_s=0.8, lowpass_hz=3000.0, predelay_ms=15.0)
+
+
+def geometry(r: np.ndarray, angle_deg: float, mic_h: float) -> tuple[np.ndarray, np.ndarray]:
+    """For a drone at distance r (approach_distance) on a straight line that dives at angle_deg onto a microphone
+    mic_h above the ground: its height above the ground and the length of the path reflected by the ground
+    (image source mirrored in the ground). r itself is the direct path."""
+    th = np.radians(angle_deg)
+    d, h = r * np.cos(th), mic_h + r * np.sin(th)
+    return h, np.hypot(d, h + mic_h)
+
+
+def ground_reflection(y: np.ndarray, r: np.ndarray, angle_deg: float = GROUND["angle_deg"], mic_h: float = GROUND["mic_h"],
+                      q: float = GROUND["q"], lowpass_hz: float = GROUND["lowpass_hz"]) -> np.ndarray:
+    """y (the direct sound at the microphone, 16 kHz) plus its reflection off the ground: the same sound, later by
+    the extra path (r2 - r) / c, weaker by r / r2 (spreading) and by the reflection factor q, and duller (low-passed
+    at lowpass_hz, as grass absorbs the treble). The delay changes as the drone comes in, so the comb of notches it
+    makes sweeps (at 400 m and 10 degrees the first notch is near 300 Hz; it rises as the drone closes in)."""
+    from scipy.signal import butter, sosfilt
+    _, r2 = geometry(r, angle_deg, mic_h)
+    delay = (r2 - r) / prop.speed_of_sound() * SR                # samples, changing with the distance
+    k = np.arange(len(y))
+    refl = np.interp(k - delay, k, y, left=0.0)
+    refl = sosfilt(butter(1, lowpass_hz, "lowpass", fs=SR, output="sos"), refl)
+    return y + q * (r / r2) * refl
+
+
+def outdoor_reverb(x1m: np.ndarray, speed_kmh: float, closest_m: float, seed: str = "",
+                   critical_m: float = OUTDOOR_REVERB["critical_m"], rt60_s: float = OUTDOOR_REVERB["rt60_s"],
+                   lowpass_hz: float = OUTDOOR_REVERB["lowpass_hz"], predelay_ms: float = OUTDOOR_REVERB["predelay_ms"]) -> np.ndarray:
+    """The reflections from the surroundings (buildings, trees, terrain) at the microphone, for the source x1m (as
+    heard at 1 m) on the approach: a decaying, low-passed noise tail (as add_reverb, longer) whose level falls as
+    1 / sqrt(r) while the direct sound falls as 1 / r, so it equals the direct sound at critical_m and outweighs it
+    beyond: close in the drone is dry, far off it is mostly reverberant. It travels at least r, so it loses the same
+    treble to the air as the direct sound (approach()). Returned on its own, to add to the direct."""
+    from scipy.signal import butter, fftconvolve, sosfilt
+    rng = np.random.default_rng(int(hashlib.md5(f"outdoor|{seed}".encode()).hexdigest()[:8], 16))
+    n = int(rt60_s * 1.5 * SR)
+    ir = rng.standard_normal(n) * np.exp(-6.908 * np.arange(n) / SR / rt60_s)
+    ir = sosfilt(butter(2, lowpass_hz, "lowpass", fs=SR, output="sos"), ir)
+    ir = np.concatenate([np.zeros(int(predelay_ms / 1000 * SR)), ir])
+    wet = fftconvolve(x1m, ir)[: len(x1m)]
+    rw = float(np.sqrt(np.mean(wet ** 2)))
+    if rw == 0:
+        return np.zeros_like(x1m)
+    wet *= float(np.sqrt(np.mean(x1m ** 2))) / rw                 # the tail at the source's own level at 1 m
+    heard, _ = approach(wet, speed_kmh, closest_m)                # 1 / r and the air absorption of distance r
+    r = approach_distance(len(wet), speed_kmh, closest_m)
+    return heard * np.sqrt(r / critical_m)                        # 1 / sqrt(r critical): = direct at r = critical_m
+
+
+def outdoors(y: np.ndarray, x1m: np.ndarray, speed_kmh: float, a: dict, seed: str = "") -> np.ndarray:
+    """A modified drone's heard signal y with what the plan's approach `a` turns on: the ground reflection and the
+    reverb that grows with distance. Off (as in every run before 2026-11-20) it is y unchanged."""
+    if not (a.get("ground") or a.get("outdoor_reverb")):
+        return y
+    cl = float(a.get("closest_m", 1.0))
+    r = approach_distance(len(y), speed_kmh, cl)
+    out = y
+    if a.get("outdoor_reverb"):                                   # the tail of the direct sound reflects off the ground too
+        out = out + outdoor_reverb(x1m, speed_kmh, cl, seed, float(a.get("critical_m", OUTDOOR_REVERB["critical_m"])))
+    if a.get("ground"):
+        out = ground_reflection(out, r, float(a.get("angle_deg", GROUND["angle_deg"])), float(a.get("mic_h", GROUND["mic_h"])))
+    return out
 
 
 # ------------------------------------------------------------------ detectors

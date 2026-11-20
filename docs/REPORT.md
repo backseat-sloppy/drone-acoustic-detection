@@ -16570,3 +16570,497 @@ threshold:
 
 **Next candidate (not started):** drone confidence for faint and moving drones, which REQUIREMENTS.md
 ranks first. The training drones are 20 Glasgow hovers.
+## 238 - Why the live demo tests look bad: the truth span, the 3-7 s band is at -20 dB, and the microphone did not hear the mix
+- Date: 2026-11-19
+- Iteration: none (evaluation of the live demo test runs, entries 233-236; no model or setting changed)
+- Type: Evaluation
+- Commit: uncommitted (new script `scripts/rescore_live.py`; git is not on PATH in this session, so no hash)
+
+**What changed.** Mads asked why every live test in `artifacts/complete_test` performs so badly. All 71 live
+folders (2026-11-12 and 2026-11-19) were read, and the 51 virtual runs were rescored from the files they
+already wrote (`scores.npz`, `window_snr.npz`, `rounds.csv`, `config.json`). No audio was rebuilt and nothing
+was rerun. Mads then said that what he looks at is time before impact (REQUIREMENTS.md Test 2: mean
+confidence over 3 to 7 s before impact), so that is reported first.
+
+**Why.** The run summaries show recall 0.2-0.4 for the CRNNs, comb at 50-100 % false positives, many runs
+all zero, and microphone runs with the CRNN near 0.01 confidence.
+
+**How.** `uv run python scripts/rescore_live.py` (defaults `--floor -10 -5`, output
+`artifacts/complete_test/rescore_audible/`: `summary.csv`, `curve.csv`, `distance.csv`, `runs.json`). The
+script rebuilds each window's label from the truth span (`drone_spans` + `start_s` + `buffer_after_s`) as
+`dad.wavio.window_labels` does; it reproduces tp/fn/fp/tn of every row of `rounds.csv` (0 mismatches). It
+counts runs with identical scores once (7 duplicates of the same plan dropped) and skips 24 runs with no
+scored round. It scores every detector at its own frozen threshold (comb on its squashed confidence for the
+Test 2 figure); its lead times equal `rounds.csv` `lead_s` except in the runs where the tester set a live
+alarm threshold (0.2-0.4).
+
+**Result.** Virtual runs, 20 distinct, 1 s window, 0.125 s hop, modified drones (X500 `03_d3set_23oct_vol3_X500_3m`
+at 100 km/h and `drone_2_Audio_2_raw_0127-0137` at 150 km/h; 80 dB SPL at 1 m, one at 100) against the war
+soundscape at 50-90 dB SPL, some with Pd wind and cars. Simulated drones from training sources: a tool, not a
+detection result (section 5).
+
+Test 2 figure (mean confidence 3-7 s before impact, each second counted equally) and the curve:
+
+| Detector | Drone rounds | Conf 3-7 s | Median window SNR 3-7 s | Conf, no-drone windows | Rounds with an alarm before impact | Median lead (s) |
+|---|---|---|---|---|---|---|
+| it9 CRNN | 13 | 0.253 | -20.3 dB | 0.037 | 13/13 | 7.0 |
+| it16 CRNN 600k s1 | 20 | 0.104 | -22.6 dB | 0.042 | 20/20 | 2.5 |
+| it19 CRNN colour s1 | 13 | 0.167 | -18.2 dB | 0.027 | 10/13 | 4.2 |
+| it23 CRNN relabel 600k s1 | 7 | 0.045 | -26.4 dB | 0.063 | 7/7 | 1.4 |
+| it20 CRNN bp s0/s1/s2 | 1 | 0.031-0.037 | -17.2 dB | 0.030-0.044 | 0/1 | - |
+| comb (baseline) | 11 | 0.246 | -23.1 dB | 0.363 | 11/11 | 8.2 (its false-positive rate is 0.47, so its lead means little) |
+
+it9 mean confidence by second before impact (0-1 s first): 0.85, 0.79, 0.57, 0.30, 0.24, 0.28, 0.19, 0.22,
+0.07, 0.04. The other CRNNs have the same shape and lower values. `lgbm` was not in any live run.
+
+Window recall by window SNR, it9, all virtual runs (duplicates included): below -20 dB 0.00 (667 windows),
+-20 to -10 dB 0.22 (575), -10 to -5 dB 0.66 (270), -5 to 0 dB 0.96 (156), 0 to 5 dB 0.94 (70), above 5 dB
+0.66 (232). On the distinct runs, it9 window recall is 0.367 as labelled, 0.735 if drone windows below
+-10 dB SNR are left out, and 0.803 below -5 dB. The no-drone false-positive rate is 0.000 either way.
+
+**Assessment.**
+1. *Physics, not the model, sets the 3-7 s number in these plans.* A modified drone flies in a straight line
+   over its whole file and is at 1 m at impact; its level falls as 1 / r. At 100 km/h, 3-7 s before impact
+   is 83-194 m, so a drone at 80 dB SPL at 1 m is about 34-42 dB SPL there, against a war soundscape at
+   60 dB: the measured median window SNR in that band is -18 to -26 dB. it9 detects nothing below -20 dB and
+   96 % of windows at -5 to 0 dB. Its confidence 3-7 s out (0.25) is still about 7 times its no-drone
+   confidence (0.04), and it alarms before impact in every drone round. To test Test 2 at a level where the
+   drone can be heard 3-7 s out, the plan needs a louder drone, a quieter war soundscape or a lower speed
+   (at 50 km/h the band is 42-97 m). That is the tester's choice (REQUIREMENTS.md, Test 2 speeds).
+2. *Recall over the whole truth span is misleading for these drones.* The span starts 250-420 m out, where
+   the drone is inaudible, so most "missed" windows hold no drone sound worth detecting.
+3. *About 24 all-zero runs are stopped runs, not results.* E.g. `20261112_114003_live_virtual_manual`:
+   `"stopped": true`, `"rounds": {}`. The summary writes zeros for them.
+4. *The microphone runs did not hear the mix.* `mic_corr` is 0.011-0.067 in all of them, mostly below the
+   engine's own `MIN_CORR` 0.05, and the delay jumps (249 to 867 ms). The chain was the laptop's built-in
+   microphone array and speaker, with play gain +20 dB, which `np.clip` limits to +-1 (distortion). it9 gave
+   no alarm in any microphone drone round; comb alarmed in all of them and in the no-drone rounds
+   (false-positive rate 0.65-0.98). Not verified: whether Windows voice processing on the array removed
+   the drone's tones. No microphone result can be read as detector performance.
+5. *comb fires on the war soundscape* (false-positive rate 0.47 on the virtual runs). Its threshold comes
+   from validation without war audio; expected for the baseline.
+6. *it20 bp*: one drone round only; the bandpass frontend is applied (checked with `model_cfg`). Too little
+   to conclude.
+
+**Next.** Reported to Mads. Suggested: judge live runs by the Test 2 figure and its curve, not by recall;
+choose Test 2 levels and speeds where the drone is audible 3-7 s out; redo the microphone test with an
+external speaker that plays bass, an external microphone, Windows audio enhancements off and the play gain
+low enough not to clip. No iteration started.
+
+## 239 - Live demo tests: how far before impact the drone's confidence rises above the highest false-positive peak
+- Date: 2026-11-19
+- Iteration: none (evaluation of the live demo test runs, follows entry 238)
+- Type: Evaluation
+- Commit: uncommitted (new script `scripts/fp_margin_live.py`; git is not on PATH in this session)
+
+**What changed.** Mads asked for the difference between the highest false-positive peak and the earliest
+drone peak above it, and why the models are so weak. A threshold-free readout was added: per run and
+detector, the highest confidence in any no-drone window (no-drone rounds, the wait before a drone, after
+impact + buffer); per drone round, the earliest approach window above it, its time before impact, and the
+window SNR there. Also against one peak per detector pooled over all runs (the worst seen), and "stays
+above": the time before impact from which every approach window up to impact is above the pooled peak.
+
+**How.** `uv run python scripts/fp_margin_live.py` (output `artifacts/complete_test/rescore_audible/`
+`fp_margin_rounds.csv`, `fp_peaks.csv`). Same 20 distinct virtual runs and labels as entry 238; comb on its
+squashed confidence.
+
+**Result.** Virtual runs, 1 s window, 0.125 s hop, modified drones at 80 dB SPL at 1 m (100 and 150 km/h)
+against the war soundscape at 50-90 dB SPL, some with Pd wind and cars. Medians over drone rounds.
+
+| Detector | Drone rounds | Own run's FP peak | Drone peak | First above own FP peak | Pooled FP peak | First above pooled | Stays above pooled from |
+|---|---|---|---|---|---|---|---|
+| it9 CRNN | 13 | 0.17 | 0.99 | 11/11, 7.9 s | 0.229 | 13/13, 7.3 s | 12/13, 2.8 s |
+| it19 CRNN colour s1 | 13 | 0.13 | 0.98 | 13/13, 7.8 s | 0.380 | 13/13, 4.3 s | 9/13, 2.5 s |
+| it16 CRNN 600k s1 | 20 | 0.14 | 0.94 | 20/20, 4.2 s | 0.914 | 11/20, 2.4 s | 8/20, 1.0 s |
+| it23 CRNN relabel 600k s1 | 7 | 0.23 | 0.91 | 7/7, 2.4 s | 0.923 | 3/7, 1.3 s | 3/7, 0.9 s |
+| it20 CRNN bp s0-s2 | 1 | 0.10-0.13 | 0.15-0.18 | 1/1, 3.1-5.5 s | 0.10-0.14 | 1/1 | 0/1 |
+| comb (baseline) | 11 | 0.97 | 0.95 | 1/9 | 0.974 | 0/11 | 0/11 |
+
+(Two it9 rounds come from a run with no no-drone window, so they have no own FP peak.) The drone peak comes
+0.1-1 s before impact in most rounds. it9's first window above the pooled peak sits at window SNR -25 to
+-9 dB; it is a short excursion, and the confidence stays above only from about 2-4 s before impact. The
+pooled FP peaks of it16 and it23 (0.91, 0.92) are in the round with cars at 50 dB; comb's (0.97) is on
+the war soundscape alone. The it9 pooled peak comes from about 112 s of no-drone audio (895 windows, war
+and wind, no cars), so it is a low estimate of the peak over a long watch. Several runs repeat the same
+plan, so the rounds are not independent. `lgbm` was not in any live run.
+
+**Assessment.** The CRNNs separate drone from no drone better than their frozen thresholds suggest: it9 is
+above the highest false-positive peak it ever gave in these runs from 2-4 s before impact in 12 of 13
+rounds, and briefly from about 7 s. The weakness is the size of the margin 3-7 s out, and it has a
+training cause: the `simdist` recipe (entry 096; `src/dad/rangerun.py`) draws real positives from 0-50 m
+and simulated-distance positives at -10 to +5 dB in-band SNR, so no training window has the drone below
+-10 dB. In these plans the drone is at about -20 dB 3-7 s before impact (entry 238), outside what the
+models were taught, and it9's window recall there is 0-22 %. The 1 s window adds to it: iteration 4 found
+averaging consecutive windows lifted recall at range (+7 points), and a drone on approach gives seconds of
+evidence that a 1 s decision does not pool. The 600k models (it16, it23) fire on cars at 50 dB; it9 was
+not run with cars here. comb's false-positive peak is above its drone peak: it cannot warn in war.
+
+**Next.** Reported to Mads. Candidate levers, not started: training positives down to -20 dB SNR (a
+recipe change, data only), and pooling confidence over several seconds for Test 2. Both would be a new
+iteration; the second changes the detection algorithm and needs the council (CLAUDE.md section 4).
+
+## 240 - it9 CRNN at a 0.99 threshold: false alarms per hour on the test's no-drone layers, and the warning left
+- Date: 2026-11-19
+- Iteration: none (evaluation; no model or setting changed)
+- Type: Evaluation
+- Commit: uncommitted (new script `scripts/fa_rate.py`; git is not on PATH in this session)
+
+**What changed.** Mads asked how many false alarms the it9 CRNN gives in practice at a threshold of 0.99.
+`scripts/fa_rate.py` scores a detector on the complete test's no-drone layers, scaled as the test scales a
+layer (RMS of the whole signal to a dB SPL, full scale 110 dB SPL), alone and mixed, and counts alarms
+(a stretch of consecutive windows at or above the threshold is one alarm, as `live_test_engine`).
+
+**How.** `uv run python scripts/fa_rate.py` (CPU, about 15 min; output
+`artifacts/complete_test/fa_rate/it9_CRNN.csv`). Audio: `WarSoundScape.wav` (38.5 s, looped 4 times) at 60,
+75 and 90 dB; the 9 Pure Data wind renders in `artifacts/complete_test/layers` at 25 and 50 dB; the 30
+non-sealed Pure Data car renders there at 50 and 70 dB; war 60 dB + cars 50 dB; war 60 dB + wind 25 dB.
+1 s window, 0.125 s hop. The warning at each threshold was read from the 13 it9 drone rounds of the 20
+distinct virtual live runs (entries 238-239), with a scratch script (not kept).
+
+**Result.** False alarms per hour, it9 CRNN (frozen threshold 0.483):
+
+| No-drone audio | Minutes | Max conf | Mean conf | @0.483 | @0.9 | @0.95 | @0.99 |
+|---|---|---|---|---|---|---|---|
+| War 60 / 75 / 90 dB | 2.6 each | 0.175 | 0.033 | 0 | 0 | 0 | 0 |
+| Wind 25 dB | 9.0 | 0.096 | 0.029 | 0 | 0 | 0 | 0 |
+| Wind 50 dB | 9.0 | 0.425 | 0.042 | 0 | 0 | 0 | 0 |
+| War 60 + wind 25 dB | 9.0 | 0.186 | 0.030 | 0 | 0 | 0 | 0 |
+| Cars 50 dB | 52.2 | 0.9896 | 0.674 | 428 | 667 | 287 | 0 |
+| Cars 70 dB | 52.2 | 0.9896 | 0.690 | 439 | 723 | 316 | 0 |
+| War 60 + cars 50 dB | 52.2 | 0.9889 | 0.354 | 1122 | 328 | 120 | 0 |
+
+(The count per hour at a lower threshold can be smaller than at a higher one: long stretches above a low
+threshold break into several alarms at a higher one.) The highest car confidence is 0.9896, 0.0004 below
+0.99; 15 of the 90 car cases peak at 0.985 or more.
+
+Warning before impact in the 13 drone rounds (modified drones, 80 dB SPL at 1 m, war 50-60 dB):
+
+| Threshold | Rounds with an alarm before impact | Median time before impact (range) |
+|---|---|---|
+| 0.483 (frozen) | 13/13 | 7.0 s (3.6-8.3) |
+| 0.9 | 12/13 | 2.2 s (1.6-7.5) |
+| 0.95 | 11/13 | 1.8 s (1.5-6.2) |
+| 0.99 | 4/13 | 0.4 s (0.1-0.55) |
+
+**Assessment.** At 0.99 the it9 CRNN gave no false alarm on any of this audio, but only because the
+synthetic cars peak at 0.9896, and it warned before impact in 4 of 13 drone rounds, at most 0.55 s ahead.
+That is no warning for REQUIREMENTS.md Test 2 (3-7 s before impact). On war and wind alone it never
+exceeds 0.43, so any threshold from about 0.45 gives no false alarms there; the cars, at 0.67 mean
+confidence alone, are what sets the false alarms, as in entry 207. Limits: one 38.5 s war file and
+synthetic cars and wind (six car engines); real roads and battlefields will give higher peaks, so these
+counts are a floor, not an estimate for practice. Simulated drones from training sources: a tool, not a
+detection result.
+
+**Next.** Reported to Mads. The car confusion, not the threshold, is the lever (iteration 21 tried vehicle
+negatives on the `600k` arm). No step started.
+
+## 241 - Correction to entry 240's reading of "99 %": the false-alarm percentile, not a 0.99 confidence
+- Date: 2026-11-19
+- Iteration: none (evaluation)
+- Type: Evaluation, Correction
+- Commit: uncommitted (scratch script, not kept)
+
+**What changed.** Mads's "99 %" meant the Results window's false-alarm percentile (`Plan.fa_percentile`):
+the threshold leaves 99 % of the no-drone windows below it. Entry 240 answered for a confidence of 0.99
+instead; its numbers stand for that threshold.
+
+**Result.** By definition 1 % of no-drone windows are above the threshold: with 1 s windows every 0.125 s,
+that is 28,800 windows an hour, so 288 windows above it per hour and 1,440 in 5 hours. On it9's no-drone
+windows of the 20 distinct virtual live runs (895 windows, 1.9 min, war soundscape and wind, no cars) the
+99th percentile is 0.157; the 9 windows above it are all isolated, so each is one alarm: about 290 alarms
+an hour, about 1,450 in 5 hours. The threshold comes from under 2 minutes of audio, so it is a rough
+estimate, and on other audio (cars, entry 240) the share above it would not be 1 %.
+
+**Assessment.** A percentile threshold fixes the false-alarm rate on the audio it is set on; 99 % means
+about 290 alarms an hour when the alarms are single windows, fewer when they come in stretches.
+
+## 242 - Complete_Test_Gui Conclusions: the false-alarm box also takes "1 false alarm per XX hours"
+- Date: 2026-11-19
+- Iteration: none (tool)
+- Type: Infrastructure
+- Commit: uncommitted
+
+**What changed.** At Mads's request, next to the false-alarm % in the Conclusions window of
+`scripts/Complete_Test_Gui.py`, a box "1 false alarm per [ ] hours". Enter in it sets the % to
+100 x (1 - 1 / n), n = hours x 3600 / 0.125 s windows (one false alarm counted as one window), and redraws;
+Enter in the % box fills the hours box the other way. A note says what the % means ("= 1 window in N")
+and how many no-drone windows the run has; when N is larger, it says the threshold is then just the highest
+no-drone peak (`fa_threshold` takes `np.percentile` of the no-drone windows, which cannot resolve rarer
+events than one in their number). The % box is wider (11 characters) to show the digits. New helpers
+`pct_for_hours`, `hours_for_pct`, `fmt_hours`; `fa_pct` and its 50-200 % range are unchanged. The setup
+pages' false-alarm boxes are unchanged.
+
+**How.** Smoke test on `artifacts/complete_test/20261112_120415_live_virtual_automatic` (scratch script, not
+kept): 5 hours gives 99.99930556 % and back 5.0 hours; 95 % shows 2.5 s; 99.9 % shows 0.03472 hours; the
+run has 153 no-drone windows (0.3 min), so 5 hours and 99.9 % both show the "too few" note, and the it9
+threshold at 5 hours is 0.159, its highest no-drone peak. There are no GUI tests in `tests/`.
+
+**Assessment.** Tool only; no result changes. With a few minutes of no-drone rounds, any rate rarer than
+about one alarm a minute is not measured by the run: the box shows it rather than hiding it.
+
+## 243 - The it9 CRNN on Mads's own full drone recordings, before planning a training on them
+- Date: 2026-11-19
+- Iteration: none (measurement before planning; nothing trained)
+- Type: Evaluation
+- Commit: uncommitted (scratch script, not kept)
+
+**What changed.** Mads wants a training that starts from the it9 CRNN and uses his two recorded drones,
+modified (approach, speeds, pitch). Before planning, the full recordings behind the two clips were read and
+scored: `Downloads/aup3_wav/drone1_Audio_1_raw.wav` (109.0 s), `drone1_2_Audio_2_raw.wav` (54.5 s),
+`drone_2_Audio_2_raw.wav` (144.8 s); 44.1 kHz, two identical channels (L/R correlation 1.00), float.
+The clips the tests use are cuts of the last two: `00m14-00m24` = 14-24 s of `drone1_2_Audio_2_raw`,
+`0127-0137` = 87-97 s of `drone_2_Audio_2_raw`. Provenance is still not recorded (entry 201); they are
+outside `data/`. Not checked against ITU ARIS.
+
+**Result.** it9 CRNN, 1 s windows every 0.125 s, mono mix resampled to 16 kHz, no background added, frozen
+threshold 0.483. Share of windows at or above it: `drone1_Audio_1_raw` 0.07 (mean 0.60-0.62 at 5-15 s,
+at most 0.20 after 25 s); `drone1_2_Audio_2_raw` 0.00 (at most 0.24, 0.04-0.10 mean over the 14-24 s
+clip); `drone_2_Audio_2_raw` 0.08 (mean 0.36-0.64 at 75-100 s, the clip's stretch; at most 0.08 before
+70 s and after 105 s). Where in each recording the drone is flying is not known: it was not listened to.
+
+**Assessment.** Not interpretable until the drone's times in each recording are known. If the drone flies
+through most of them, it9 misses Mads's drones even with no background, and the `drone1` clip in the live
+tests gives it9 little to find; that would make his own recordings the most valuable training data.
+
+**Next.** Asked Mads when the drone flies in each recording. No training before he says go.
+
+## 244 - A moving average over N windows on the virtual live runs: better separation for it9, not higher confidence
+- Date: 2026-11-19
+- Iteration: none (analysis of a possible decision stage; nothing adopted, council not yet held)
+- Type: Evaluation
+- Commit: uncommitted (new script `scripts/smooth_live.py`)
+
+**What changed.** Mads asked how to make it9 better without retraining. The proposed lever, a causal
+moving average of the confidence over N windows (the decision-stage idea of iterations 4 and 15), was
+computed on the existing virtual live runs. Nothing in the detectors or the GUI was changed. Adopting it
+changes the detection algorithm, so it needs the council first (CLAUDE.md section 4).
+
+**How.** `uv run python scripts/smooth_live.py` (output `artifacts/complete_test/rescore_audible/smooth.csv`).
+Per round, mean of the last N per-hop confidences (comb squashed); windows with fewer than N before them in
+their round are left out. A first run counted the drone's smoothed tail after impact + 1 s buffer as no-drone,
+which gave it9 false-positive peaks of 0.57 (N 16) and 0.70 (N 24); corrected so that a no-drone window
+after a drone counts only once its whole average is past the drone phase (the buffer grows by (N - 1) x
+0.125 s, as entry 229's reasoning for the buffer). Only the corrected numbers are below.
+
+**Result.** 20 distinct virtual runs, war soundscape 50-90 dB with some wind and cars; modified drones at
+80 dB SPL at 1 m; 1 s windows, 0.125 s hop. "Peak" is the highest no-drone value over all runs;
+"first above" and "stays above" are medians of time before impact against that peak.
+
+| Detector | N (audio span) | Conf 3-7 s | No-drone mean | No-drone peak | AUC 3-7 s vs no-drone | First above peak | Stays above peak |
+|---|---|---|---|---|---|---|---|
+| it9 CRNN | 1 (1.0 s) | 0.253 | 0.037 | 0.229 | 0.786 | 13/13, 7.25 s | 12/13, 2.75 s |
+| it9 CRNN | 8 (1.9 s) | 0.243 | 0.040 | 0.128 | 0.866 | 13/13, 7.1 s | 12/13, 2.9 s |
+| it9 CRNN | 16 (2.9 s) | 0.228 | 0.042 | 0.100 | 0.945 | 13/13, 7.0 s | 12/13, 3.0 s |
+| it9 CRNN | 24 (3.9 s) | 0.210 | 0.042 | 0.090 | 0.952 | 13/13, 6.1 s | 13/13, 4.7 s |
+| it19 CRNN colour s1 | 1 / 16 / 24 | 0.167 / 0.149 / 0.137 | 0.027 / 0.026 / 0.026 | 0.380 / 0.111 / 0.080 | 0.680 / 0.793 / 0.809 | 13/13 at all, about 4 s | 9, 13, 13 /13; 2.5, 2.9, 3.9 s |
+| it16 CRNN 600k s1 | 1 / 16 / 24 | 0.104 / 0.093 / 0.087 | 0.042 / 0.044 / 0.044 | 0.914 / 0.802 / 0.746 | 0.610 / 0.660 / 0.658 | 11, 6, 6 /20 | 8, 5, 6 /20 |
+| comb (baseline) | 1 / 24 | 0.246 / 0.236 | 0.363 / 0.296 | 0.974 / 0.836 | 0.416 / 0.442 | 0/11, 2/11 | 0/11, 2/11 |
+
+N 4 lies between N 1 and N 8 for every detector (in the csv). `lgbm` was not in any live run.
+
+**Assessment.** For it9 the average does what it should on war and wind: the no-drone peak falls from 0.23
+to 0.10 (N 16) and 0.09 (N 24) while the drone's rise survives. The 3-7 s windows separate from the no-drone
+windows with AUC 0.79 -> 0.95, and the confidence stays above the worst no-drone value from 4.7 s before
+impact at N 24 in all 13 rounds, against 2.75 s now. It does not raise the Test 2 figure: the mean
+confidence 3-7 s falls slightly (0.253 -> 0.210), because an average cannot raise a mean. If Test 2 is read
+as "high confidence", the average helps only with a threshold or a rescaling that uses the lower no-drone
+peak. For it16, whose peak comes from cars at 50 dB that last seconds, the average barely helps (0.91 -> 0.75).
+Limits: it9's no-drone windows are 1.9 min of war and wind with no cars (entry 240: cars hold it9 at 0.67 for
+seconds, so an average will not remove those); runs repeat the same plan; simulated drones from training
+sources.
+
+**Next.** Reported to Mads. Before adopting: it9 with the average on the cars layers (`scripts/fa_rate.py`
+with the average added), then the council on a decision stage.
+
+## 245 - Complete test, modified drones: an "Add reverb" option for drones recorded in an anechoic room
+- Date: 2026-11-20
+- Iteration: none (test tool)
+- Type: Infrastructure
+- Commit: uncommitted
+
+**What changed.** Mads: the drone he uses was recorded in an anechoic room, so it does not sound like the
+project's real recordings; he asked for a very subtle, almost inaudible synthetic reverb as an option.
+- `scripts/complete_test_engine.py`: `APPROACH` gains `reverb` (default off); new `REVERB` (RT60 0.35 s, wet
+  -20 dB, low-pass 4 kHz, pre-delay 8 ms) and `add_reverb()`: the file convolved with white noise decaying
+  60 dB in RT60, low-passed, after the pre-delay, mixed 20 dB below the dry sound in RMS, then scaled back
+  to the dry RMS. Seeded by the file name, so a file always gets the same tail. `Drones` applies it to the
+  whole file after the pitch, before the last 10 s are cut and before the approach (spreading, air
+  absorption, Doppler), so the tail is the same at every distance: not a room or outdoor model. Runs before
+  this have no `reverb` key and load as off.
+- `scripts/Complete_Test_Gui.py`: an "Add reverb" checkbox next to "add randomness" and "Doppler" on the
+  modified page and the Live page, written into the plan's `approach`, with a note under it. The 22.05 kHz
+  copies (`*22k.py`) are unchanged.
+
+**How.** Scratch scripts (not kept), on `drone_2_Audio_2_raw_0127-0137.wav`:
+- `add_reverb`: RMS 0.08076 before and after; the change (wet minus nothing removed) is 20.0 dB below the
+  dry signal; correlation with the dry clip 0.9950; the same seed gives the same output.
+- `Drones` for a 100 km/h, 80 dB plan: 10.0 s both ways, RMS 0.0558 dry and 0.0556 with reverb, span
+  unchanged.
+- it9 CRNN on the clip alone (1 s windows, 0.125 s hop, no background): mean confidence 0.648 dry, 0.637 with
+  reverb, largest change in one window 0.081.
+- `App()` built headless: the modified page and the Live page both have the box, and `plan()` gives
+  `approach = {closest_m: 1.0, doppler: False, reverb: True}` with it ticked. The GUI starts. Not listened to.
+  There are no engine or GUI tests in `tests/`.
+
+**Assessment.** Tool only. -20 dB wet with a 0.35 s tail is meant to be close to inaudible; whether it is was
+not checked by ear. Whether it makes the drone sound more like the real recordings was not measured.
+
+## 237 - Modified drones outdoors: an optional ground reflection and a reverb that grows with distance
+
+- Date: 2026-11-20
+- Type: Test data (simulation; requested by Nicolai)
+- Commit: on branch `NicolaiBranchGUI` at fde4425; uncommitted `scripts/complete_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md` (on top of the uncommitted entries 226-236, and of Mads's synthetic reverb of today, already in the working copy and not logged by this session)
+
+**Why.** Nicolai asked whether the modified drone now sounds like a real one. The listed gaps were:
+- no ground reflection;
+- a reverb (Mads's, today) at the same level at every distance;
+- no directivity, flight dynamics or turbulence;
+- nothing above 8 kHz.
+He asked for the first two to be built.
+
+**What.** Two options on every modified drone, on the Modified and Live demo pages as checkboxes under the approach settings. Both are off by default, so a plan without them makes the same drone as before. `complete_test_engine.outdoors()` applies them after `approach()`, in `Drones`.
+- **Ground reflection** (`ground_reflection`, a two-ray model).
+  - The drone flies its straight line (`approach_distance`), diving at an approach angle onto a microphone at a height above the ground (defaults 10 degrees and 1.5 m).
+  - The sound also arrives by the path mirrored in the ground. It is later by (r2 - r)/c, a delay that changes with the distance (fractional, interpolated), weaker by r/r2 and by a reflection factor 0.7, and low-passed at 3 kHz (grass).
+  - The result is a comb of notches that sweeps upward as the drone closes in, and up to +6 dB at low frequency where the two paths add.
+- **Outdoor reverb** (`outdoor_reverb`).
+  - The source at 1 m is convolved with a decaying, low-passed noise tail (RT60 0.8 s, 3 kHz, 15 ms predelay), sent through `approach()` (1/r and the air absorption of distance r), and scaled by sqrt(r / critical distance).
+  - Its level therefore falls as 1/sqrt(r) against the direct sound's 1/r. It equals the direct sound at the critical distance (default 100 m), is drier close in and outweighs the direct sound far off.
+  - When both options are on, the reverb is added before the ground reflection, so it reflects off the ground too.
+- **Not physical models.** The reflection factor, cutoff, RT60, predelay and critical distance are chosen, not measured: a grass-like ground and a semi-open site.
+- The plan keeps the settings in `approach` (`ground`, `angle_deg`, `mic_h`, `outdoor_reverb`, `critical_m`). `Plan.check` holds their ranges (angle 0-89 degrees, height up to 50 m, critical distance 1-1000 m). A run without them reopens unchanged.
+- Mads's "Add reverb" (a short room tail for an anechoic recording, applied at the source) is separate and unchanged.
+
+**Check** (`outdoor_check.py` in the session scratchpad; `PeterDrones/03_d3set_23oct_vol3_X500_3m.wav`, 100 km/h, 80 dB SPL at 1 m, distance at impact 1 m). The far window is the drone file's first second (278-250 m); the near window is 1.5-0.5 s before impact (42-14 m).
+
+| Version | Far (dB SPL) | Near (dB SPL) |
+|---|---|---|
+| Off | 28.7 | 51.3 |
+| Ground | 27.6 | 51.5 |
+| Reverb | 35.3 | 53.0 |
+| Both | 33.0 | 52.7 |
+
+- **Ground, far:** path difference 0.537 m, so the first notch is predicted at 314 Hz. The ground/off spectrum has its minimum at 312 Hz (-10.3 dB), and +3.3 dB at 50-150 Hz.
+- **Direct-to-reverberant ratio** (direct vs the reverb alone): far -5.5 dB (model 10 log10(100 / r) = -4.2 dB), near +5.9 dB (model +5.6 dB).
+- **A first version** without air absorption on the reverb and a 30 m critical distance gave -11.8 dB far, with the reverb 12 dB above the direct sound. It was changed to the version above in this entry and was never used in a run.
+- **Spectrograms** (`outdoor/outdoor_spectrograms.png`) were looked at. The ground's notch bands (near 300, 940 and 1560 Hz far off) bend upward toward impact, and the reverb smears the harmonics a little. The four versions are saved as WAVs in `outdoor/` for listening. Nobody has listened to them yet.
+- **Through the page:** a plan with both on passes `check()`, an angle of 95 is refused, and the Live demo page has the boxes. `Test.run` on 2 rounds scores, and the run reopens with the same `approach`. `uv run pytest`: all pass.
+
+**Assessment.**
+- With these on, the test drone is louder far off (the reverb adds about 6 dB at 250-280 m here) and spectrally different. Results with and without them are not comparable, and each run's config says which it used.
+- As options that are off by default they do not change the evaluation protocol, so the council was not convened. Turning them on for the requirement tests would change the protocol and should go to the council first.
+- Not modelled: directivity, motor load at speed, turbulence, the band above 8 kHz (the detectors' 16 kHz rate).
+- Simulated drones on non-held-out sources: not a detection result.
+
+## 238 - Modified and Live demo pages: a button to listen to the drone as the settings make it
+
+- Date: 2026-11-20
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 237; uncommitted `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**Why.** Entry 237's outdoor options could only be heard through WAVs written by a script; Nicolai asked why this could not be done in the GUI.
+
+**What.** Under the outdoor options there are now "Listen to the drone", "Stop" and "with the background layers".
+- The button makes one modified drone exactly as a run would (`complete_test_engine.Drones`, with the page's approach: distance at impact, Doppler, pitch, Mads's reverb, ground reflection, outdoor reverb). It uses the first file at the first speed, pitch and level, and plays it.
+- With the box ticked, it plays the drone in the ticked background layers at their first levels (`mix_round`, the drone from 0 s, 11 s).
+- **Loudness.** The sound is turned up to a peak of 0.9, because the real level far off is often too quiet to hear. The line beside the buttons says what is playing, which extras are on, and by how many dB it was turned up.
+- **Loading the code.** A small slip while adding it put the outdoor options' note into the wrong function (`NameError` at the first press). It was found by the check below and fixed before anyone used it.
+
+**Check** (`listen_check.py` in the session scratchpad, with playback replaced by a recorder; both pages):
+- With no file the line says "add a drone file first".
+- With `PeterDrones/03_d3set_23oct_vol3_X500_3m.wav` at 100 km/h and 80 dB SPL it plays 10.0 s:
+  - plain: turned up +21 dB;
+  - ground + outdoor reverb: +20 dB, and a different signal;
+  - with the war soundscape at 60 dB: 11.0 s, and the line names the background.
+- Nobody has listened through a speaker yet.
+
+`uv run pytest`: all pass.
+
+## 239 - Modified and Live demo pages: the three sound effects grouped under one heading
+
+- Date: 2026-11-20
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: as entry 237; uncommitted `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**Why.** Nicolai asked whether "Add reverb" also covered the ground reflection. The page had three independent effects in two places: Mads's "Add reverb" beside Doppler and randomness, with its note further down, and entry 237's two options on a line of their own.
+
+**What.** The drone section now has one group, "Sound effects (each on its own; all off = as recorded)". It holds three checkboxes, one per line, each with its own numbers beside it and a one-line note below:
+- **Room reverb** (Mads's `add_reverb`, renamed from "Add reverb"): for a drone recorded in an anechoic room, a short tail the same at every distance.
+- **Ground reflection:** approach angle and microphone height.
+- **Outdoor reverb:** critical distance.
+
+A closing note says the numbers are chosen, not measured, and that runs with and without an effect are not comparable. The Listen button sits under the group, and its line says "room reverb". Nothing in the engine or in the plan's keys changed (`reverb`, `ground`, `outdoor_reverb`).
+
+**Check** (`effects_shot.py` in the session scratchpad):
+- The Modified page was screen-grabbed and looked at: three lines, notes in full, the button under them. Two earlier layouts in this entry cut the notes off at the right edge and were changed.
+- Ticking Room reverb and Ground reflection gives the plan `reverb: True, ground: True, angle_deg: 10, mic_h: 1.5`.
+- The Live demo page has the same controls (it inherits them).
+- `uv run pytest`: all pass.
+
+## 246 - Pull onto master (12 commits, to 942195f): no conflicts; entry numbers 237 to 241 are now used twice
+
+- Date: 2026-11-20
+- Type: Infrastructure / report housekeeping (requested by Nicolai: "the pull can override me, not vice versa; keep as much as possible")
+- Commit: on `master` at 942195f (fast-forwarded from 89541e8); the local changes re-applied uncommitted on top
+
+**What happened.**
+- `master` was 12 commits behind `origin/master`. The pulled commits include:
+  - iteration 25 (`simdist_dcolour`, entries 238-241 upstream) and its CRNN;
+  - the helicopter and insect (bumblebee) layers;
+  - the bomb recordings and the microphone impulse responses;
+  - the docs site files.
+- Three files were changed on both sides: `docs/REPORT.md`, `scripts/Complete_Test_Gui.py` and `scripts/complete_test_engine.py`. Four untracked local scripts (`fa_rate.py`, `fp_margin_live.py`, `rescore_live.py`, `smooth_live.py`) are not in the pull and were left as they are.
+- **Safety.** The three local files were copied to the session scratchpad (`backup_before_pull/`) and stashed as `stash@{0}` ("before pull 2026-11-20 ..."). The stash is kept.
+- **Pull and re-apply.** `git pull --ff-only` fast-forwarded to 942195f, and `git stash apply` re-applied the local changes. Git merged all three files without a conflict.
+
+**Check that nothing was lost** (`merge_check.py` in the session scratchpad: is every line of each side still in the merged file, in order?):
+- `REPORT.md`: every pulled line and every local line is there.
+- In the two scripts, the only lines not carried over are ones the other side replaced:
+  - the local side still had the old "helicopter, insects: not set up yet" lines, the old detector default (it9 CRNN and comb ticked) and the old colour and summary lists. The pull's versions won, as asked.
+  - the pulled side had the old `APPROACH`, the old approach dict and the old false-alarm box in Conclusions. The local changes to these lines (Mads's room reverb, the outdoor effects, the "1 false alarm per XX hours" box of entry 242) are kept, because the pull did not touch them.
+
+**After the merge:**
+- the GUI opens with pages Real / Modified / Live demo. it25 is offered, and no detector is ticked on open (the pull's choice), on the Live demo page too.
+- the helicopter layer is available. The insects layer is not on this PC: the pull's note says to run `Pure-data+Script/BeeDistractor/make_tables.py` for the bee loop. This was not run here.
+- the Live demo page keeps its effects, alarm threshold and buffer.
+- a virtual automatic live run (`20261120_102710_live_virtual_automatic`) gives the same per-round numbers as before the pull, and its saved scores equal a rebuild.
+- `uv run pytest`: all pass.
+
+**Entry numbers used twice** (append-only: nothing renumbered, as in entries 225, 231 and 237 upstream):
+
+| Number | Pulled (upstream) | Local |
+|---|---|---|
+| 237 | "Pull onto master: entry numbers 226 to 232 are used twice" | "Modified drones outdoors: ground reflection and outdoor reverb" |
+| 238 | "The `simdist_dcolour` recipe" | "Why the live demo tests look bad ..." and "A button to listen to the drone" |
+| 239 | "Iteration 25 result ..." | "How far before impact the drone's confidence rises ..." and "The three sound effects grouped" |
+| 240 | "The iteration 25 CRNN in the test GUIs" | "it9 CRNN at a 0.99 threshold ..." |
+| 241 | "Helicopter and insect layers" | "Correction to entry 240's reading of 99 %" |
+
+The local entries 238-245 come from a session that is not this one, and the local 237-239 from this one. A reference to one of these numbers should give the title. The next free number is 247.
+
+## 247 - Live demo test: the level graph shows every channel on its own
+
+- Date: 2026-11-20
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: on `master` at de70057; uncommitted `scripts/live_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What.** The live view's bottom graph showed one grey line, the dBFS of the window the detectors heard. It now shows, in dB SPL over 1 s windows, as the Results window's level graph does:
+- one line per background layer of the plan (war soundscape, cars, wind, helicopter, insects ...);
+- one line for the drone, as sent to the speaker, with no line while no drone flies;
+- a dotted "mix heard": the detectors' window, which in microphone mode is what the microphone heard at the plan's full scale (110 dB SPL). It is not calibrated.
+
+The y-axis follows what is shown.
+
+**How.**
+- `LiveRun._next_chunk` adds up each part's energy in every 0.1 s block it makes: a round's parts from its mix, or the background layers between rounds (`_idle` now returns them layer by layer).
+- `_part_levels` turns the last second of blocks into dB SPL and sends a `levels` event.
+- The page draws each part only up to the moment the detectors have reached, since the audio is made about 0.5 s ahead of the speaker. In microphone mode the parts are moved by the measured delay, like the drone spans.
+- The colours are the Results window's `PART_COLORS`.
+
+**Check** (`gui_check2.py` in the session scratchpad, virtual automatic, war soundscape 60 dB + cars 40 dB, it9 CRNN and comb; run `20261120_111345_live_virtual_automatic`). The saved figure was looked at:
+- war soundscape, cars, drone and mix heard each have their own line.
+- the drone line starts with each drone and rises toward impact. It stays high through the 1 s buffer, because the 1 s window still holds the loud end.
+- the mix follows the loudest part.
+- the war soundscape line drops below 0 dB SPL twice. Those are silent stretches in WarSoundScape.wav itself (black in the spectrogram), not a fault.
+
+`uv run pytest`: all pass. A display only: nothing in the results changes.
