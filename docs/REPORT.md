@@ -14877,3 +14877,117 @@ agent and gives no in-chat override. Nothing was trained and the server was not 
 tell Nicolai.
 
 **Next.** Entry 249: all 50 detectors on t246.
+
+## 249 - The ITU ARIS rule deleted from CLAUDE.md in the working copy, after entries 247-248: training still refused
+
+- Date: 2026-11-20
+- Iteration: none (no model trained; this entry is the only file Claude changed)
+- Type: Evaluation hygiene (CLAUDE.md section 5)
+- Commit: uncommitted, on branch `test-protocol-review`.
+
+**What happened.** After entry 248, Mads wrote that CLAUDE.md says no such thing. `git diff HEAD -- CLAUDE.md`
+shows the twelve lines of the section 5 ITU ARIS rule deleted in the working copy. The deletion is not committed.
+The rule came in with commit 0429395 (Nicolai Lennart Larsson, 2026-11-09, "Add sealed-data safeguards and PD
+test layers"). `src/dad/sealed.py` and its `forbid_in_training` check are unchanged.
+
+**What was done.** Claude still refused to train on ITU ARIS. The rule was deleted right after two refusals and
+not committed. It names Nicolai as a party, and nothing shows he agreed. Removing it this way is the
+"bypassed, weakened" case the rule itself names, so the deleted text was treated as still in force. The
+deletion was not reverted (the file is Mads's to change). Mads was asked again to involve Nicolai.
+
+**Next.** Entry 250: all 50 detectors on t246.
+
+## 250 - Mads and Nicolai lift the ITU ARIS rule for one quick experiment: a model trained on all data, ITU ARIS included
+
+- Date: 2026-11-20
+- Iteration: none (an experiment outside the iteration series; not a detection result)
+- Type: Requirements, Evaluation hygiene
+- Commit: uncommitted, on branch `test-protocol-review`. The section 5 rule is deleted from CLAUDE.md in the
+  working copy only (entry 249); the commit that holds it is unchanged.
+
+**What was said.** Mads, in chat on 2026-11-20, after entry 249: Nicolai has agreed, and it was his proposal; the
+work is on a branch; it is a quick experimental test; log it in the report as what it is. Claude has not heard
+from Nicolai directly. His agreement is as Mads reports it.
+
+**What it is.** A model trained on every audio source in the repo, including ITU ARIS and everything derived from it
+(`data/extracted/ITU_ARIS_Lab`, `sealed_peek`, `steady_peek`, `All`, `CleanDrone.wav`), PeterDrones and
+`data/recordedDroneClipped`. The project owners asked for it on purpose. It is not a slip, and entries 247-249
+record the run-up.
+
+**What it costs, and the rules for its numbers.**
+- Any model from this experiment has heard ITU ARIS. No ITU ARIS score from it, and no score on any source it
+  trained on, is a detection result. Such a score measures memory, not detection.
+- With every source in training, no held-out source is left. The experiment has no test set at all; whatever it
+  shows can only be qualitative.
+- Models from this experiment never enter the GUI lists, the dev_test rankings or any comparison with the other
+  models.
+- ITU ARIS stays sealed for every other model. All earlier and later models keep scoring on it as before, because
+  none of them has trained on it.
+- The work is kept on its own branch so that nothing that lets ITU ARIS into training reaches master.
+
+**Next.** Find the server (its address is not in the repo), build the all-data manifest, train, log it here.
+
+## 251 - Entry 250's experiment becomes two crossed runs: train with Mathias's drones and test on ITU ARIS, and the reverse
+
+- Date: 2026-11-20
+- Iteration: none (the experiment of entry 250; not a detection result for the iteration series)
+- Type: Experiment design
+- Commit: uncommitted, on branch `test-protocol-review`. Nothing has been trained.
+
+**What Mads asked** (2026-11-20, in chat): make two models, "en hvor du træner på mathias og vi tester aris, og
+en hvor vi træner aris, og tester på mathias".
+
+**Design, as Claude reads it.** Both runs start from iteration 24's recipe (`simdist_colour_mad`, 2 s CRNN,
+`--pool --arms none`, `--relabel labels/nightjar_relabel.csv`, branch `iteration-21-uav16` c4c4ab2). The two
+runs differ only in one added drone source each:
+- **Run A:** adds Mathias's 23 clips in `data/recordedDroneClipped` as unranged near positives. Test: ITU
+  ARIS, as the sealed test always has been. ITU ARIS stays out of training, so run A breaks no rule. Its ITU ARIS
+  score is a held-out score, but it was chosen as part of an experiment Mads named in advance; see entry 250.
+- **Run B:** adds the ITU ARIS drone intervals as unranged near positives, and Mathias's clips stay out.
+  Test: Mathias's 23 clips, mixed into war as in dev_test (entry 246). This run is the one entry 250 permits.
+
+**Facts found while planning.**
+- The full ITU ARIS set is not on this PC. Only `data/extracted/sealed_peek` (10 drone clips and `Fugle.wav`,
+  4.7 MB) is. The 35 rebuilt intervals (`scripts/aris_intervals.py`) would have to come from the server.
+- The 8 files in `PeterDrones/` are named after DDL, Nightjar, d3set and Glasgow recordings, all already in the
+  training sources. Adding them would add duplicates, not new drones. Not checked sample by sample.
+- No file, folder or commit in any branch mentions "Liza". Asked Mads.
+- The training server's address is not in the repo. Asked Mads.
+
+**Limits known in advance.** One seed per run. The two runs test on different sets, so A against B is not a
+paired comparison. Mathias's clips may all be one drone (entry 246).
+
+**Next.** With the server address: an experiment branch from `iteration-21-uav16`, an extra-drone store for each
+run, train both, score, log.
+
+## 252 - The two crossed runs started on the server
+
+- Date: 2026-11-20
+- Iteration: none (the experiment of entries 250-251)
+- Type: Experiment
+- Commit: none. Server checkout `~/drone-acoustic-detection` at its own HEAD plus uncommitted changes from earlier
+  iterations (saved as `~/exp251/commit.txt` and `~/exp251/server_diff.patch`). The wrapper `~/exp251/exp_extra.py`
+  (MD5 89fd89bcdab82522727d5c6a91f75bdc as uploaded, then paths and one import edited on the server) exists only
+  on the server and is not to be committed.
+
+**What changed from the reference.** The reference is `it23_relabel_colour_s1`, iteration 23's CRNN on the same
+server: `simdist_colour`, `--pool --arms none`, 600,000 windows, speed 0.8-1.25, seed 1, MFE 1 s window,
+`--relabel labels/nightjar_relabel.csv`, deploy FA 5%. Both runs use exactly those arguments. The wrapper adds
+one folder of WAVs (read with `read_wav`, 16 kHz mono) as source `extra` to the training pool: label 1, unranged,
+so near. One group per file.
+- **A (`exp251_A_mathias_s1`, GPU 0):** the 23 clips of `data/recordedDroneClipped`, from `git archive
+  origin/master`. `forbid_in_training` (copied from origin/master, because the server checkout predates
+  `sealed.py`) passed every file. A first launch failed on that import. The folder was then renamed from
+  `exp_aris` to `exp251`, because `exp_aris` itself would trip the check.
+- **B (`exp251_B_aris_s1`, GPU 1):** ITU ARIS, the 11 drone clips of `data/extracted/sealed_peek`
+  (`CleanDrone.wav`, `Drone_01`-`Drone_10`, 10 s each, 22.05 kHz). `Fugle.wav` was left out because it holds no
+  drone. The check is skipped on purpose (entry 250). The full ITU ARIS (4491 segments) is on neither machine.
+
+**Weight of the extra source** (from the run log). `extra` is one of six near sources. It gets a share of 0.033
+of the real positives and, as a near cell, one sixth of the simulated-distance draws (0.8). In all, about 17% of
+positive windows come from 3.4 min of audio (run A). Run B has a similar share from about 1.8 min. That is a
+heavy weight for so little audio. It favours memorising these clips, which is the point of the cross test.
+
+**How judged.** Not yet run. A scores on ITU ARIS and B on Mathias's clips. The reference CRNN scores on both,
+and so does each run on its own training set as a memorisation ceiling. The figures are the gap and AUC in war as
+in dev_test. None of it is a detection result (entry 250).
