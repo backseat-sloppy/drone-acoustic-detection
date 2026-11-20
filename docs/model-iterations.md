@@ -62,7 +62,7 @@ refer to it.
   figures on FPV, Nightjar, UAV16 or ITU ARIS (all CC BY) instead, or marks
   the verdict with **†** (decided on a withheld figure). Validation figures
   are pooled over the training rigs' validation sessions. The development
-  copy of test 1 (iterations 21-23) uses Lund and Halmstad drones, so only
+  copy of test 1 (iterations 21-25) uses Lund and Halmstad drones, so only
   its no-drone figures are shown.
 
 ---
@@ -100,6 +100,9 @@ refer to it.
 | 21 (cars) | A development copy of test 1 (non-ARIS drones); then road vehicles from FSD50K as negatives and maskers | Test 1 fails on cars; ITU ARIS may not steer design | Cars alone (no drone): CRNN 64% → 36%, DS-CNN 62% → 42%, pinned. "With cars" only -6.9 / -6.6 points (10 required) | **Fails its box**, but the car gain is real |
 | 22 (frontend) | PCEN in place of the log; probe of whether 8-11 kHz adds drone information | PCEN was the named next frontend; the microphone samples at 42 kHz | PCEN: wind alone with no drone 37-50% (was 1-3%). 8-11 kHz: +0.015 AUC on near drones, no gain at range † | **Both rejected.** 16 kHz log-mel stays |
 | 23 | Ten Nightjar "no-drone" segments that Mads heard as drones relabelled | "No drone" in Nightjar means "no logged DJI flight" | Drone confidence up by less than the seed spread †; no-drone confidence equal or lower | **No effect, no harm.** Relabels kept |
+| 24 | | | | On another branch, not in this report |
+| 25 | Pink and brown noise under 30% of the drone windows as well as 15% of the no-drone windows | Noise that only ever means "no drone" may teach the network to suppress a drone in noise | Drone in war falls †; mower false alarms 7% → 15%; wind alone with no drone 4% → 13%; unseen-rig recall falls † | **Rejected, with harm.** Noise under drones is what cost recall in iteration 11 |
+| Live runs | Analysis of the live demo and virtual approach runs (entries 238-244); nothing trained | Mads asked why the live tests looked so weak | 3-7 s before impact the drone was at about -20 dB SNR; it9 CRNN 0.25 confidence there, 0.04 without a drone. Cars, not war or wind, set the false alarms | **Diagnosis.** The plans were near inaudible; the microphone runs did not hear the mix |
 
 The default model is still the **it9 CRNN** (entry 096): log-mel frontend,
 iteration 5's pooled recipe with speed perturbation, trained on every rig.
@@ -506,6 +509,91 @@ without a drone stayed equal or fell. **No measurable effect, no harm**: the
 corrected labels are kept because they are more correct. 100 s is small
 against about 75 minutes of Nightjar no-drone audio.
 
+## Iteration 25: noise under the drones too
+
+Iteration 19's `colour` recipe adds pink and brown noise only as *no-drone*
+windows. Mads suspected this teaches the network that "coloured broadband
+noise means no drone", which would pull the score down when a drone sits in
+a noisy war soundscape. Iteration 25 therefore also put the same noise under
+30% of the drone windows, at -5 to +15 dB drone-to-noise ratio (recipe
+`simdist_dcolour`), on the relabelled `colour` CRNN of iteration 23, one seed.
+
+The hypothesis was wrong, and the change did harm. On the development test,
+confidence with a drone in war **fell** by more than the seed spread †.
+Without a drone, wind alone rose from 4% to 13% (pinned) and
+cars from 35% to 42%. Mower false alarms doubled (7% → 15%), and recall on the
+unseen rig fell by three times the harm limit †. Separation in war was
+unchanged (AUC 0.921 → 0.923).
+
+This answers the question iteration 11 left open: it is the noise **under
+drones** that costs real-drone recall, even when the noise is only pink and
+brown. At -5 dB the noise hides much of the drone, so many of these
+"drone" windows teach the network to call broadband noise a drone. That shows
+up as wind and mower alarms and pushes the frozen threshold up. `simdist_colour`
+stays the colour recipe. The model is in the test GUIs so it can be listened
+to, not as a candidate.
+
+## The live demo runs: why they looked weak
+
+The test GUI gained a **Live demo test** page that plays a drone approaching
+the microphone, either virtually or through a speaker and a real microphone.
+Its first runs looked poor: recall of 0.2-0.4 for the CRNNs, many runs at
+zero, and microphone runs with the CRNN near 0.01 confidence. Nothing was
+trained or retrained; entries 238-244 rescored the files the runs had
+already written. The drones in these runs are simulated approaches made from
+recordings the models trained on, so the figures below are **diagnostics,
+not detection performance**.
+
+**The drone was nearly inaudible where it was judged.** A simulated approach
+loses level as 1/distance. At 100 km/h, 3-7 s before impact the drone is
+83-194 m away, so a drone of 80 dB SPL at 1 m is about 34-42 dB SPL there,
+against a war soundscape of 60 dB. The measured window SNR in that band was
+-18 to -26 dB. The it9 CRNN finds no windows below -20 dB and 96% at -5 to
+0 dB. Its mean confidence 3-7 s before impact was 0.25, about seven times its
+0.04 without a drone, and it alarmed before impact in every drone round. To
+test the 3-7 s band where a drone can be heard, the test needs a louder drone,
+a quieter background or a lower speed.
+
+**Other reasons the runs looked worse than they were:**
+
+- Recall over the whole drone span counts windows from 250-420 m out, where
+  no drone can be heard.
+- About 24 "all zero" runs were stopped runs with no scored round.
+- In the microphone runs the microphone **did not hear the mix**: its
+  correlation with the played audio was 0.01-0.07. The chain was a laptop's
+  built-in speaker and microphone array, with the playback clipped. No
+  microphone result can be read as detector performance. The test should be
+  redone with an external speaker and microphone, with Windows audio
+  enhancements off.
+
+**The CRNN separates better than its threshold suggests.** Without any
+threshold, the it9 CRNN's confidence stays above the highest no-drone value
+it ever gave in these runs from about 2-4 s before impact (12 of 13 rounds),
+and briefly from about 7 s. The `comb` baseline's highest no-drone value is
+above its drone peak: it cannot warn in war.
+
+**Cars set the false alarms.** On war and wind alone the it9 CRNN never
+exceeds 0.43, so no threshold above that gives a false alarm there. On the
+synthetic cars it averages 0.67 confidence with no drone, and peaks at 0.99,
+giving more than a hundred false alarms an hour at any threshold up to 0.95. Raising
+the threshold to 0.99 removes them, but then only 4 of 13 drone rounds get a
+warning, at most 0.55 s before impact.
+
+**A moving average helps separation, not confidence.** Averaging the
+confidence over the last 16-24 windows (about 3-4 s of audio) lowered the it9
+CRNN's highest no-drone value from 0.23 to 0.09 and raised the separation of
+the 3-7 s band from no-drone audio from AUC 0.79 to 0.95. With N = 24 its
+confidence stayed above that value from 4.7 s before impact in all 13 rounds.
+The mean confidence 3-7 s before impact fell slightly (0.25 → 0.21), because
+an average cannot raise a mean. Cars, which hold the score high for seconds,
+are not removed by it. Adopting it would change the detection algorithm, so
+it needs a council first; it has not been adopted.
+
+**A likely training cause.** The `simdist` recipe draws drones from 0-50 m
+and simulated-distance drones at -10 to +5 dB SNR, so no training window has
+a drone below -10 dB. The approaches above put the drone at about -20 dB
+3-7 s before impact, outside anything the models were taught.
+
 ---
 
 ## Recurring lessons
@@ -539,7 +627,16 @@ against about 75 minutes of Nightjar no-drone audio.
   than on the drone.
 - **Cars and other engines are the main open failure.** The networks hear an
   engine's harmonic comb as a drone. Real vehicle negatives help on cars
-  alone; no change yet fixes them under every background.
+  alone; no change yet fixes them under every background. On war and wind
+  alone the default model gives no false alarms above 0.43; cars give
+  hundreds an hour.
+- **Noise under drones costs recall.** Steady noise as a no-drone example is
+  cheap; the same noise mixed under drone windows teaches the network that
+  noise is a drone (iterations 11 and 25).
+- **Check that the test can be passed before reading its result.** The first
+  live runs judged the drone where it was about 20 dB below the background,
+  and the microphone runs never heard the drone at all. Measuring the SNR
+  per window is what showed this.
 
 ## How decisions were made
 
@@ -581,7 +678,15 @@ Under the current requirements, judged in confidence:
   confident with a drone (80.7%) and clearly less confident without one with
   distractors (22.2% against 33.9%). It and the later `colour` CRNNs are
   available in the test GUIs.
-- **Open levers named in the report:** vehicle negatives without the masker
-  under drones, war-like impulsive sounds under the positives, PCEN with a
-  longer context or alongside log-mel, and more listening to clean up
+- **Time before impact (test 2): not yet measured fairly.** In the first
+  live runs the drone was about 20 dB below the background 3-7 s before
+  impact, below anything the models were trained on. There the it9 CRNN's
+  confidence was 0.25 with a drone against 0.04 without, and it rose clearly
+  in the last 2-4 s. The microphone runs must be redone with equipment that
+  actually plays and hears the drone.
+- **Open levers named in the report:** training drones down to -20 dB SNR;
+  averaging the confidence over several seconds (needs a council); training
+  on Mads's own drone recordings; vehicle negatives without the masker
+  under drones; war-like impulsive sounds under the positives; PCEN with a
+  longer context or alongside log-mel; and more listening to clean up
   Nightjar's labels.
