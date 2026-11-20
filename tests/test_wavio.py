@@ -115,6 +115,17 @@ def test_threshold_from_run(tmp_path):
             wavio.threshold_from_run(p, bad, window)
 
 
+def test_threshold_from_run_recipe_named_only_in_the_run(tmp_path):
+    # it24's recipe is defined only on its own branch; the run file's rows name it (entry 245)
+    run = dict(args=dict(name="it24_2s_mad_s0", window_seconds=2.0), results=[
+        dict(arm="hold out none", recipe="simdist_colour_mad", scorer="dscnn", integrate=1, deploy_threshold=0.543),
+        dict(arm="hold out none", recipe="simdist_colour", scorer="dscnn", integrate=1, deploy_threshold=0.9)])
+    p = tmp_path / "run.json"
+    p.write_text(json.dumps(run))
+    assert wavio.threshold_from_run(p, "it24_2s_mad_s0_none_simdist_colour_mad_dscnn.pt", 2.0) == 0.543
+    assert wavio.threshold_from_run(p, "it24_2s_mad_s0_none_simdist_colour_dscnn.pt", 2.0) == 0.9
+
+
 def test_cli_end_to_end_with_the_comb(clip, tmp_path, capsys):
     out, summary = tmp_path / "hops.csv", tmp_path / "summary.json"
     assert main(["wav", str(clip.parent), "--threshold", "0.5", "--out", str(out),

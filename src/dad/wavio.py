@@ -226,7 +226,8 @@ def threshold_from_run(run_json, checkpoint, window_s: float) -> float:
         raise ValueError(f"{name} was not written by run {run['args']['name']!r}")
     rest = stem[len(prefix):]
     arch = rest.rsplit("_", 1)[-1]
-    for recipe in RECIPES:
+    # also the run's own recipe names: a recipe defined only on another branch (it24's, entry 245); longest first
+    for recipe in sorted(set(RECIPES) | {r["recipe"] for r in rows if "recipe" in r}, key=len, reverse=True):
         tail = f"_{recipe}_{arch}"
         if rest.endswith(tail):
             held = rest[: -len(tail)]

@@ -14258,3 +14258,622 @@ Synthetic scaffolding.
 
 **Next.** Fetch stems 59451 and 79931 if the honeybee types are wanted; per-round helicopter
 speed/distance if Mads wants them swept.
+
+## 242 - Review of the three tests: precise where checked, not yet good enough for a scientific claim
+
+- Date: 2026-11-20
+- Iteration: none (a review of the evaluation protocol; no model, metric, split, threshold or test setting changed)
+- Type: Evaluation
+- Commit: uncommitted, on branch `test-protocol-review` from master 942195f: new `scripts/review_tests.py`.
+  First written on `iteration-21-uav16` by mistake and moved here at Mads's request; the numbers were rerun here.
+
+**What changed.** Nothing in the tests. Tests 1-3 of `REQUIREMENTS.md` were reviewed as implemented
+(`scripts/complete_test_engine.py`, the figure code of `scripts/Complete_Test_Gui.py`, `scripts/dev_test.py`,
+`scripts/it21_test1.py`, `src/dad/wavio.py`, `src/dad/propagation.py`) and as run (entries 176-182, 206-208, 228).
+One script measures what the review needed.
+
+**Why.** Mads asked (2026-11-20) whether the tests are precise, and good enough to count as science.
+
+**How.** `uv run python scripts/review_tests.py` (no model is run and no ITU ARIS audio is read; the physics
+checks are asserts). `uv run pytest`: 169 passed. Everything else is from the code and the entries cited.
+
+**Result: what holds.**
+- *Test 2's propagation does exactly what it claims.* `approach()` matches spherical spreading plus ISO 9613-1
+  to 0.000 dB (200 Hz to 4 kHz, 50 to 200 km/h, 3 to 7 s before impact); with Doppler a 1000 Hz tone is heard
+  at 1042.9, 1089.8 and 1197.2 Hz at 50, 100 and 200 km/h, c / (c - v) to within 0.1 Hz.
+- *Runs are reproducible and paired.* A round is rebuilt from `config.json` (a grid of starts, a seeded
+  soundscape start, kept renders); every model in a run hears the same rounds, so model differences are paired.
+- *Window labels are sound.* Windows straddling the drone's start or end are left out (`wavio.window_labels`,
+  unit-tested), and each window's drone SNR is measured from the separate parts and kept (`window_snr.npz`).
+- Splits by source, `sealed.py` in the training readers, and a development copy with tune and confirm halves
+  (entry 207). Most limits below were already stated one by one in their own entries.
+
+**Result: findings, most serious first.**
+1. *The ranking rule rewards a shifted score, not a better detector.* Entry 182 ranks strictly on mean
+   confidence with a drone; no-drone confidence breaks only exact ties. A detector that always outputs 1.0
+   would rank first. It has happened in small: It9B lifts every score with the same separation (AUC in war
+   0.906 against 0.902) and would rank first unpinned (entry 207); the it9 CRNN ranks first by 0.7 points
+   while its no-drone confidence with distractors is the worst, 33.9 % against 22.2 % (entry 180). A mean
+   sigmoid output is not a probability, and its scale differs between models. A scientific comparison needs a
+   bias-free separation figure beside it (ROC AUC per level and background, or the detection rate at a false-
+   alarm rate fixed on development data), and a calibration figure (Brier score) if confidence is to be read
+   as a probability.
+2. *No uncertainty, and the ranking gaps are smaller than training noise.* No test figure has a confidence
+   interval (entry 180 says so). Three seeds of one recipe (it16 CRNN 600k) span 78.3 to 80.7 % on criterion
+   1 (entry 180), more than three times the 0.7 points that decide first place; the development copy's seed
+   range is 1.6 points in war, 3.9 with cars, 9.8 on cars alone (entry 207); the it9 CRNN is one seed. The
+   3,100 rounds behind criterion 1 are 10 excerpts x 31 starts x 10 war levels over one excerpt of war audio,
+   scored in 1 s windows that overlap 87.5 %: the independent units are the 10 drone excerpts. The false-
+   alarm threshold in Conclusions is the 95th percentile of the same run's no-drone windows: in-sample, and
+   with one 20 s no-drone round it rests on the top 8 of 153 overlapping windows.
+3. *Test 1's drone rounds differ from its no-drone rounds by more than the drone.* A drone round adds an ITU
+   ARIS excerpt: the drone plus that site's background through that microphone. The site has a steady
+   178-183 Hz machine tone and low-frequency rumble, and no interval is more than about 13 dB over the site
+   background in the drone band (entry 137). The no-drone rounds hold no ARIS audio. A model that responds to
+   the site or the chain scores as a drone detector here: iteration 1's failure (the DDL chain) in test form,
+   already a standing limit in entry 129. ITU ARIS has 1,000 s of same-session background (entry 027), so
+   matched no-drone rounds are possible. The same mix makes the drone level imprecise: "drone at X dB SPL"
+   sets the broadband RMS of drone plus site noise, so the drone itself is lower by an unknown amount per file.
+4. *One background, one instance per distractor.* Every offline run folder on this PC (seven, 2026-11-16 to
+   11-18) has soundscape start 8.0 s: one start is drawn per test from a fixed seed, so all rounds of a test
+   hear the same stretch of war audio, and these runs all heard 8-28 s of `WarSoundScape.wav`. That file is
+   38.5 s of Soundly effects (footsteps, body drag, cloth, shells in a container, a shotgun reload, a
+   conversation, three firework bangs; entry 224); nothing documents that it represents a war soundscape. The
+   distractors are one car picked by ear (entry 199), one wind render, one helicopter fly-by (preset A) and
+   one bumblebee (entry 241); the car engines and the bee are FSD50K dev clips that training draws from
+   (entries 174, 241). A result is about these renders, not about wind, cars, helicopters or insects.
+5. *The test levels are nominal.* Set to 90 dB SPL, the soundscape's loudest 1 % of samples hold 57 % of its
+   energy (5 %: 84 %); in the 8-28 s excerpt its 1 s windows run from 58.0 to 97.9 dB SPL, median 84.0. The
+   set SNRs +10 to -30 dB are median per-window SNRs of +16.0 to -24.0 dB, and within one round the per-window
+   SNR spans 40 dB (drone at 60 dB SPL: -37.9 to +2.0 dB). Entry 179 found the same on the old war track.
+   The mix is never clipped: the soundscape peaks at +8.5 dBFS (crest factor 28.5 dB) and 383 samples of the
+   excerpt exceed full scale, which a microphone calibrated as stated (0 dBFS = 110 dB SPL) would clip. The
+   file has digital silence at 7.94-8.53 s and 29.94-31.41 s, so every round of these runs starts with 0.53 s
+   without background.
+6. *ITU ARIS is now a development set, and a narrow one.* It was listened to (entries 101, 137), ranked the
+   models (entry 180: "From here, test results on ITU ARIS steer a design choice"), motivated iteration 21
+   (entry 179) and compared candidates (entries 208, 228). The 10 steady excerpts are the best 10 of 29
+   intervals by a steadiness and SNR score (entry 137), so they favour easy drones. All 35 intervals come from
+   one 3.1 h recording session (entry 027); the "35 real drones" of `REQUIREMENTS.md` are 35 annotated passes,
+   34 usable (entry 140), and how many aircraft they hold is not in the report. A figure on ITU ARIS describes
+   this session after selection; it is not an unbiased test result and does not show that a model generalises
+   to other sites, drones or microphones.
+7. *Test 1 as specified has not been run.* Entry 206 says so, and no later entry on master or on
+   `iteration-21-uav16` records a run with the 34 intervals, war at 90 dB SPL and drones at 60-100 dB SPL. The report's test 1
+   figures come from 10 steady excerpts with the drone fixed at 60 dB SPL (entries 179-180) or 10 random
+   excerpts (entries 208, 228).
+8. *Test 2's figure depends on settings `REQUIREMENTS.md` leaves open.* Neither the level at 1 m nor the
+   background is fixed; the run folders here use 80 dB SPL at 1 m and war at 50-60 dB SPL. At 100 km/h the
+   3-7 s before impact are 83-194 m away, 38-46 dB below the 1 m level by spreading alone, so an 80 dB SPL
+   source arrives at about 34-42 dB SPL. Models compared at the same settings are compared fairly; as an
+   absolute figure it reports where two unfixed numbers meet. Further: the source files are treated as clean
+   recordings at 1 m, though ITU ARIS drones were recorded at up to about 2 km with the site's noise (entry
+   141), so their air absorption is applied twice and their site noise flies at the microphone; Doppler is
+   off by default (the run folders have it both off and on), which drops a 4-20 % pitch rise at 50-200 km/h;
+   there is no ground reflection; and the figure pools every file, level and background of the plan.
+9. *The buffer after the drone labels drone-free windows as drone, unequally by window length.* With the
+   default 1 s buffer a 1 s model gets 8 more drone windows holding 87.5 % down to 0 % drone audio; a 2 s
+   model gets 8 holding 93.8 % down to 50 %. In test 1, where a real file just ends, a 1 s model's fall-off
+   lowers its drone confidence more than a 2 s model's does, and since 2026-11-12 the GUIs compare 1 s
+   networks (it9, it16, it23) with 2 s ones (it17 here, it24 on `iteration-21-uav16`) under this buffer.
+10. *The instrument is barely tested, and the development copy's war stretches moved.* Of the code behind the
+    test figures, only `wavio.window_labels` and `dad.propagation` have unit tests; the engine's mixing,
+    levels, buffer, SNR and `approach()`, and the GUI's figure functions, have none (entry 177). `dev_test.py`
+    chose its six war stretches on the 600 s war track as stretches "no logged run used". Since fde4425
+    (2026-11-11) the default war layer is the 38.5 s file, where those starts become 21.5, 26.0, 19.0, 12.0,
+    13.5 and 26.5 s: four of six fall inside test 1's own 8-28 s, two pairs are nearly the same stretch, and
+    two hold the 1.47 s silence. `rounds.json` records neither the war file nor its checksum, and `judge`
+    pools every model file of a tag, so models scored before and after that commit can have heard different
+    war audio. Which commit the server clone `~/ct_9_11` ran for entries 230 and 239 is not recorded; not
+    checked on the server.
+11. *Baselines are missing or not comparable.* `lgbm` has had no saved model in the GUI lists since
+    2026-10-30, so no test 1 or 2 result includes it (entry 207); the 9_11 test 1 run had neither baseline
+    (entry 176); comb's confidence is its score squashed by its own threshold, and its AUC in war was 0.093
+    (entry 207).
+12. *Test 3 has no protocol yet.* A run in the speaker array is a demonstration, not a test, until it has
+    playback levels measured at the microphone, a fixed list of scenes, repetitions in random order, an
+    operator who does not know the scene, and the figures of tests 1 and 2.
+
+**Correction to entry 179.** Entry 179 says the no-drone windows inside drone rounds agree with the no-drone
+rounds within 1 point, "so the 1-round cells of the war table are not a fluke of one round". They cannot show
+that: one soundscape start serves the whole test, so those windows are the same war audio as the no-drone
+round's. The war-only no-drone figures of entries 179-180 rest on one excerpt of the war track.
+
+**Assessment.** Where the code was checked, it computes what it says, and test 2's physics is exact. The
+tests are a sound engineering comparison of model versions within this project. They are not yet good enough
+for a scientific claim: the primary figure cannot tell a better detector from a shifted one (1), no figure
+has an uncertainty and the ranking gaps are smaller than seed noise (2), test 1 has an uncontrolled confound
+(3), each background and distractor is a single instance (4), the levels are nominal (5), and no held-out
+test data is left (6). What the current figures support is of the form: "on ten passes from one ITU ARIS
+session, over one 20 s excerpt of one foley soundscape, with one render per distractor, model A's mean score
+was higher than model B's." `REQUIREMENTS.md` is not changed; findings 1, 6, 8 and 9 touch decisions that are
+Mads's and Nicolai's.
+
+**Next.** To Mads and Nicolai, then a council on the evaluation protocol (CLAUDE.md section 4) before any of it
+changes:
+- *Decisions.* A bias-free figure beside confidence, and when two models count as tied (findings 1-2). Which
+  untouched data becomes the final test, scored once after the protocol, models, thresholds and analysis code
+  are frozen and their hashes logged: RODENT_ICAERUS (sealed in entry 027; the report records no scoring of
+  it), `Uav.zip` of Acoustic UAV Field Recordings (never used), the development copy's confirm half (never
+  scored), or recordings with the project's own microphones. Test 2's source level, source files and Doppler
+  (8). The buffer in test 1 (9).
+- *Fixes that need no decision beyond the council.* Bootstrap confidence intervals over drone files, paired
+  between models; a war start drawn per drone file, or several excerpts; matched no-drone rounds from ITU
+  ARIS's own background; clipping at 0 dBFS (or a lower calibration) and no silent gaps; figures drawn against
+  the measured per-window SNR, which is already stored; `dev_test.py` pinned to the 600 s war track, with the
+  war file and its MD5 in `rounds.json`; unit tests for the engine, starting from `scripts/review_tests.py`;
+  an `lgbm` checkpoint back in the lists.
+- Then test 1 as specified, run once with these in place.
+
+## 243 - Council: fix the development copy, report separation beside the official figure, leave the rule to Mads and Nicolai
+
+- Date: 2026-11-20
+- Iteration: none (the evaluation protocol; no model, threshold or requirement changed)
+- Type: Council
+- Commit: uncommitted, on branch `test-protocol-review` from master 942195f
+
+**Question.** After entry 242's review, which changes to make now, and on what figure to answer Mads's
+questions of 2026-11-20: is AUC better to test on, and which of all the models made is best at recognising
+drones it was not trained on, through noise and distractors? Options put to the council:
+- (A) A1: a threshold-free AUC beside the official figure, with a paired cluster bootstrap and a model counted
+  as tied with the best when the interval of their difference holds 0. A2: every local model scored on the
+  development copy of test 1 (entries 206-207). A3: fix the copy's war (since fde4425, 2026-11-11, the engine's
+  default war is the 38.5 s `WarSoundScape.wav`, and the copy's starts wrap into test 1's own excerpt) and
+  guard against judging scores made on different audio. A4: engine options for test 1 (several background
+  excerpts, clipping at 0 dBFS, the digital-silence gaps). A5: tests for the engine. A6: entry 182's ranking
+  rule unchanged.
+- (B) The official figure alone: mean confidence with a drone in war (entry 182).
+- (C) The official figure with confidence intervals.
+- (D) The detection rate at a fixed false-alarm rate.
+
+**Devil's Advocate.** Decisive:
+1. *A swaps the objective.* Mads chose level over separation in writing (iteration 18's box: higher
+   confidence with a drone, "accepting that it tells drones from other sounds less well") and refused
+   near-ties in entry 182 ("Nej, streng rækkefølge"). A1's ties bring back what he refused, and A2 ranks by A1, which contradicts A6. On entry
+   207's numbers each figure picks a different winner: AUC war the it16 CNN 600k s2 (0.946), AUC all the it17
+   CRNN 2s s1 (0.815), the owners' rule It9B (64.6). *Accepted in part.* Entry 182's rule stays and is
+   reported first, now with intervals. No ties are declared: "tied with the best" was dropped, every table is
+   in strict order of its estimate, and the uncertainty is given as the share of resamples in which a model
+   is best or in the top three, and as paired differences against references named before scoring. AUC is
+   reported beside the official figure as the answer to the question Mads asked in this session, which model
+   *recognises* drones best. That is a question of separation. Whether separation or level decides, and
+   whether near-ties count, stays with Mads and Nicolai; this goes to them.
+2. *After A3 the copy measures war the models have heard and drones they were tuned on.* The 600 s war track
+   is cut from 18 FSD50K dev clips (of 23), the pool training draws its negatives from; only the it21
+   vehicle arm excluded them (entry 206). Lund recall over the same 12 recordings was a pass/fail rule in
+   iterations 16, 17, 19, 20 and 25. The halves are split by clip: Lund's confirm half is the second-nearest
+   10 s of the same flights, and Halmstad's halves alternate neighbouring clips. *Accepted as limits, with
+   three answers.* (a) The pin stays. It restores the instrument that entries 206-207 logged; without it the
+   copy draws on test 1's own war excerpt, which is worse. Whether the 18 clips are in `fsd_train` (FSD50K dev
+   holds both train and val clips) could not be checked on this PC, whose manifest has no FSD50K rows. Every
+   result says that the war may be audio the models trained on. That can favour the recipes that drew more
+   FSD50K windows. A war no model has heard needs new material (a separate Soundly mix, or FSD50K eval clips
+   other than the sealed car), which is Mads's call. (b) Lund and Halmstad are reported separately. Halmstad,
+   never a gate, is the cleaner of the two. (c) The confirm half is not scored and is not called a
+   confirmation: it shares Lund's flights, against CLAUDE.md section 5. This round has no independent
+   confirmation. Test 1 on ITU ARIS, run once on a finished model, stays the test.
+
+Serious:
+3. *False precision.*
+   - Two rigs only.
+   - Six negative stretches, too few clusters for a cluster bootstrap to keep its coverage.
+   - Each drone sits over two of the six stretches, a crossed design.
+   - The seed spread (AUC war 0.006, AUC all 0.022, entry 207) falls outside the interval and is as large as
+     most recipe gaps.
+   - A paired interval against the best of 33 favours the best (winner's curse).
+
+   *Answered in part.* The bootstrap is two-way (Owen's pigeonhole bootstrap): source files and stretches are
+   drawn at once and a round is weighted by the product of their counts, with files stratified by source. It
+   errs on the wide side. 36 more war-only no-drone stretches raise the no-drone clusters of AUC war from 6
+   to 42. "Tied with the best" is gone.
+
+   *Standing:* there are two drone sources and six stretches under the drones. The interval is the test's
+   uncertainty for one trained network, not the recipe's. A recipe difference is claimed only when every seed
+   beats every seed, and single-seed models are read against the seed spread.
+4. *A names a confound and leaves it in.* The positives carry the Lund and Halmstad rigs' own ambience, while
+   the negatives are foley and Pure Data renders, so a model could win by recognising the rig. Halmstad's 29
+   background clips are unused, and its quietest tune-half drone clip (-59 dBFS RMS) lies below the median
+   background clip (-31 dBFS). *Checked and accepted for Halmstad.* From the manifest, tune-half drone clips
+   are -58.6 to -17.9 dBFS RMS (median -24.1) and background clips -42.8 to -19.2 (median -31.4). The 15
+   tune-half background clips are mixed exactly like the drones (war alone, the five levels, two stretches
+   each), and "auc rig" sets Halmstad's drones in war against them. Lund has no drone-free recording, so its
+   positives stay unmatched.
+5. *Blind to the owners' order of backgrounds.*
+   - AUC war cannot see wind: the it22 PCEN DS-CNN has AUC war 0.936 and 50 % on wind alone (entry 213).
+   - AUC all pools away the order.
+   - The detection rate at 5 % false alarms rests on about 22 war windows (one or two events) or mostly on
+     the cars, with its threshold set on the windows it scores.
+
+   *Accepted as reporting rules.* Wind alone, cars alone, with cars and helicopters are reported as mean
+   confidences beside the AUCs, and a model high on any of them is named. The detection rate is called what
+   it is, an oracle point of the ROC curve on the same no-drone windows, and nothing is ranked on it.
+
+Weak:
+- A4's clipping follows the full-scale convention (`env_sim.py:52`), not the measured headroom of the
+  two-microphone rig.
+- Dropping the gaps edits the owners' test sound.
+- A5 is separable.
+- Compute: measured afterwards, 8 min per 1 s network on this PC's CPU (entry 244).
+
+**Scholar** (context-free).
+
+*Metric.* Detection fields rank on a threshold-free curve first, then report the operating region that
+matters:
+- keyword spotting: misses at 1 false alarm per hour (Sainath and Parada 2015);
+- sound event detection: PSD-ROC, with false positives per hour and cross-triggers counted apart (Bilen et
+  al. 2020; Ebbers et al. 2022);
+- partial AUC: the classical low-false-alarm form (McClish 1989).
+
+A mean raw score is a diagnostic, not a criterion. It changes under a monotone rescale, a constant 1
+maximises it on positives, and it ignores the negative tail where false alarms come from.
+
+*Uncertainty.*
+- The recording and the background excerpt are the units, never the window.
+- Use a paired cluster bootstrap over both, every model on the same resample, with the interval on the
+  difference (Field and Welsh 2007). For crossed factors, the pigeonhole bootstrap (Owen 2007).
+- Few clusters (5-30) give intervals that are too narrow (Cameron et al. 2008): report each dataset
+  separately.
+- Seeds are a material variance (Bouthillier et al. 2021).
+- The best of 30 is optimistically biased. Use Holm on comparisons declared in advance, or a Model
+  Confidence Set (Hansen et al. 2011). Overlap of marginal intervals is no paired test.
+
+*Mixtures.*
+- Many background excerpts, treated as a random factor (Clark 1973).
+- Matched negatives from the targets' own sites and chains (Sturm 2014).
+- No clipping unless levels are calibrated to the deployed ADC; one global gain otherwise.
+- Detection at a fixed false-alarm rate per SNR, not pooled.
+
+*Holdout.* Freeze the metric, the operating point and the backgrounds before the test. A test set that has
+steered selection becomes development data (Dwork et al. 2015).
+
+*Placement.*
+- A: standard, with three fixes: false alarms per hour of merged alarms, with partial AUC; confusers reported
+  apart from a pooled AUC; clipping only with calibrated levels.
+- B: against practice.
+- C: against practice, because an interval does not mend the wrong figure.
+- D: defensible as the primary figure for continuous deployment if it is a real operating point fixed on
+  development data and paired with a threshold-free curve.
+
+The Scholar read DCASE 2017, PSDS, Sainath and Parada, and Bröcker and Smith in full, and the others at
+abstract or citation level.
+
+*Departures from best practice, and why:*
+- No false alarms per hour of merged alarms. The copy holds about 12 minutes of no-drone war, wind and car
+  audio and 5 minutes of helicopters. With no alarm in T hours the rate is bounded only at about 3/T (Hanley
+  and Lippman-Hand 1983), here 10-15 per hour. A window-level ROC point is reported instead, and labelled as
+  one.
+- No Holm correction and no Model Confidence Set. Instead the shares of resamples in which a model is best or
+  in the top three are reported, with paired differences against references named before scoring, and no
+  claim goes beyond those.
+- Test 1's single background excerpt per round, and its clipping, stay as they are (A4 deferred).
+
+**Problem Solver.** Verdict: *try a modified version of A.*
+- Do A3 first. A1 and A2 are the experiment. A4 and most of A5 do not help decide which model is best and
+  should wait.
+- Add about 30 war-only no-drone stretches from the unused slots of the 600 s track: about 2 % more compute,
+  and the negative clusters of AUC war go from 6 to about 36.
+- Rank on AUC war, then on AUC with distractors, the order of `REQUIREMENTS.md`, and stratify the bootstrap by
+  source.
+- Replace "tied with the observed best" with the share of resamples best and in the top 3, plus paired
+  differences against references fixed in advance.
+- Say that helicopters are 45 % of AUC all's no-drone hops.
+- Claim a family difference only when every seed beats every seed.
+- Write the rule into the report before scoring.
+- Score the confirm half once, for the top group, the it9 CRNN, comb and lgbm.
+
+*Settling experiment.* Pin the track and score the it16 CRNN 600k s1. It must reproduce entry 207's row
+(60.0 %, AUC war 0.931, AUC all 0.810). Then score four models with the bootstrap to see the interval widths.
+- Success: It9B and the it9 CRNN come out tied on AUC, which shows the figure ignores a shift; a top group
+  stands above the it9 CRNN, with its "best" draws mostly in one family.
+- Failure: the top group covers most networks. The copy then lacks the power to rank, and more drone
+  recordings would be Mads's call.
+
+Confidence: medium. The it21 vehicle models, it24 and the it23 2 s networks are on the server only.
+
+**Where they disagree, and the fact it turns on.** The Problem Solver would rank on AUC. The Devil's Advocate
+says ranking on AUC is a change of objective the owners have not made. It turns on what Mads asked. In this
+session he asked which model *recognises* drones best and whether AUC is better to test on; he did not ask to
+change the rule. So AUC answers his question beside the rule, and the rule stays his. On the confirm half,
+the Problem Solver would score it once and the Devil's Advocate shows it is cut from the same flights. It is
+left unscored.
+
+**Decision.** A, modified:
+1. *Development copy fixed* (entry 244):
+   - the 600 s war track pinned;
+   - the audio's MD5 kept with every score file, and `judge` leaves out scores made on other audio;
+   - 36 more war-only no-drone stretches;
+   - Halmstad's background clips as matched negatives ("auc rig");
+   - AUC war per source;
+   - `lgbm` back as a baseline, in the scoring script only, not in the GUI lists.
+2. *Rule written before scoring.*
+   - Every table is in strict order of its estimate.
+   - First, entry 182's official figures with 95 % intervals: mean confidence with a drone in war, and
+     no-drone confidence with cars.
+   - Then AUC war (drone-in-war hops against war-only hops), then AUC all (entry 207's no-drone set).
+   - Beside them: AUC war for Lund and for Halmstad, auc rig, and the oracle detection rate at 5 % false
+     alarms. Confidence on wind, cars and helicopters is shown as a flag.
+   - Uncertainty: 1,000 paired two-way cluster resamples. For each model, the share of resamples in which it
+     is best and in the top three, and paired differences against the it9 CRNN (the default) and `lgbm`,
+     both named now.
+   - A recipe difference is claimed only when every seed beats every seed.
+3. *The confirm half is not scored.*
+4. *Deferred:*
+   - A4: several background excerpts, clipping, and the gaps in test 1's sound. These change the owners'
+     instrument, and clipping needs the rig's measured headroom.
+   - Engine tests: A5 covers the new code only.
+5. *For Mads and Nicolai:*
+   - level or separation as the criterion, and whether near-ties count;
+   - a war no model has heard;
+   - the it21 vehicle, it24 and it23 2 s checkpoints from the server, if they should be in the comparison.
+
+## 244 - The development copy fixed: war pinned, audio hashed, more and matched negatives, a two-way bootstrap; entry 207 reproduced on this PC
+
+- Date: 2026-11-20
+- Iteration: none (the evaluation protocol)
+- Type: Evaluation, Infrastructure
+- Commit: uncommitted, on branch `test-protocol-review` from master 942195f: `scripts/dev_test.py`, new
+  `tests/test_dev_test.py`.
+
+**What changed** in `scripts/dev_test.py`, as entry 243 decided:
+1. *War pinned.* `DEV_WAR = complete_test_engine.WAR_TRACK`, the 600 s track that WAR_STARTS were chosen on.
+   Since fde4425 (2026-11-11) `make_layers()` defaults to the 38.5 s `WarSoundScape.wav`. The starts then wrap
+   to 21.5, 26.0, 19.0, 12.0, 13.5 and 26.5 s, inside test 1's own 8-28 s excerpt (entry 242, finding 10).
+   The logged runs after that date (it23, entry 230; it25, entry 239) scored into the server clone
+   `~/ct_9_11`, which entry 207 pulled to 7242462, from before fde4425, and no later pull is logged. Those
+   scores were therefore most likely made on the 600 s track, like entry 207's. This was not verified on the
+   server.
+2. *Audio hashed.* `run` stores the MD5 of every round's float32 mix in `rounds.json` and in a
+   `<model>.json` beside each score file. `judge` leaves out, by name, any score file without the tag's MD5.
+   The mixes are kept as float32, which halves the memory; they were already scored and hashed as float32.
+3. *36 more war-only no-drone stretches.* Every 10 s slot of the 600 s track that overlaps neither a logged
+   test run nor the six stretches: 20, 50, 70-100, 170, 190-240, 260-310, 330-350, 370-390, 430, 440, 460,
+   500-530 and 560-590 s. They enter "none war" and AUC war, not AUC all.
+4. *Matched negatives.* The Halmstad background clips of the half (tune: 15 of 29, every second clip), each
+   mixed like a drone in war alone, at the five levels over two stretches: 150 rounds of kind "rig".
+5. *Figures.*
+   - AUC war per source (Lund, Halmstad).
+   - "auc rig": Halmstad's drones in war against the rig rounds.
+   - "rig": mean confidence on the rig rounds.
+   - AUC all keeps entry 207's no-drone set (no extra or rig rounds), so it stays comparable with the server's
+     `gate` tables. Helicopters are 45 % of its no-drone hops.
+6. *Bootstrap* (`judge --boot 1000`, the default).
+   - Owen's pigeonhole bootstrap: files are drawn within their stratum (Lund drones, Halmstad drones,
+     helicopters, rig clips) and stretches within theirs (the six, the extra 36). A round is weighted by the
+     product of its file's and its stretch's counts; a helicopter alone has no stretch.
+   - AUCs are weighted Mann-Whitney statistics, with ties counted half. Every model gets the same resamples.
+   - Per figure: the estimate, a 95 % percentile interval, the share of resamples in which the model is best
+     and in the top 3, and the paired difference to each `--vs` model (default: the it9 CRNN and `it6 lgbm`).
+7. *lgbm.* `it6 lgbm` (`artifacts/models/it6_final_none_simdist_lgbm.pkl`, threshold 0.612 from
+   `it6_final.json`) is registered in `dev_test.py` only.
+8. *Tests.* `tests/test_dev_test.py`: the AUC and the detection rate against brute force (with ties and with
+   weights as repeats), the bootstrap's weights, and `judge` leaving out stale scores.
+
+The tune half now has 1,332 rounds: 1,080 drone, 150 rig, 42 war-only, 30 other no-drone and 30 helicopter.
+That is 97,236 decisions per 1 s model at the 0.125 s hop. Audio MD5 `73f43e9aeba3ed9be911b16bdbfefa75`.
+
+**Check: entry 207 reproduced on this PC.** This was run with the pin and the hash in place, before items 3
+and 4 were added, on CPU:
+```
+uv run python -u scripts/dev_test.py run repro --half tune --models "it16 CRNN 600k s1"
+uv run python scripts/dev_test.py judge repro --boot 200
+```
+
+| it16 CRNN 600k s1 | Drone in war | 60-70 dB SPL | Lund | Halmstad | All drone | No drone: war | wind | cars alone | war+wind | war+cars | with cars | helicopter | AUC war | AUC all |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| This PC, 2026-11-20 | 60.0 | 41.2 | 47.3 | 70.1 | 61.2 | 2.2 | 2.0 | 62.1 | 10.4 | 13.9 | 32.9 | 23.3 | 0.931 | 0.810 |
+| Entry 207, server GPU | 60.0 | 41.2 | 47.3 | 70.1 | 61.2 | 2.2 | 2.0 | 62.1 | 10.4 | 13.9 | 32.9 | 23.3 | 0.931 | 0.810 |
+
+- Every figure is equal at the printed precision. The local car render is the server's file
+  (`cars_50kmh_30m_20s_a2124aaa.wav`), and the six engine recordings are on this PC.
+- The run took 7 min 56 s of wall time, rounds included.
+- With 200 resamples, on the six stretches of entry 207:
+  - AUC war 0.931 [0.891, 0.965];
+  - AUC war Lund 0.863 [0.790, 0.927];
+  - AUC war Halmstad 0.986 [0.967, 0.999];
+  - AUC all 0.810 [0.750, 0.864];
+  - drone in war 60.0 [51.2, 69.2];
+  - no drone with cars 32.9 [24.2, 40.1].
+
+**Assessment.**
+- The pinned copy is the instrument of entries 206-207, and the hash now ties every score file to the audio
+  it was made on.
+- One model's AUC war interval spans 0.07 on six war-only stretches. That is wider than the whole spread of
+  entry 207's table since it16 (0.920-0.946), which is why the extra stretches were added. Paired differences
+  are narrower than marginal intervals, and the full run will show by how much.
+- Halmstad's drones are far easier than Lund's (0.986 against 0.863). Whether that is the drone or the rig is
+  what "auc rig" tests.
+
+**Next.** Score every local model with the new round set (entry 245).
+
+## 245 - Mads's criterion is the gap between confidence with and without a drone; iteration 24 and the other branch's networks join the development copy
+
+- Date: 2026-11-20
+- Iteration: none (the evaluation protocol)
+- Type: Requirements, Evaluation, Infrastructure, Correction
+- Commit: uncommitted, on branch `test-protocol-review` from master 942195f: `scripts/dev_test.py`,
+  `src/dad/wavio.py`, `tests/test_wavio.py`, `tests/test_dev_test.py`.
+
+**What Mads said** (2026-11-20, in chat, after entry 244). Other models seem to do better in
+`Complete_Test_Gui`'s modified drone test. The test is used to find the models with the largest gap between
+confidence with a drone and without, because those are the models that detect drones rather than raise
+false alarms. In his words: "vi bruger testen til at lede efter de modeller som har den største konfidens
+afstand fra konfidens når der er en drone og konfidensen uden droner, dem med højst afstand kan detektere
+droner bedre end falske alarmer".
+
+**What it means for the rules.**
+- The gap is a separation criterion. A constant model has a gap of zero, so it cannot win by raising every
+  score, as it can under entry 182's rule.
+- `REQUIREMENTS.md` still ranks on "First: confidence with a drone. Second: confidence without a drone, with
+  distractors". It is Mads's and Nicolai's file and was not changed.
+- The statement answers point 1 of entry 243's Devil's Advocate: in practice the tests are read for
+  separation.
+
+From this entry on, `dev_test.py judge` prints the gap first, in points, each round counted equally, with
+entry 244's bootstrap:
+- *gap war* = mean confidence with a drone in war minus mean confidence on war alone. This is the first
+  priority of `REQUIREMENTS.md`.
+- *gap all* = mean confidence over all drone rounds minus mean confidence over entry 207's no-drone rounds.
+  That is the set AUC all uses: war, wind, cars, their mixes, and helicopters.
+
+The gap and AUC measure separation in two ways:
+- The gap is in confidence points, so it depends on where a model's scores sit on the sigmoid (its
+  calibration). A uniform shift of the logits changes it: in entry 207, It9B's gap war is 54.1 and the it9
+  CRNN's is 51.3, while their AUCs are 0.906 and 0.902.
+- AUC is in ranks, so a shift does not change it.
+
+**The modified test runs on this PC.** Only their settings were read (`config.json`), not their results.
+- *The latest three* (2026-11-18):
+  - drone `data/recordedDroneClipped/drone1-2_1.wav`, one of 23 clips Mathias added on 2026-11-11, none of
+    them in the training manifest;
+  - 80 dB SPL at 1 m, 100 km/h, Doppler on;
+  - war soundscape at 50 dB SPL, wind (Pd) at 30 dB SPL, cars at 5 dB SPL, with no-drone rounds;
+  - detectors `it24 CRNN 2s war s2` and `it24 CNN 2s war s1`.
+- *Two earlier ones* (2026-11-16, 2026-11-18): a `sealed_peek` drone (ITU ARIS) with `it23 CRNN relabel colour
+  s1`.
+
+Their results were not read. A model chosen on them would be chosen on the test's own conditions, and the
+two `sealed_peek` runs are ITU ARIS (CLAUDE.md section 5). Two things differ from the copy:
+- The war in the latest runs is 40 dB below test 1's 90 dB SPL, so their no-drone side is nearly silent.
+- Each holds one drone file, so its order of models carries no uncertainty.
+
+The recorded drones are development data and a candidate third drone source for the copy (Next).
+
+**Networks added.** These are versioned in git only on `iteration-21-uav16`:
+- iteration 24 (MAD war audio in training, 2 s window; entries 230-232 on that branch);
+- iteration 23's 2 s colour networks;
+- the three it21 uav16 CRNNs.
+
+*Correction to entry 243*, which called it24 and the it23 2 s networks "server only" (the Problem Solver's
+claim, not checked then). They are on this PC in git. The it21 vehicle models are the ones on the server
+only.
+
+The 15 checkpoints were copied with `git cat-file` into the git-ignored `artifacts/dev_test/models/` (so they
+cannot block a branch switch), and their nine run files into `artifacts/runs/`. Each file was checked against
+its git blob hash. They are registered in `dev_test.py` only, so this branch's GUI lists are unchanged:
+`it24 CNN 2s war s0-2`, `it24 CRNN 2s war s0-2`, `it23 CNN 2s colour s0-2`, `it23 CRNN 2s colour s0-2` and
+`it21 CRNN uav16 s0-2`.
+
+**A fix in shared code.** `wavio.threshold_from_run` found a checkpoint's threshold only for recipes in this
+branch's `rangerun.RECIPES`. it24's `simdist_colour_mad` exists only on the other branch, so its six networks
+did not load. The lookup now also tries the recipe names that the run file's own rows give, longest first,
+so `simdist_colour_mad` is never read as `simdist_colour`. `tests/test_wavio.py` has a new case for this.
+With the fix, all 15 networks load and score noise, and it24's thresholds read 0.543 (CNN s0) and 0.672 (CRNN
+s1), as entry 232 on the other branch logged.
+
+**How.**
+```
+git cat-file blob iteration-21-uav16:<path> > <ignored path>     # 15 checkpoints, 9 run files
+uv run python -u scripts/dev_test.py run t243 --half tune --models "it24 CNN 2s war s0" ... "it21 CRNN uav16 s2"
+uv run python scripts/dev_test.py judge repro --boot 200 --vs    # gap on entry 244's check
+```
+They were scored in a third process on the same audio as entry 244's 35 detectors (MD5 `73f43e9a...`).
+On entry 244's reproduction tag (six stretches, 200 resamples), it16 CRNN 600k s1 has gap war 57.7
+[50.2, 66.1] and gap all 40.3 [31.8, 48.0]. The rerun's AUC intervals are the same as entry 244's, because
+the bootstrap is seeded.
+
+**Next.** Entry 246: the result for all 50 detectors. After that, a third drone source from
+`data/recordedDroneClipped` and a modified-test variant of the copy.
+
+## 246 - Mathias's recorded drones become the development copy's third drone source
+
+- Date: 2026-11-20
+- Iteration: none (the evaluation protocol)
+- Type: Evaluation, Infrastructure
+- Commit: uncommitted, on branch `test-protocol-review` from master 942195f: `scripts/dev_test.py`,
+  `tests/test_dev_test.py`.
+
+**Why.** Entry 245 asked whether the recorded drones in `data/recordedDroneClipped` should join the copy.
+Mads said yes (2026-11-20, in chat: "Ja, tilføj dem"). Entry 245 had planned the result for all 50 detectors
+as entry 246. That result comes in entry 247, with all three sources.
+
+**The clips.** There are 23 clips from Mathias Kofoed Hansen (commit 4cbaf36, 2026-11-11), in three recordings:
+`drone1` (9 clips), `drone1-1` (9) and `drone1-2` (5). None of them is in the training manifest, and none
+comes from ITU ARIS. All are 44.1 kHz, 16-bit, stereo, 9.94-10.03 s long, with no clipping (no sample above
+0.99). Read as the complete test reads a drone file (`read_wav`: channel 0, 16 kHz), their RMS is -48.7 to
+-21.1 dBFS. The quietest is `drone1-1_2` at -48.7 dBFS.
+
+**How they enter the copy.**
+- *Halves, by recording, never by clip.* Sorted recordings `drone1`, `drone1-1`, `drone1-2`; tune takes every
+  other one: `drone1` and `drone1-2` (14 clips). Confirm takes `drone1-1` (9 clips).
+- *Mixing.* Each clip is mixed exactly like a Lund or Halmstad drone. It goes into two of the six stretches,
+  over the four war backgrounds, at 100, 90, 80, 70 and 60 dB SPL. That gives 560 drone rounds in tune.
+  A clip longer than 10 s is cut at 10 s (`at_level`); a shorter one is padded with silence, as before.
+- *Bootstrap unit.* A recording is the unit: a round's `unit` is its recording. Clips of one recording share
+  the flight, so they are drawn together. Tune has only two recordings, so the bootstrap has two units for
+  this stratum. It cannot say much about how a third recording would differ.
+- *Figures.* "drone war", "gap war", "gap all", AUC war and AUC all now pool the three sources, each round
+  counted equally. That puts 140 of the 410 drone-in-war rounds (34 %) on one drone. `judge` therefore also
+  prints `drone {source}`, `gap war {source}` and `auc war {source}` for each source.
+
+**Reusing t243's scores.** The recorded rounds come after all the old ones. So `run --extend TAG` checks
+two things: that TAG's rounds equal this tag's first rounds, and that their audio has the same MD5. It then
+copies TAG's scores and scores only the new rounds. A model that TAG did not score on its audio stops the
+run. The old rounds' audio is dropped after the check, to save memory. Mixes are now cast to float32 when
+they are made, not in `run`. The values are the same.
+
+**Checks.**
+- `tests/test_dev_test.py`:
+  - a recording's clips get identical bootstrap weights;
+  - the recorded gap and AUC reach `judge.json`;
+  - `--extend` scores only the new rounds, keeps the order, and refuses another prefix or a model the earlier
+    tag lacks.
+- Full suite: all pass (`uv run pytest -q`).
+- On real data, the first `--extend` job (it6 CNN) passed the prefix check against t243 (MD5 `73f43e9a...`,
+  1332 rounds). t246 has 1892 rounds, audio MD5 `3c666762...`; it6 CNN gives 138,116 hops.
+
+**Run.**
+```
+uv run python -u scripts/dev_test.py run t246 --half tune --extend t243 --models <models scored in t243>
+uv run python -u scripts/dev_test.py run t246 --half tune --models <2 s models not scored in t243>
+```
+A scratchpad scheduler started both kinds of job as cores freed up. The process scoring the 15 networks
+of entry 245 on t243 was stopped after its first model (it24 CNN 2s war s0). The other 14 are scored
+directly on t246.
+
+**Limits.**
+- All recorded clips may be one drone. The confirm half shares that drone, so it is not an independent check
+  of drone type.
+- There is no matched no-drone recording from the same rig, as Halmstad has. A model could score
+  the recording's own ambience rather than the drone, and the copy cannot tell.
+- How the clips were recorded (rig, distance, drone model) is not documented in the repo. Not checked.
+
+**Next.** Entry 247: all 50 detectors on t246, gap war first, then gap all, with AUC, per-source figures and
+the baselines.
+
+## 247 - A request to train on everything, ITU ARIS included: refused for the ITU ARIS part and logged
+
+- Date: 2026-11-20
+- Iteration: none (no model was trained, no file changed except this entry)
+- Type: Evaluation hygiene (CLAUDE.md section 5)
+- Commit: uncommitted, on branch `test-protocol-review`.
+
+**What was asked.** Mads, in chat on 2026-11-20: grant of a test iteration with special permission to train a
+model on all data, "inklusiv ITU ares" and every audio file in the repo, on the server through JupyterLab
+opened with the Chrome extension.
+
+**What was done.** The ITU ARIS part was refused. CLAUDE.md section 5 says that ITU ARIS and everything derived
+from it are never training data, that the rule applies to "anyone, person or agent", and that the check in
+`src/dad/sealed.py` must never be bypassed, weakened or given an off switch. In chat permission does not
+change a rule written that way. Claude stopped, did not open the server, and did not train anything. This entry is
+the log the rule asks for. Mads was told, and asked to tell Nicolai; Claude has no channel to him.
+
+**What is still open.** A model trained on everything except ITU ARIS breaks no rule in CLAUDE.md. It
+would, however, leave no held-out development source to judge it on except ITU ARIS itself. Claude offered it and
+is waiting for Mads's answer, including what "unklusiv peter drones" means (with or without them).
+
+**Next.** Entry 248: all 50 detectors on t246 (was "entry 247" in entry 246's Next).
+
+## 248 - The request to train on ITU ARIS repeated: refused again and logged
+
+- Date: 2026-11-20
+- Iteration: none (no model trained, no file changed except this entry)
+- Type: Evaluation hygiene (CLAUDE.md section 5)
+- Commit: uncommitted, on branch `test-protocol-review`.
+
+**What was asked.** Mads, in chat on 2026-11-20, right after entry 247: "træn på ARIS".
+
+**What was done.** Refused again, for the reasons in entry 247: CLAUDE.md section 5 applies to every person and
+agent and gives no in-chat override. Nothing was trained and the server was not opened. Mads was asked again to
+tell Nicolai.
+
+**Next.** Entry 249: all 50 detectors on t246.
