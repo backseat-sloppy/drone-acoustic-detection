@@ -1,0 +1,827 @@
+{
+  "args": {
+    "name": "it30_half_s2",
+    "models": [
+      "comb",
+      "lgbm",
+      "crnn"
+    ],
+    "device": "cuda",
+    "windows": 600000,
+    "lgbm_windows": 40000,
+    "val_families": 1500,
+    "deploy_fa": 0.05,
+    "seed": 2,
+    "workers": 8,
+    "uav16": false,
+    "p_vehicle": 0.0,
+    "p_quiet": 0.2,
+    "p_steady": 0.0,
+    "ladder": 1,
+    "probe_families": 500,
+    "reference": [
+      "it27_quiet_s0_crnn.pt"
+    ]
+  },
+  "val_drones": [
+    6,
+    12,
+    18,
+    24
+  ],
+  "train_drones": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    7,
+    8,
+    9,
+    10,
+    11,
+    13,
+    14,
+    15,
+    16,
+    17,
+    19,
+    20,
+    21,
+    22,
+    23
+  ],
+  "results": [
+    {
+      "scorer": "comb (no ML)",
+      "seed": 2,
+      "window_s": 1.0,
+      "deploy_threshold": 3.9135532539557385,
+      "val": {
+        "threshold": 3.9135532539557385,
+        "auc": 0.6070047407407407,
+        "recall_at_thr": 0.2926666666666667,
+        "fa_at_thr": 0.05,
+        "conf_no_drone": 0.7923138328332182,
+        "conf_no_drone_plain": 0.9851059497579603,
+        "conf_no_drone_twin": 0.6015672556105953,
+        "fa_twin_at_thr": 0.03713527851458886,
+        "auc_drone_vs_twin": 0.6256973180076628,
+        "conf_empty_silence": 0.0,
+        "conf_drone_snr_0_10": 27.382810423013854,
+        "conf_drone_snr_-10_0": 10.030365823989786,
+        "conf_drone_snr_-20_-10": 5.312700530847749,
+        "bed_background": {
+          "n_pos": 1266,
+          "n_neg": 422,
+          "auc": 0.6039378420670396,
+          "conf_drone": 11.902029793406616,
+          "conf_no_drone": 0.7899115995720092,
+          "fa_at_thr": 0.04739336492890995
+        },
+        "bed_quiet": {
+          "n_pos": 642,
+          "n_neg": 214,
+          "auc": 0.5982181849943226,
+          "conf_drone": 7.811763886655597,
+          "conf_no_drone": 1.1262051203702264,
+          "fa_at_thr": 0.10747663551401869
+        },
+        "bed_silence": {
+          "n_pos": 240,
+          "n_neg": 80,
+          "auc": 0.6696875,
+          "conf_drone": 85.94975624902987,
+          "conf_no_drone": 0.4306986279418493,
+          "fa_at_thr": 0.025
+        },
+        "bed_war": {
+          "n_pos": 1182,
+          "n_neg": 394,
+          "auc": 0.6155187370627089,
+          "conf_drone": 8.054674831885839,
+          "conf_no_drone": 0.7739228793414438,
+          "fa_at_thr": 0.0532994923857868
+        },
+        "bed_wind": {
+          "n_pos": 1170,
+          "n_neg": 390,
+          "auc": 0.5924589086127547,
+          "conf_drone": 11.40784620519596,
+          "conf_no_drone": 0.7044580866034211,
+          "fa_at_thr": 0.023076923076923078
+        },
+        "confuser_distracter": {
+          "n_pos": 1029,
+          "n_neg": 343,
+          "auc": 0.60273072160976,
+          "conf_drone": 11.655413548022663,
+          "conf_no_drone": 1.4361366587527322,
+          "fa_at_thr": 0.09620991253644315
+        },
+        "confuser_none": {
+          "n_pos": 2457,
+          "n_neg": 819,
+          "auc": 0.613422416230719,
+          "conf_drone": 18.459264790611254,
+          "conf_no_drone": 0.5807722098893495,
+          "fa_at_thr": 0.03663003663003663
+        },
+        "confuser_war": {
+          "n_pos": 1014,
+          "n_neg": 338,
+          "auc": 0.5945315873627207,
+          "conf_drone": 6.145005141394484,
+          "conf_no_drone": 0.651548625438648,
+          "fa_at_thr": 0.03550295857988166
+        }
+      },
+      "uav16_real": {
+        "auc": 0.537624416794568,
+        "recall_at_thr": 0.07102593010146561,
+        "fa_at_thr": 0.045366421093447074,
+        "conf_drone": 1.1188948389563538,
+        "conf_no_drone": 0.6869420132030627,
+        "recall_range_0_20": 0.13265993265993267,
+        "recall_range_20_40": 0.05206880520688052,
+        "recall_range_40_80": 0.007509386733416771
+      },
+      "steady_probe": {
+        "threshold": 3.9135532539557385,
+        "auc": 0.573608,
+        "recall_at_thr": 0.20466666666666666,
+        "fa_at_thr": 0.03,
+        "conf_no_drone": 0.3858478721763428,
+        "conf_no_drone_plain": 0.3858478721763428,
+        "conf_no_drone_twin": NaN,
+        "fa_twin_at_thr": NaN,
+        "auc_drone_vs_twin": NaN,
+        "conf_drone_snr_0_10": 12.393422387910588,
+        "conf_drone_snr_-10_0": 2.523010089356892,
+        "conf_drone_snr_-20_-10": 0.8520736136728652,
+        "bed_background": {
+          "n_pos": 249,
+          "n_neg": 83,
+          "auc": 0.5298059708714377,
+          "conf_drone": 5.290095613862531,
+          "conf_no_drone": 0.6391268914141961,
+          "fa_at_thr": 0.04819277108433735
+        },
+        "bed_colour_noise": {
+          "n_pos": 396,
+          "n_neg": 132,
+          "auc": 0.61489898989899,
+          "conf_drone": 5.850585870317188,
+          "conf_no_drone": 0.0,
+          "fa_at_thr": 0.0
+        },
+        "bed_synth_wind": {
+          "n_pos": 387,
+          "n_neg": 129,
+          "auc": 0.5917312661498708,
+          "conf_drone": 3.58796308194601,
+          "conf_no_drone": 0.0,
+          "fa_at_thr": 0.0
+        },
+        "bed_war": {
+          "n_pos": 219,
+          "n_neg": 73,
+          "auc": 0.5583286420216426,
+          "conf_drone": 8.474515036905807,
+          "conf_no_drone": 0.9050313299449788,
+          "fa_at_thr": 0.0958904109589041
+        },
+        "bed_wind": {
+          "n_pos": 249,
+          "n_neg": 83,
+          "auc": 0.5413944936371995,
+          "conf_drone": 4.589185472080474,
+          "conf_no_drone": 0.889266470057948,
+          "fa_at_thr": 0.04819277108433735
+        },
+        "confuser_colour_noise": {
+          "n_pos": 279,
+          "n_neg": 93,
+          "auc": 0.5778124638686554,
+          "conf_drone": 4.157713415208447,
+          "conf_no_drone": 0.14767947108421975,
+          "fa_at_thr": 0.0
+        },
+        "confuser_none": {
+          "n_pos": 903,
+          "n_neg": 301,
+          "auc": 0.5699900295434561,
+          "conf_drone": 6.199064423796604,
+          "conf_no_drone": 0.5485875584724426,
+          "fa_at_thr": 0.04983388704318937
+        },
+        "confuser_synth_wind": {
+          "n_pos": 318,
+          "n_neg": 106,
+          "auc": 0.5823543372493177,
+          "conf_drone": 3.973195859463528,
+          "conf_no_drone": 0.13268764318050733,
+          "fa_at_thr": 0.0
+        }
+      }
+    },
+    {
+      "scorer": "reference it27_quiet_s0_crnn.pt",
+      "seed": 2,
+      "window_s": 1.0,
+      "deploy_threshold": 0.7396412491798401,
+      "val": {
+        "threshold": 0.7396412491798401,
+        "auc": 0.983554962962963,
+        "recall_at_thr": 0.9128888888888889,
+        "fa_at_thr": 0.05,
+        "conf_no_drone": 0.18865236639976501,
+        "conf_no_drone_plain": 0.21122422814369202,
+        "conf_no_drone_twin": 0.16631996631622314,
+        "fa_twin_at_thr": 0.04376657824933687,
+        "auc_drone_vs_twin": 0.9861815502505157,
+        "conf_empty_silence": 0.0030700298957526684,
+        "conf_drone_snr_0_10": 0.9990718364715576,
+        "conf_drone_snr_-10_0": 0.9790093898773193,
+        "conf_drone_snr_-20_-10": 0.8408433794975281,
+        "bed_background": {
+          "n_pos": 1266,
+          "n_neg": 422,
+          "auc": 0.9625401495923271,
+          "conf_drone": 0.9178004264831543,
+          "conf_no_drone": 0.2910322844982147,
+          "fa_at_thr": 0.08767772511848342
+        },
+        "bed_quiet": {
+          "n_pos": 642,
+          "n_neg": 214,
+          "auc": 0.9809954290039886,
+          "conf_drone": 0.9271150827407837,
+          "conf_no_drone": 0.19916345179080963,
+          "fa_at_thr": 0.04205607476635514
+        },
+        "bed_silence": {
+          "n_pos": 240,
+          "n_neg": 80,
+          "auc": 0.9986979166666666,
+          "conf_drone": 0.978089451789856,
+          "conf_no_drone": 0.07872534543275833,
+          "fa_at_thr": 0.0125
+        },
+        "bed_war": {
+          "n_pos": 1182,
+          "n_neg": 394,
+          "auc": 0.9952545371778024,
+          "conf_drone": 0.9600399136543274,
+          "conf_no_drone": 0.07933497428894043,
+          "fa_at_thr": 0.027918781725888325
+        },
+        "bed_wind": {
+          "n_pos": 1170,
+          "n_neg": 390,
+          "auc": 0.9850471181240412,
+          "conf_drone": 0.9443258047103882,
+          "conf_no_drone": 0.20509213209152222,
+          "fa_at_thr": 0.04358974358974359
+        },
+        "confuser_distracter": {
+          "n_pos": 1029,
+          "n_neg": 343,
+          "auc": 0.9664085542588547,
+          "conf_drone": 0.9239878058433533,
+          "conf_no_drone": 0.25249800086021423,
+          "fa_at_thr": 0.11370262390670553
+        },
+        "confuser_none": {
+          "n_pos": 2457,
+          "n_neg": 819,
+          "auc": 0.98389938194578,
+          "conf_drone": 0.9392462372779846,
+          "conf_no_drone": 0.19102983176708221,
+          "fa_at_thr": 0.03785103785103785
+        },
+        "confuser_war": {
+          "n_pos": 1014,
+          "n_neg": 338,
+          "auc": 0.9941966317705963,
+          "conf_drone": 0.9595675468444824,
+          "conf_no_drone": 0.11810149252414703,
+          "fa_at_thr": 0.014792899408284023
+        }
+      },
+      "loaded": "it27_quiet_s0_crnn.pt",
+      "uav16_real": {
+        "auc": 0.8613142618836644,
+        "recall_at_thr": 0.6169109357384442,
+        "fa_at_thr": 0.07580457541682822,
+        "conf_drone": 0.7138013243675232,
+        "conf_no_drone": 0.2651080787181854,
+        "recall_range_0_20": 0.7111111111111111,
+        "recall_range_20_40": 0.6517898651789865,
+        "recall_range_40_80": 0.3479349186483104
+      },
+      "steady_probe": {
+        "threshold": 0.7396412491798401,
+        "auc": 0.9675666666666667,
+        "recall_at_thr": 0.852,
+        "fa_at_thr": 0.018,
+        "conf_no_drone": 0.2551155388355255,
+        "conf_no_drone_plain": 0.2551155388355255,
+        "conf_no_drone_twin": NaN,
+        "fa_twin_at_thr": NaN,
+        "auc_drone_vs_twin": NaN,
+        "conf_drone_snr_0_10": 0.9982186555862427,
+        "conf_drone_snr_-10_0": 0.9690198302268982,
+        "conf_drone_snr_-20_-10": 0.746989369392395,
+        "bed_background": {
+          "n_pos": 249,
+          "n_neg": 83,
+          "auc": 0.9441138046160547,
+          "conf_drone": 0.8971719741821289,
+          "conf_no_drone": 0.3381366729736328,
+          "fa_at_thr": 0.060240963855421686
+        },
+        "bed_colour_noise": {
+          "n_pos": 396,
+          "n_neg": 132,
+          "auc": 0.9532254361799816,
+          "conf_drone": 0.8772451877593994,
+          "conf_no_drone": 0.30032506585121155,
+          "fa_at_thr": 0.007575757575757576
+        },
+        "bed_synth_wind": {
+          "n_pos": 387,
+          "n_neg": 129,
+          "auc": 0.9814714660577288,
+          "conf_drone": 0.9201440811157227,
+          "conf_no_drone": 0.21310274302959442,
+          "fa_at_thr": 0.007751937984496124
+        },
+        "bed_war": {
+          "n_pos": 219,
+          "n_neg": 73,
+          "auc": 0.9933070619878651,
+          "conf_drone": 0.9339722394943237,
+          "conf_no_drone": 0.07981126010417938,
+          "fa_at_thr": 0.0136986301369863
+        },
+        "bed_wind": {
+          "n_pos": 249,
+          "n_neg": 83,
+          "auc": 0.9670005322494799,
+          "conf_drone": 0.9228475093841553,
+          "conf_no_drone": 0.31967514753341675,
+          "fa_at_thr": 0.012048192771084338
+        },
+        "confuser_colour_noise": {
+          "n_pos": 279,
+          "n_neg": 93,
+          "auc": 0.9364088333911434,
+          "conf_drone": 0.8590748310089111,
+          "conf_no_drone": 0.3110095262527466,
+          "fa_at_thr": 0.021505376344086023
+        },
+        "confuser_none": {
+          "n_pos": 903,
+          "n_neg": 301,
+          "auc": 0.9728958105686839,
+          "conf_drone": 0.9220172762870789,
+          "conf_no_drone": 0.24732396006584167,
+          "fa_at_thr": 0.019933554817275746
+        },
+        "confuser_synth_wind": {
+          "n_pos": 318,
+          "n_neg": 106,
+          "auc": 0.977809422095645,
+          "conf_drone": 0.9086357355117798,
+          "conf_no_drone": 0.22820161283016205,
+          "fa_at_thr": 0.009433962264150943
+        }
+      }
+    },
+    {
+      "scorer": "lgbm",
+      "seed": 2,
+      "window_s": 1.0,
+      "deploy_threshold": 0.6696177244842281,
+      "val": {
+        "threshold": 0.6696177244842281,
+        "auc": 0.9487502222222223,
+        "recall_at_thr": 0.7813333333333333,
+        "fa_at_thr": 0.05,
+        "conf_no_drone": 0.20087717135114677,
+        "conf_no_drone_plain": 0.2126971685488988,
+        "conf_no_drone_twin": 0.18918258526424625,
+        "fa_twin_at_thr": 0.038461538461538464,
+        "auc_drone_vs_twin": 0.9550704391394047,
+        "conf_empty_silence": 0.003121040003045705,
+        "conf_drone_snr_0_10": 0.9813595517226041,
+        "conf_drone_snr_-10_0": 0.8773747873266696,
+        "conf_drone_snr_-20_-10": 0.616501003597072,
+        "bed_background": {
+          "n_pos": 1266,
+          "n_neg": 422,
+          "auc": 0.8928838825123724,
+          "conf_drone": 0.7725106354246727,
+          "conf_no_drone": 0.28592472195622876,
+          "fa_at_thr": 0.07109004739336493
+        },
+        "bed_quiet": {
+          "n_pos": 642,
+          "n_neg": 214,
+          "auc": 0.9560369173435816,
+          "conf_drone": 0.8091395160535245,
+          "conf_no_drone": 0.19166628591578413,
+          "fa_at_thr": 0.028037383177570093
+        },
+        "bed_silence": {
+          "n_pos": 240,
+          "n_neg": 80,
+          "auc": 0.9833854166666667,
+          "conf_drone": 0.9067210503771741,
+          "conf_no_drone": 0.12030236695234545,
+          "fa_at_thr": 0.0375
+        },
+        "bed_war": {
+          "n_pos": 1182,
+          "n_neg": 394,
+          "auc": 0.9752054935710788,
+          "conf_drone": 0.8691788917673547,
+          "conf_no_drone": 0.1291047528696361,
+          "fa_at_thr": 0.048223350253807105
+        },
+        "bed_wind": {
+          "n_pos": 1170,
+          "n_neg": 390,
+          "auc": 0.9558185404339251,
+          "conf_drone": 0.8323602630066362,
+          "conf_no_drone": 0.202942249200999,
+          "fa_at_thr": 0.04358974358974359
+        },
+        "confuser_distracter": {
+          "n_pos": 1029,
+          "n_neg": 343,
+          "auc": 0.9181888498839769,
+          "conf_drone": 0.7836614949476911,
+          "conf_no_drone": 0.2369337786026903,
+          "fa_at_thr": 0.08454810495626822
+        },
+        "confuser_none": {
+          "n_pos": 2457,
+          "n_neg": 819,
+          "auc": 0.9529941862054194,
+          "conf_drone": 0.8390989576511494,
+          "conf_no_drone": 0.20309421935659164,
+          "fa_at_thr": 0.042735042735042736
+        },
+        "confuser_war": {
+          "n_pos": 1014,
+          "n_neg": 338,
+          "auc": 0.9666853401491544,
+          "conf_drone": 0.8365446019538952,
+          "conf_no_drone": 0.1589151044761801,
+          "fa_at_thr": 0.03254437869822485
+        }
+      },
+      "train_seconds": 332.1,
+      "windows": 40000,
+      "uav16_real": {
+        "auc": 0.7559798528833834,
+        "recall_at_thr": 0.24735062006764374,
+        "fa_at_thr": 0.042070569988367584,
+        "conf_drone": 0.4326096643754674,
+        "conf_no_drone": 0.2061187205362782,
+        "recall_range_0_20": 0.4444444444444444,
+        "recall_range_20_40": 0.1896792189679219,
+        "recall_range_40_80": 0.03629536921151439
+      },
+      "steady_probe": {
+        "threshold": 0.6696177244842281,
+        "auc": 0.9222386666666667,
+        "recall_at_thr": 0.6986666666666667,
+        "fa_at_thr": 0.034,
+        "conf_no_drone": 0.18626736344675554,
+        "conf_no_drone_plain": 0.18626736344675554,
+        "conf_no_drone_twin": NaN,
+        "fa_twin_at_thr": NaN,
+        "auc_drone_vs_twin": NaN,
+        "conf_drone_snr_0_10": 0.9692821913128915,
+        "conf_drone_snr_-10_0": 0.8189311984135036,
+        "conf_drone_snr_-20_-10": 0.4729272835891448,
+        "bed_background": {
+          "n_pos": 249,
+          "n_neg": 83,
+          "auc": 0.8840663860260318,
+          "conf_drone": 0.7544678431091323,
+          "conf_no_drone": 0.27618010719650904,
+          "fa_at_thr": 0.08433734939759036
+        },
+        "bed_colour_noise": {
+          "n_pos": 396,
+          "n_neg": 132,
+          "auc": 0.9088422099785737,
+          "conf_drone": 0.7388000167301283,
+          "conf_no_drone": 0.1889906863788101,
+          "fa_at_thr": 0.0
+        },
+        "bed_synth_wind": {
+          "n_pos": 387,
+          "n_neg": 129,
+          "auc": 0.9441539971556197,
+          "conf_drone": 0.7151692168018262,
+          "conf_no_drone": 0.10547995969368845,
+          "fa_at_thr": 0.0
+        },
+        "bed_war": {
+          "n_pos": 219,
+          "n_neg": 73,
+          "auc": 0.9610933883780572,
+          "conf_drone": 0.8269820278970499,
+          "conf_no_drone": 0.12194532720370112,
+          "fa_at_thr": 0.0684931506849315
+        },
+        "bed_wind": {
+          "n_pos": 249,
+          "n_neg": 83,
+          "auc": 0.9246141191271109,
+          "conf_drone": 0.8024072833759512,
+          "conf_no_drone": 0.2741570908157664,
+          "fa_at_thr": 0.060240963855421686
+        },
+        "confuser_colour_noise": {
+          "n_pos": 279,
+          "n_neg": 93,
+          "auc": 0.8735884688017884,
+          "conf_drone": 0.7097045774452712,
+          "conf_no_drone": 0.21985823771707141,
+          "fa_at_thr": 0.043010752688172046
+        },
+        "confuser_none": {
+          "n_pos": 903,
+          "n_neg": 301,
+          "auc": 0.9351221288948246,
+          "conf_drone": 0.7903192559654348,
+          "conf_no_drone": 0.1892109955018145,
+          "fa_at_thr": 0.036544850498338874
+        },
+        "confuser_synth_wind": {
+          "n_pos": 318,
+          "n_neg": 106,
+          "auc": 0.9249733001067996,
+          "conf_drone": 0.7120767260618212,
+          "conf_no_drone": 0.14843732046833938,
+          "fa_at_thr": 0.018867924528301886
+        }
+      }
+    },
+    {
+      "scorer": "crnn",
+      "seed": 2,
+      "window_s": 1.0,
+      "deploy_threshold": 0.47919028997421265,
+      "val": {
+        "threshold": 0.47919028997421265,
+        "auc": 0.983645037037037,
+        "recall_at_thr": 0.9155555555555556,
+        "fa_at_thr": 0.05,
+        "conf_no_drone": 0.1009921133518219,
+        "conf_no_drone_plain": 0.11687597632408142,
+        "conf_no_drone_twin": 0.08527678996324539,
+        "fa_twin_at_thr": 0.04774535809018567,
+        "auc_drone_vs_twin": 0.9864904214559388,
+        "conf_empty_silence": 0.0061227004043757915,
+        "conf_drone_snr_0_10": 0.9987030625343323,
+        "conf_drone_snr_-10_0": 0.963568925857544,
+        "conf_drone_snr_-20_-10": 0.7546974420547485,
+        "bed_background": {
+          "n_pos": 1266,
+          "n_neg": 422,
+          "auc": 0.9643071060098979,
+          "conf_drone": 0.8714142441749573,
+          "conf_no_drone": 0.15816132724285126,
+          "fa_at_thr": 0.0947867298578199
+        },
+        "bed_quiet": {
+          "n_pos": 642,
+          "n_neg": 214,
+          "auc": 0.9820508341339855,
+          "conf_drone": 0.8933841586112976,
+          "conf_no_drone": 0.10763919353485107,
+          "fa_at_thr": 0.03271028037383177
+        },
+        "bed_silence": {
+          "n_pos": 240,
+          "n_neg": 80,
+          "auc": 0.9979687500000001,
+          "conf_drone": 0.962871253490448,
+          "conf_no_drone": 0.039366912096738815,
+          "fa_at_thr": 0.025
+        },
+        "bed_war": {
+          "n_pos": 1182,
+          "n_neg": 394,
+          "auc": 0.9942217011517946,
+          "conf_drone": 0.9367886185646057,
+          "conf_no_drone": 0.03762628510594368,
+          "fa_at_thr": 0.017766497461928935
+        },
+        "bed_wind": {
+          "n_pos": 1170,
+          "n_neg": 390,
+          "auc": 0.9851172474249399,
+          "conf_drone": 0.9101422429084778,
+          "conf_no_drone": 0.11214151978492737,
+          "fa_at_thr": 0.04871794871794872
+        },
+        "confuser_distracter": {
+          "n_pos": 1029,
+          "n_neg": 343,
+          "auc": 0.9686865166724749,
+          "conf_drone": 0.8789499998092651,
+          "conf_no_drone": 0.14581501483917236,
+          "fa_at_thr": 0.10495626822157435
+        },
+        "confuser_none": {
+          "n_pos": 2457,
+          "n_neg": 819,
+          "auc": 0.984161273538563,
+          "conf_drone": 0.9056553840637207,
+          "conf_no_drone": 0.0996452122926712,
+          "fa_at_thr": 0.03785103785103785
+        },
+        "confuser_war": {
+          "n_pos": 1014,
+          "n_neg": 338,
+          "auc": 0.9926823290501032,
+          "conf_drone": 0.9372462034225464,
+          "conf_no_drone": 0.05876978859305382,
+          "fa_at_thr": 0.023668639053254437
+        }
+      },
+      "train_seconds": 6705.8,
+      "windows": 600000,
+      "history": [
+        {
+          "windows": 50048,
+          "steps": 782,
+          "loss": 0.3333036403083588,
+          "seconds": 541.4
+        },
+        {
+          "windows": 100032,
+          "steps": 781,
+          "loss": 0.2765172420787445,
+          "seconds": 1083.1
+        },
+        {
+          "windows": 150016,
+          "steps": 781,
+          "loss": 0.26227236842490953,
+          "seconds": 1634.5
+        },
+        {
+          "windows": 200000,
+          "steps": 781,
+          "loss": 0.2432376982098047,
+          "seconds": 2189.6
+        },
+        {
+          "windows": 250048,
+          "steps": 782,
+          "loss": 0.23253410236190653,
+          "seconds": 2760.2
+        },
+        {
+          "windows": 300032,
+          "steps": 781,
+          "loss": 0.21924163004271352,
+          "seconds": 3311.4
+        },
+        {
+          "windows": 350016,
+          "steps": 781,
+          "loss": 0.21613926634612218,
+          "seconds": 3897.6
+        },
+        {
+          "windows": 400000,
+          "steps": 781,
+          "loss": 0.20147911221189627,
+          "seconds": 4507.1
+        },
+        {
+          "windows": 450048,
+          "steps": 782,
+          "loss": 0.1914960355557444,
+          "seconds": 5102.2
+        },
+        {
+          "windows": 500032,
+          "steps": 781,
+          "loss": 0.18569090447737985,
+          "seconds": 5703.5
+        },
+        {
+          "windows": 550016,
+          "steps": 781,
+          "loss": 0.17324173510570684,
+          "seconds": 6244.6
+        },
+        {
+          "windows": 600000,
+          "steps": 781,
+          "loss": 0.17217779254943857,
+          "seconds": 6636.5
+        }
+      ],
+      "uav16_real": {
+        "auc": 0.8538429593285111,
+        "recall_at_thr": 0.6045095828635851,
+        "fa_at_thr": 0.06068243505234587,
+        "conf_drone": 0.5738794803619385,
+        "conf_no_drone": 0.1278751641511917,
+        "recall_range_0_20": 0.6996632996632997,
+        "recall_range_20_40": 0.6429567642956764,
+        "recall_range_40_80": 0.3241551939924906
+      },
+      "steady_probe": {
+        "threshold": 0.47919028997421265,
+        "auc": 0.9674986666666666,
+        "recall_at_thr": 0.856,
+        "fa_at_thr": 0.028,
+        "conf_no_drone": 0.12775994837284088,
+        "conf_no_drone_plain": 0.12775994837284088,
+        "conf_no_drone_twin": NaN,
+        "fa_twin_at_thr": NaN,
+        "auc_drone_vs_twin": NaN,
+        "conf_drone_snr_0_10": 0.9965866804122925,
+        "conf_drone_snr_-10_0": 0.9480108618736267,
+        "conf_drone_snr_-20_-10": 0.6153873205184937,
+        "bed_background": {
+          "n_pos": 249,
+          "n_neg": 83,
+          "auc": 0.9511782068031162,
+          "conf_drone": 0.84148770570755,
+          "conf_no_drone": 0.1699066162109375,
+          "fa_at_thr": 0.04819277108433735
+        },
+        "bed_colour_noise": {
+          "n_pos": 396,
+          "n_neg": 132,
+          "auc": 0.9479262320171411,
+          "conf_drone": 0.8062146902084351,
+          "conf_no_drone": 0.13980911672115326,
+          "fa_at_thr": 0.0
+        },
+        "bed_synth_wind": {
+          "n_pos": 387,
+          "n_neg": 129,
+          "auc": 0.9807503555475432,
+          "conf_drone": 0.8758007287979126,
+          "conf_no_drone": 0.10746833682060242,
+          "fa_at_thr": 0.015503875968992248
+        },
+        "bed_war": {
+          "n_pos": 219,
+          "n_neg": 73,
+          "auc": 0.9913679864890224,
+          "conf_drone": 0.9137241840362549,
+          "conf_no_drone": 0.037986502051353455,
+          "fa_at_thr": 0.0
+        },
+        "bed_wind": {
+          "n_pos": 249,
+          "n_neg": 83,
+          "auc": 0.968065031209174,
+          "conf_drone": 0.8769055008888245,
+          "conf_no_drone": 0.17694571614265442,
+          "fa_at_thr": 0.0963855421686747
+        },
+        "confuser_colour_noise": {
+          "n_pos": 279,
+          "n_neg": 93,
+          "auc": 0.9344047481404401,
+          "conf_drone": 0.7992427349090576,
+          "conf_no_drone": 0.16441847383975983,
+          "fa_at_thr": 0.021505376344086023
+        },
+        "confuser_none": {
+          "n_pos": 903,
+          "n_neg": 301,
+          "auc": 0.9732453284180086,
+          "conf_drone": 0.8741890788078308,
+          "conf_no_drone": 0.12249892950057983,
+          "fa_at_thr": 0.03322259136212625
+        },
+        "confuser_synth_wind": {
+          "n_pos": 318,
+          "n_neg": 106,
+          "auc": 0.9754064317076064,
+          "conf_drone": 0.861005961894989,
+          "conf_no_drone": 0.11053662747144699,
+          "fa_at_thr": 0.018867924528301886
+        }
+      }
+    }
+  ]
+}
