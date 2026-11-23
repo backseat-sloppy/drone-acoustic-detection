@@ -25,3 +25,6 @@ Pure-data+Script/EnviromentTest/drone_only/*.json
 docs/_site/
 docs/.jekyll-cache/
 docs/.jekyll-metadata
+
+# macOS Finder metadata (caused merge conflicts)
+.DS_Store
