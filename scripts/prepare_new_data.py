@@ -6,6 +6,7 @@ Sources (raw, as downloaded, under data/):
     D3set_IntRoLab/Flights/        Holybro X500, 16-mic ground array, two Canadian sites
     Ljungbyhed_Lund/*.zip          three drone types, 12-mic array, Swedish airfield
     extracted/Glasgow/             24 drones hovering at 1 m and 5 m, indoors
+    extracted/UAV16/dataset/       DJI Flip hovering at 5-70 m, 16-mic ground array (Zenodo 23613504)
 
 Glasgow must be extracted first (7z archive):
 
@@ -468,6 +469,59 @@ def prepare_glasgow(manifest: list[dict], tracks: list[dict], summary: dict) -> 
     print(f"  glasgow: {dict(stats)}", flush=True)
 
 
+# --------------------------------------------------------------------- UAV16
+
+U16_ROOT = DATA / "extracted" / "UAV16" / "dataset"
+U16_CHANNEL = 0     # the 16 channels are 42.5 mm apart: one recording, not sixteen
+# One quiet and one urban acquisition batch are kept out of training and scored for recall.
+U16_HELD = frozenset({"batch-20260522", "batch-20260701"})
+
+
+def prepare_uav16(manifest: list[dict], tracks: list[dict], summary: dict) -> None:
+    """One row per recording: a recording is all drone (hover) or all background.
+
+    The loudspeaker replays of FSD50K clips (`controlled_replay`) are left out:
+    they are not field background, and FSD50K eval is a held-out test source.
+    """
+    index = U16_ROOT / "metadata" / "recordings.csv"
+    if not index.exists():
+        raise FileNotFoundError(f"{index} is missing; extract the Zenodo 23613504 archive and its patch first")
+    store = Store("uav16", "int16")
+    stats = collections.Counter()
+    with open(index, newline="", encoding="utf-8-sig") as f:
+        recs = list(csv.DictReader(f))
+    for r in recs:
+        if r["data_origin"] != "self_collected":
+            stats["replay_skipped"] += 1
+            continue
+        drone = r["has_uav"] == "true"
+        rid, batch = r["recording_id"], r["acquisition_batch_id"]
+        wav = (U16_ROOT / "data" / ("real_uav" if drone else "real_background") / r["session_id"] / rid
+               / f"{rid}__ch-{U16_CHANNEL:02d}.wav")
+        x, sr = sf.read(str(wav), dtype="float64", always_2d=True)
+        y = as_int16(to_16k(x[:, 0], sr))
+        base, n = store.add(y)
+        rms, peak = level(y / 32768)
+        attrs = dict(session=batch, scene=r["scene_type"], qc=r["qc_status"])
+        if drone:
+            horiz, height = float(r["horizontal_distance_m"]), float(r["height_m"])
+            attrs.update(range_m=round(math.hypot(horiz, height), 1), horiz_m=horiz, height_m=height,
+                         azimuth_deg=float(r["azimuth_deg"]), condition_id=r["nominal_condition_id"])
+        kind = "drone" if drone else "background"
+        manifest.append(row(store, base, n, source="uav16", recording_id=rid, label=int(drone), kind=kind,
+                            group=f"uav16:{batch}", subset="held" if batch in U16_HELD else "train",
+                            sr_orig=sr, channels_orig=int(r["channel_count"]), channel_used=U16_CHANNEL,
+                            licence="CC BY 4.0", rms_dbfs=rms, peak=peak,
+                            labels="DJI Flip hover" if drone else r["scene_type"], attributes=json.dumps(attrs)))
+        stats[f"{kind}_files"] += 1
+        stats[f"{kind}_s"] += n / SR
+        if drone:
+            stats[f"drone_{'held' if batch in U16_HELD else 'train'}_files"] += 1
+    store.close()
+    summary["uav16"] = {k: round(v, 1) if isinstance(v, float) else v for k, v in stats.items()}
+    print(f"  uav16: {dict(stats)}", flush=True)
+
+
 # ----------------------------------------------------------------------- FPV
 
 FPV_ZIP = DATA / "Acoustic_UAV_Field_Recordings" / "Fpv.zip"
@@ -548,6 +602,7 @@ STEPS = {
     "d3set": prepare_d3set,
     "lund": prepare_lund,
     "glasgow": prepare_glasgow,
+    "uav16": prepare_uav16,
 }
 
 

@@ -103,7 +103,14 @@ COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it
           "it22 CNN pcen s2": "#7986cb", "it22 CRNN pcen s0": "#b71c1c", "it22 CRNN pcen s1": "#e53935",
           "it22 CRNN pcen s2": "#ef9a9a", "it23 CRNN relabel 600k s1": "#00695c",
           "it23 CRNN relabel colour s1": "#f9a825", "it25 CRNN relabel double colour s1": "#6a1b9a",
-          "comb": "#1baf7a"}   # it20-it25: the same colours as detect_gui
+          "it24 CNN 2s war s0": "#827717", "it24 CNN 2s war s1": "#afb42b",
+          "it24 CNN 2s war s2": "#c0ca33",
+          "it24 CRNN 2s war s0": "#004d40", "it24 CRNN 2s war s1": "#00897b", "it24 CRNN 2s war s2": "#80cbc4",
+          "it25 CRNN worldsim s0": "#d500f9", "it26 CRNN uav16sim s0": "#2962ff",
+          "it27 CRNN quiet s0": "#e65100", "it27 CRNN quiet s1": "#ff3d00", "it27 CRNN quiet s2": "#ff9e80",
+          "it28 CRNN vehicle s0": "#33691e", "it28 CRNN vehicle s1": "#7cb342", "it28 CRNN vehicle s2": "#c5e1a5",
+          "it30 CRNN half s0": "#01579b", "it30 CRNN half s1": "#0288d1", "it30 CRNN half s2": "#4fc3f7",
+          "comb": "#1baf7a"}   # it20-it30: the same colours as detect_gui
 PD_CONTROLS = {"wind (Pd)": ("wind", (("speed_ms", "speed (m/s, assumed)", "quiet: 1  ·  storm: 25"),
                                       ("reso", "resonance (0-127)", "open field: 10  ·  city: 90"))),
                "cars": ("cars", (("speed_kmh", "speed (km/h)", "town: 50  ·  motorway: 130"),
@@ -257,10 +264,11 @@ def pd_steps(name: str, lo: str, hi: str, n: str) -> list[float]:
 def detector_names() -> list[str]:
     """The detectors offered on the setup page: the recurrent networks (CRNN, It9B) and comb. The DS-CNNs
     are left out at Nicolai's request (2026-11-10); they stay in dwg.MODELS, so older results that used
-    them still open. A model whose run file or checkpoint is missing on this machine is not offered (run
+    them still open, except the 2 s DS-CNNs of iteration 24 (Marius, 2026-11-12, then for iteration 23's). A model whose run file or checkpoint is missing on this machine is not offered (run
     files are git-ignored, so a pulled checkpoint can arrive without the threshold it needs)."""
     return [m for m, (run, ckpt) in E.dwg.MODELS.items()
-            if not str(ckpt).endswith("_dscnn.pt") and Path(run).exists() and Path(ckpt).exists()] + ["comb"]
+            if (not str(ckpt).endswith("_dscnn.pt") or m.startswith("it24 CNN"))
+            and Path(run).exists() and Path(ckpt).exists()] + ["comb"]
 
 
 def model_view(x: np.ndarray, sc, batch: int = 256) -> np.ndarray:
@@ -586,8 +594,8 @@ class Page(ttk.Frame):
         final = ttk.Frame(g)
         final.grid(row=r, column=1, columnspan=7, sticky="w", padx=4, pady=(8, 0))
         self.v_final = tk.BooleanVar(value=False)
-        self.b_final = tk.Checkbutton(final, text="The Final Evaluation: OFF", variable=self.v_final, indicatoron=False, width=26,
-                                      font=("Segoe UI", 10, "bold"), selectcolor="#f4c7c3", command=self._flip_final)
+        self.b_final = ttk.Checkbutton(final, text="The Final Evaluation: OFF", variable=self.v_final, width=26,
+                                       style="Final.Toolbutton", command=self._flip_final)
         self.b_final.pack(side="left")
         ttk.Label(final, text="on: the car is the sealed car, which no model has trained on; off: the development car (idle)",
                   style="Muted.TLabel").pack(side="left", padx=8)
@@ -997,9 +1005,8 @@ class LivePage(Page):
             box = ttk.Frame(f)
             box.grid(row=row, column=1, sticky="w", padx=8, pady=2)
             for o in opts:
-                tk.Radiobutton(box, text=o.capitalize(), value=o, variable=var, indicatoron=False, width=12,
-                               font=("Segoe UI", 10, "bold"), selectcolor="#cfe0f7", bg=PANEL, relief="ridge",
-                               command=self._mode_changed).pack(side="left")
+                ttk.Radiobutton(box, text=o.capitalize(), value=o, variable=var, width=12, style="Seg.Toolbutton",
+                                command=self._mode_changed).pack(side="left")
         self.l_mode = ttk.Label(f, text="", wraplength=950, justify="left")
         self.l_mode.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 10))
         self.outs, self.ins = audio_devices("output"), audio_devices("input")
@@ -1083,9 +1090,7 @@ class LivePage(Page):
         self.b_start.grid(row=0, column=0, padx=(0, 4))
         self.b_stop = ttk.Button(bar, text="■  Stop", command=self.stop, state="disabled")
         self.b_stop.grid(row=0, column=1, padx=4)
-        self.b_send = tk.Button(bar, text="✈  Send drone", command=self.send, fg="white", disabledforeground="#f5f5f5",
-                                activebackground="#b3261e", activeforeground="white", relief="flat",
-                                font=("Segoe UI", 11, "bold"), padx=16, pady=3)
+        self.b_send = ttk.Button(bar, text="✈  Send drone", command=self.send, style="Send.TButton")
         self.b_send.grid(row=0, column=2, padx=4)               # manual only: _mode_changed hides it otherwise
         self._send_ready(False)
         self.b_results = ttk.Button(bar, text="Results window", command=self.open_results, state="disabled")
@@ -1101,7 +1106,7 @@ class LivePage(Page):
     def _send_ready(self, ready: bool):
         """Send drone: red when a press would fly a drone in now, grey otherwise."""
         if str(self.b_send.cget("state")) != ("normal" if ready else "disabled") or not hasattr(self, "_send_set"):
-            self.b_send.configure(state="normal" if ready else "disabled", bg="#d93025" if ready else "#c4c7cc")
+            self.b_send.configure(state="normal" if ready else "disabled")   # Send.TButton greys itself when disabled
             self._send_set = True
 
     def _build_view(self, f):
@@ -2122,6 +2127,49 @@ def window_snrs(test: E.Test, scores: dict) -> dict[str, np.ndarray]:
     return out
 
 
+def layer_snrs(test: E.Test, scores: dict) -> dict[str, np.ndarray]:
+    """round|layer|window -> each background layer's SNR in every no-drone window (E.layer_window_snrs): read
+    from layer_snr.npz, or, for a run made before it was stored, measured once by rebuilding every round from
+    its parts (with the run's buffer) and saved there. A file from before the drone-window SNRs ("|drone"
+    keys) existed is measured again when the run has drone rounds."""
+    p = test.out / "layer_snr.npz"
+    if p.exists():
+        with np.load(p) as d:
+            got = {k: d[k] for k in d.files}
+        if any(k.endswith("|drone") for k in got) or all(test.by_round[r]["drone"] is None for r in test.results):
+            return got
+    out = {}
+    for rnd in test.results:
+        n = max((len(v) for k, v in scores.items() if k.split("|")[0] == str(rnd)), default=0)
+        if not n:
+            continue
+        m = test.rebuild(test.by_round[rnd])
+        for key, x in E.layer_window_snrs(m, n, test.plan.buffer_after_s).items():
+            out[f"{rnd}|{key}"] = x
+    if out:
+        np.savez_compressed(p, **out)
+    return out
+
+
+def layer_snr_pairs(test: E.Test, det: str, layer: str, scores: dict, lsnr: dict,
+                    drone: bool = False) -> tuple[np.ndarray, np.ndarray]:
+    """Every no-drone window, in every round where `layer` played: (the layer's SNR there in dB, `det`'s
+    confidence there), over the detector's own window (1 s or 2 s); comb squashed as drawn elsewhere.
+    drone=True: every drone window instead, with the drone's SNR against that layer."""
+    w = f"{det_window(det):g}"
+    xs, ys = [], []
+    for rnd in test.results:
+        s, q = scores.get(f"{rnd}|{det}"), lsnr.get(f"{rnd}|{layer}|{w}" + ("|drone" if drone else ""))
+        if s is None or q is None:
+            continue
+        y = E.dwg.squash(s, test.thr[det]) if det == "comb" else s
+        n = min(len(y), len(q))
+        ok = np.isfinite(q[:n]) & np.isfinite(y[:n])
+        xs.append(q[:n][ok])
+        ys.append(y[:n][ok])
+    return (np.concatenate(xs), np.concatenate(ys)) if xs else (np.array([]), np.array([]))
+
+
 def det_window(det: str) -> float:
     return DEFAULT.window_seconds if det == "comb" else E.dwg.model_cfg(det).window_seconds
 
@@ -2238,6 +2286,7 @@ class Conclusions(tk.Toplevel):
         with np.load(p) if p.exists() else nullcontext({}) as d:
             self.scores = {k: d[k] for k in getattr(d, "files", [])}
         self._snr = None                                     # window_snrs(), on first use
+        self._lsnr = None                                    # layer_snrs(), on first use
         ttk.Button(bar, text="Save PNG", command=self.save).pack(side="right")
         ttk.Label(bar, text="false alarms").pack(side="left", padx=(20, 4))   # the threshold's percentile, from the plan
         self.v_fa = tk.StringVar(value=f"{getattr(test.plan, 'fa_percentile', 95.0):g}")
@@ -2688,10 +2737,14 @@ class Conclusions(tk.Toplevel):
            speeds pooled (each speed's rounds weighted by their count), with the 3-7 s before impact shaded;
            and the test 2 figure (mean over those 4 s, every 0.125 s bin counted equally) per speed.
         2. Confidence during distractors: confidence on no-drone windows (lower is better), against each
-           background layer's level, and by which distractors are on (every layer but the war soundscape).
+           background layer's SNR measured window by window during the rounds (layer_snrs), and by which
+           distractors are on (every layer but the war soundscape).
         One pass over the rounds fills every sum."""
         t, dets = self.test, list(self.test.plan.detectors)
-        layers = [n for n in t.plan.layers if len(values_of(t, n)) > 1]
+        if self._lsnr is None:
+            self._lsnr = layer_snrs(t, self.scores) if self.scores else {}
+        layers = [n for n in t.plan.layers if any(k.split("|")[1] == n for k in self._lsnr)]
+        dlayers = [n for n in layers if any(k.split("|")[1] == n and k.endswith("|drone") for k in self._lsnr)]
         dist = [n for n in t.plan.layers if n != "war soundscape"]
         sums, groups = {}, {}
         for rnd, res in t.results.items():
@@ -2711,7 +2764,9 @@ class Conclusions(tk.Toplevel):
         secs = [self._fa_section(dets), self._snr_section(dets),
                 dict(title="Confidence before impact", cells=2 if has_time else 0,
                      note="Only a modified drone test has an impact; this test has no confidence over time."),
-                dict(title="Confidence during distractors: no-drone windows (lower is better)", cells=len(layers) + 1, note="")]
+                dict(title="Confidence during distractors: no-drone windows (lower is better)", cells=len(layers) + 1, note=""),
+                dict(title="Confidence during distractors: drone windows (higher is better)", cells=len(dlayers),
+                     note="No drone round with a background layer: no drone-vs-distractor SNR to measure.")]
         for s in secs:
             s["rows"] = (s["cells"] + 1) // 2
         height = TOP_IN + sum(HEAD_IN + (s["rows"] * ROW_IN if s["cells"] else NOTE_IN) for s in secs)
@@ -2742,6 +2797,8 @@ class Conclusions(tk.Toplevel):
         if has_time:
             lines += self._compare_impact(*axes_of[2], curves)
         lines += self._compare_distractors(axes_of[3], layers, sums, groups, gnames)
+        if axes_of[4]:
+            lines += self._layer_snr_graphs(axes_of[4], dlayers, sums, drone=True)
         self.canvas.draw_idle()
         self.l_text.configure(text="\n".join(lines))
         self.scroll.yview_moveto(0)
@@ -2787,27 +2844,62 @@ class Conclusions(tk.Toplevel):
         ax_s.legend(loc="lower left", fontsize=8, frameon=False)
         return lines
 
+    def _layer_snr_graphs(self, axes, layers: list, sums: dict, drone: bool) -> list[str]:
+        """One graph per layer: each detector's mean confidence against the layer's measured SNR, window by
+        window (layer_snr_pairs). drone=False: no-drone windows, x = the layer against everything else;
+        drone=True: drone windows, x = the drone against that layer. Dotted: the rounds without the layer."""
+        dets = list(self.test.plan.detectors)
+        if drone:
+            mean_off = (lambda s: None if s is None or not s["nt"] else 100 * s["true"] / s["nt"])
+            what, tag = "drone", "Drone vs distractor"
+            lines = ["Drone-vs-distractor SNR = 10 log10(drone power / layer power) over the same window (1 s, or the "
+                     "detector's 2 s), measured in every drone window of every drone round where the layer played."]
+        else:
+            mean_off = (lambda s: None if s is None or not s["nf"] else 100 * s["false"] / s["nf"])
+            what, tag = "no-drone", "Distractors"
+            lines = ["Distractor SNR = 10 log10(layer power / power of everything else in the mix) over the same window "
+                     "(1 s, or the detector's 2 s), measured in every no-drone window of every round where the layer played."]
+        for ax, n in zip(axes, layers):
+            vals = values_of(self.test, n)
+            one = None                                       # with one detector: its band and window counts
+            for d in dets:
+                col = self._color(d)
+                x, y = layer_snr_pairs(self.test, d, n, self.scores, self._lsnr, drone)
+                b = snr_bins(x, y, 0.5) if x.size else None
+                off = mean_off(sums.get((d, n, "off"))) if "off" in vals else None
+                if off is not None:                          # dotted: the same detector with this layer off
+                    ax.axhline(off, color=col, ls=":", lw=1.2)
+                if b is None or not b["x"].size:
+                    lines.append(f"{tag} · {n} · {d}: no {what} windows with this layer playing")
+                    continue
+                if len(dets) == 1:
+                    ax.fill_between(b["x"], 100 * b["p25"], 100 * b["p75"], color=col, alpha=0.18, lw=0, label="middle half")
+                    one = b
+                ax.plot(b["x"], 100 * b["mean"], "-o", color=col, lw=2, ms=3, label=d)
+                lines.append(f"{tag} · {n} · {d} ({x.size} {what} windows, SNR {np.percentile(x, 5):+.0f} to "
+                             f"{np.percentile(x, 95):+.0f} dB, 5-95 %): mean confidence " + ("" if off is None else f"layer off {off:.0f}%;  ")
+                             + ";  ".join(f"{v:+.0f} dB {100 * c:.0f}%" for v, c in zip(b["x"], b["mean"])))
+            if one is not None:                              # how many windows lie behind each point
+                tw = ax.twinx()
+                tw.bar(one["x"], one["n"], SNR_BIN_DB * 0.9, color="#bbb", alpha=0.35, zorder=0)
+                tw.set_ylabel("windows per bin", fontsize=8, color="#888")
+                tw.tick_params(labelsize=7, colors="#888")
+                ax.set_zorder(tw.get_zorder() + 1)
+                ax.patch.set_visible(False)
+            ax.set(ylim=(0, 105), ylabel=f"{what} confidence (%)")
+            ax.set_xlabel((f"drone SNR against {n} (dB, measured; 0 = drone as loud as {n})" if drone else
+                           f"{n} SNR in the window (dB, measured; 0 = as loud as the rest)")
+                          + ("; dotted = layer off" if "off" in vals else ""), fontsize=8)
+            ax.set_title(f"{n}", fontsize=10, loc="left", weight="bold")
+            ax.axhline(50, color="#888", ls="--", lw=1)
+            ax.axvline(0, color="#999", lw=0.8, ls=":")
+            ax.grid(color="#e8e8e8", lw=0.5)
+        return lines
+
     def _compare_distractors(self, axes, layers: list, sums: dict, groups: dict, gnames: list) -> list[str]:
         dets = list(self.test.plan.detectors)
         false = (lambda s: None if s is None or not s["nf"] else 100 * s["false"] / s["nf"])
-        lines = []
-        for ax, n in zip(axes, layers):
-            vals = values_of(self.test, n)
-            nums = [v for v in vals if v != "off"]
-            for d in dets:
-                col = self._color(d)
-                ys = [false(sums.get((d, n, v))) for v in nums]
-                ax.plot(nums, [np.nan if v is None else v for v in ys], "-o", color=col, lw=2, ms=4, label=d)
-                off = false(sums.get((d, n, "off"))) if "off" in vals else None
-                if off is not None:                          # dotted: the same detector with this layer off
-                    ax.axhline(off, color=col, ls=":", lw=1.2)
-                lines.append(f"Distractors · {n} · {d}: no-drone confidence " + ("" if off is None else f"off {off:.0f}%;  ")
-                             + ";  ".join(f"{fmt(v)} dB {y:.0f}%" for v, y in zip(nums, ys) if y is not None))
-            ax.set(ylim=(0, 105), ylabel="no-drone confidence (%)")
-            ax.set_xlabel(f"{n} level (dB SPL)" + ("; dotted = layer off" if "off" in vals else ""))
-            ax.set_title(f"{n}", fontsize=10, loc="left", weight="bold")
-            ax.axhline(50, color="#888", ls="--", lw=1)
-            ax.grid(color="#e8e8e8", lw=0.5)
+        lines = self._layer_snr_graphs(axes, layers, sums, drone=False)
         ax = axes[len(layers)]
         w = 0.8 / max(len(dets), 1)
         for j, d in enumerate(dets):
@@ -2866,7 +2958,7 @@ class Sound:
         import sounddevice as sd
         self._stop = sd.CallbackStop
         self.x, self.pos, self.dac0 = np.ascontiguousarray(x, dtype=np.float32), 0, None
-        self.stream = sd.OutputStream(samplerate=E.SR, channels=1, dtype="float32", callback=self._fill)
+        self.stream = sd.OutputStream(samplerate=E.SR, channels=1, dtype="float32", callback=self._fill, **L.STREAM)
         self.stream.start()
 
     def _fill(self, out, frames, ti, status):
@@ -2926,20 +3018,16 @@ class App(tk.Tk):
         bar = tk.Frame(self, bg="#1f2937", height=52)
         bar.pack(fill="x")
         tk.Label(bar, text="  ◉  Complete Test", bg="#1f2937", fg="white", font=("Segoe UI", 14, "bold")).pack(side="left", pady=10)
-        tk.Button(bar, text="Open results...", command=self.open_results, bg="#374151", fg="white", relief="flat",
-                  activebackground="#4b5563", activeforeground="white", padx=12).pack(side="right", padx=12, pady=10)
+        ttk.Button(bar, text="Open results...", command=self.open_results, style="Tab.TButton").pack(side="right", padx=12, pady=10)
         nav = tk.Frame(bar, bg="#1f2937")
         nav.pack(side="right", padx=20)
-        tk.Button(nav, text="◀", command=lambda: self.go(-1), bg="#1f2937", fg="white", relief="flat",
-                  font=("Segoe UI", 12), activebackground="#374151").pack(side="left")
+        ttk.Button(nav, text="◀", width=3, command=lambda: self.go(-1), style="Nav.TButton").pack(side="left")
         self.tabs = []
         for i, (_, title) in enumerate(PAGES):
-            b = tk.Button(nav, text=title, command=lambda i=i: self.show(i), relief="flat", padx=14,
-                          font=("Segoe UI", 10, "bold"), activebackground="#374151")
+            b = ttk.Button(nav, text=title, command=lambda i=i: self.show(i), style="Tab.TButton")
             b.pack(side="left", padx=2)
             self.tabs.append(b)
-        tk.Button(nav, text="▶", command=lambda: self.go(1), bg="#1f2937", fg="white", relief="flat",
-                  font=("Segoe UI", 12), activebackground="#374151").pack(side="left")
+        ttk.Button(nav, text="▶", width=3, command=lambda: self.go(1), style="Nav.TButton").pack(side="left")
         self.dots = tk.Label(bar, text="", bg="#1f2937", fg="#9ca3af", font=("Segoe UI", 10))
         self.dots.pack(side="right")
 
@@ -2968,7 +3056,7 @@ class App(tk.Tk):
         self.cur = i % len(self.pages)
         self.pages[self.cur].pack(fill="both", expand=True)
         for j, b in enumerate(self.tabs):
-            b.configure(bg=ACCENT if j == self.cur else "#374151", fg="white")
+            b.configure(style="TabOn.TButton" if j == self.cur else "Tab.TButton")
         self.dots.configure(text="  ".join("●" if j == self.cur else "○" for j in range(len(self.pages))))
 
     def go(self, step):
@@ -3008,6 +3096,22 @@ def style(root):
     s.map("Accent.TButton", background=[("disabled", "#9db8e0"), ("active", "#1d5fb4")])
     s.configure("Link.TButton", background=PANEL, foreground=ACCENT, borderwidth=0, padding=0)
     s.map("Link.TButton", background=[("active", PANEL)])
+    # tk.Button and friends ignore bg on macOS (white buttons, white text); clam ttk styles keep their colours
+    s.configure("Nav.TButton", background="#1f2937", foreground="white", borderwidth=0, font=("Segoe UI", 12))
+    s.map("Nav.TButton", background=[("active", "#374151")])
+    s.configure("Tab.TButton", background="#374151", foreground="white", borderwidth=0,
+                font=("Segoe UI", 10, "bold"), padding=(14, 4))
+    s.map("Tab.TButton", background=[("active", "#4b5563")])
+    s.configure("TabOn.TButton", background=ACCENT, foreground="white", borderwidth=0,
+                font=("Segoe UI", 10, "bold"), padding=(14, 4))
+    s.map("TabOn.TButton", background=[("active", "#1d5fb4")])
+    s.configure("Seg.Toolbutton", background=PANEL, font=("Segoe UI", 10, "bold"), anchor="center", relief="ridge")
+    s.map("Seg.Toolbutton", background=[("selected", "#cfe0f7"), ("active", "#eef3fb")])
+    s.configure("Final.Toolbutton", background=PANEL, font=("Segoe UI", 10, "bold"), anchor="center", relief="ridge")
+    s.map("Final.Toolbutton", background=[("selected", "#f4c7c3"), ("active", "#f7f7f7")])
+    s.configure("Send.TButton", background="#d93025", foreground="white", font=("Segoe UI", 11, "bold"), padding=(16, 3))
+    s.map("Send.TButton", background=[("disabled", "#c4c7cc"), ("active", "#b3261e")],
+          foreground=[("disabled", "#f5f5f5")])
     s.configure("Treeview", rowheight=20, font=("Segoe UI", 9))
     s.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"))
 

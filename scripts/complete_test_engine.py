@@ -53,6 +53,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from fractions import Fraction
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import soundfile as sf
@@ -914,6 +915,44 @@ def round_window_snrs(m: dict, n: int) -> dict[str, np.ndarray]:
     return {f"{w:g}": window_snr(m, t_end, w) for w in SNR_WINDOWS}
 
 
+def layer_window_snrs(m: dict, n: int, buffer_s: float = 0.0) -> dict[str, np.ndarray]:
+    """Each background layer's SNR in every no-drone window of the score grid: 10 log10 of the layer's power
+    over the power of everything else in the same samples (mix - layer: the other layers, and the drone if
+    one is faintly there), so a distractor is measured against what it actually played over. One array per
+    layer and detector window length, keyed "layer|window" ("wind (Pd)|1"). NaN in drone windows and windows
+    left out (window_labels on the truth with the buffer, as score_round labels them), and where either
+    power is 0 (a silent stretch of the layer, or nothing else playing).
+    In drone windows (label 1) the signal is the drone: "layer|window|drone" holds 10 log10 of the drone's
+    power over the layer's power in the same samples (the drone against that one distractor), NaN in the
+    other windows and where either power is 0; only in rounds with a drone."""
+    t_end = grid_t_end(n)
+    mix = m["mix"]
+    drone = m["parts"].get("drone")
+    out = {}
+    for w in SNR_WINDOWS:
+        lab = window_labels(SimpleNamespace(t_end=t_end), with_buffer(m["truth"], buffer_s), w)
+        b = np.clip(np.round(t_end * SR).astype(int), 0, len(mix))
+        a = np.clip(b - int(round(w * SR)), 0, None)
+        for name, x in m["parts"].items():
+            if name == "drone":
+                continue
+            cl = np.concatenate([[0.0], np.cumsum(x ** 2)])
+            cr = np.concatenate([[0.0], np.cumsum((mix - x) ** 2)])
+            pl, pr = cl[b] - cl[a], cr[b] - cr[a]
+            q = np.full(len(t_end), np.nan)
+            ok = (lab == 0) & (pl > 0) & (pr > 0)
+            q[ok] = 10 * np.log10(pl[ok] / pr[ok])
+            out[f"{name}|{w:g}"] = q
+            if drone is not None:
+                cd = np.concatenate([[0.0], np.cumsum(drone ** 2)])
+                pd = cd[b] - cd[a]
+                q = np.full(len(t_end), np.nan)
+                ok = (lab == 1) & (pd > 0) & (pl > 0)
+                q[ok] = 10 * np.log10(pd[ok] / pl[ok])
+                out[f"{name}|{w:g}|drone"] = q
+    return out
+
+
 def hop_levels(parts: dict, t_end: np.ndarray) -> dict:
     """dB SPL of every part (and the mix) in each 1 s window ending at t_end, as the detectors hear it."""
     n = int(DEFAULT.window_seconds * SR)
@@ -997,7 +1036,7 @@ class Test:
             self.prepare(progress)
         fields = row_fields(self.plan)
         t0 = time.time()
-        scores, snrs = {}, {}
+        scores, snrs, lsnrs = {}, {}, {}
         with open(self.out / "rounds.csv", "w", newline="", encoding="utf-8") as fh:
             w = csv.DictWriter(fh, fields)
             w.writeheader()
@@ -1023,6 +1062,10 @@ class Test:
                     n_grid = max(len(scores[f"{r['round']}|{k}"]) for k in res)
                     for win, x in round_window_snrs(m, n_grid).items():   # not `w`: that is the csv writer
                         snrs[f"{r['round']}|{win}"] = x
+                if res:                                          # every round: no-drone rounds are where distractors show
+                    n_grid = max(len(scores[f"{r['round']}|{k}"]) for k in res)
+                    for key, x in layer_window_snrs(m, n_grid, self.plan.buffer_after_s).items():
+                        lsnrs[f"{r['round']}|{key}"] = x
                 fh.flush()
                 el = time.time() - t0
                 progress(f"round {i} of {len(self.rounds)}  ({el:.0f} s, about {el / i * (len(self.rounds) - i):.0f} s left)")
@@ -1030,6 +1073,7 @@ class Test:
                     on_round(i, r)
         np.savez_compressed(self.out / "scores.npz", **scores)
         np.savez_compressed(self.out / "window_snr.npz", **snrs)   # round|window -> SNR (dB) per score-grid window
+        np.savez_compressed(self.out / "layer_snr.npz", **lsnrs)   # round|layer|window -> a layer's SNR per no-drone window
         write_summary(self)
         return self.results
 

@@ -71,6 +71,9 @@ TAIL_S = 0.5                                                 # background after 
 MAX_LAG_S = 2.0                                             # microphone mode: the longest delay searched (device
                                                              # latencies, the gap between the two streams' starts, air)
 MIN_CORR = 0.05                                              # below this the delay is not trusted: the last good one is kept
+STREAM = dict(latency=0.2, blocksize=512)                   # ~0.2 s at the device: with latency="high" macOS gave
+                                                             # 15-sample callbacks and 53 ms of buffer, and a busy
+                                                             # moment played a gap (heard as crackle) without an underflow
 RING_S = 600.0                                               # how much of the stream is kept in memory (2 x 38 MB): a
                                                              # manual round (its wait included) must fit
 HOP = DEFAULT.samples_per_hop
@@ -524,18 +527,19 @@ class LiveRun:
         # arrives later in the recording; each round's delay is measured (estimate_lag), which also absorbs
         # the gap between the two starts and any drift between the two devices' clocks.
         out_stream = sd.OutputStream(device=self.out_dev, samplerate=sr, channels=out_ch, dtype="float32",
-                                     latency="high", callback=cb_out)
+                                     callback=cb_out, **STREAM)
         streams = [out_stream]
         name = sd.query_devices(self.out_dev, "output")["name"]
         if self.mic:
             streams.insert(0, sd.InputStream(device=self.in_dev, samplerate=in_sr, channels=in_ch, dtype="float32",
-                                             latency="high", callback=cb_in))
+                                             callback=cb_in, **STREAM))
             name = f"{sd.query_devices(self.in_dev, 'input')['name']} ({in_sr} Hz) -> {name}"
         self.plan.live.update(sample_rate=sr, input_sample_rate=in_sr, device=name)
         out_lat = float(out_stream.latency)
 
         fields = E.row_fields(self.plan) + ["alarm_threshold", "round_length_s", "timeline_s", "mic_lag_ms", "mic_corr"]
         scores, snrs = {}, {}
+        self.layer_snrs = {}                                 # round|layer|window -> SNR per no-drone window (_scorer)
         jobs: queue.Queue = queue.Queue()
         fh = open(t.out / "rounds.csv", "w", newline="", encoding="utf-8")
         w = csv.DictWriter(fh, fields)
@@ -617,6 +621,7 @@ class LiveRun:
         fh.close()
         np.savez_compressed(t.out / "scores.npz", **scores)
         np.savez_compressed(t.out / "window_snr.npz", **snrs)
+        np.savez_compressed(t.out / "layer_snr.npz", **self.layer_snrs)
         E.write_summary(t)
         cfg = json.loads((t.out / "config.json").read_text(encoding="utf-8"))
         cfg["plan"]["live"] = self.plan.live                 # with the rate and the devices it ran on
@@ -693,6 +698,10 @@ class LiveRun:
                     n_grid = max(len(scores[f"{r['round']}|{k}"]) for k in res)
                     for win, x in E.round_window_snrs(m, n_grid).items():
                         snrs[f"{r['round']}|{win}"] = x
+                if res:                                      # every round, from the digital parts as above
+                    n_grid = max(len(scores[f"{r['round']}|{k}"]) for k in res)
+                    for key, x in E.layer_window_snrs(m, n_grid, self.plan.buffer_after_s).items():
+                        self.layer_snrs[f"{r['round']}|{key}"] = x
                 fh.flush()
                 if job["heard"] is not None:
                     (t.out / "heard").mkdir(exist_ok=True)
