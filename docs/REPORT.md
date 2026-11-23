@@ -17119,3 +17119,90 @@ Drone windows are those labelled 1 by `window_labels` on the truth with the buff
 - The no-drone values and the rebuild check are unchanged from entry 265.
 - The figure was looked at. it9 CRNN's drone confidence rises from about 10 % at -30 dB to a peak of about 85 % near 0 dB against either layer. It falls again above about +5 dB, the same shape as the existing drone-vs-whole-background SNR graph, where those top bins are few windows.
 - One small check run on a training-source drone file: not detection performance.
+## 248 - REAPER projects for the 39-speaker array: a 5-hour test and a one-shot demo
+
+- Date: 2026-11-23
+- Type: Evaluation tooling for test 3 (natural environment simulation), requested by Marius
+- Commit: on `iteration-21-uav16` at 79543cb; uncommitted `scripts/reaper_array.py`, `docs/REPORT.md`
+
+**What.** `scripts/reaper_array.py` writes two REAPER projects that play the Live demo test's sound over the
+surround array's 39 speakers (layout from Marius: 1 at 90°, 6 at 60°, 10 at 30°, 12 at 0°, 10 at -30°):
+- `allday.RPP`: 5 h of background with 60 drones at random times, one in each 300 s slot (12 per hour), half
+  flying straight *towards* the centre (the live test's last 10 s before impact, a dive of 5-40°) and half
+  *across* (a 24 s straight pass 5-50 m to one side, 10-60 m up).
+- `demo.RPP`: a 60 s background-only region to loop, then the 16 pool drones once each; marker N, 1 s before
+  drone N, sends it.
+
+What comes from the live test: its drone files (`data/recordedDroneClipped`, not ITU ARIS), its drone level
+(80 dB SPL at 1 m), its speeds (50/100/150 km/h), its background layers at its levels (war soundscape 60,
+wind (Pd) 50, cars 5, helicopter 50, insects 30 dB SPL, the kept Pd renders), its full scale (110 dB SPL)
+and its propagation (`dad.propagation.propagate`: 1/r, ISO 9613-1 air absorption, Doppler), here at 48 kHz.
+Left out: the ground reflection and outdoor reverb (written for 16 kHz; the room adds its own).
+
+**How.**
+- The drone is panned by VBAP over the convex hull of the 39 directions (74 triangles), gains every 10 ms at
+  the position the heard sound left the drone. A pool of 16 events is rendered and reused across the 5 h
+  (1.3 GB of 39-channel 16-bit WAVs instead of hundreds of GB).
+- The background is one 60 s, 39-channel loop with a crossfaded seam: war and wind on every speaker, each from
+  its own random offset, at the layer's level minus 10 log10(39); cars on output 21, helicopter on 11, insects
+  on 33 and 35.
+- REAPER: master bus of 40 channels, channel N sent to hardware output N; tracks Background, Drones and a muted
+  Speaker check (1 s of pink noise at 70 dB SPL per speaker, in order).
+- Metadata beside the projects: `speakers.csv`, `background.csv` (every layer on every speaker), `pool.csv`,
+  `events.csv` (all 60 drones: times to the sample, path, speed, file, geometry, speakers used),
+  `demo.csv`, `trajectories/event_NNN.csv` (every 10 ms: position, distance, direction, level, 39 gains),
+  `project.json` (every setting, commit, command, md5 of every WAV).
+
+**Check** (`uv run python scripts/reaper_array.py --verify`, seed 0, output `artifacts/reaper_array`, REAPER 7.84
+on this Mac rendering the project from the command line; `verify.csv`):
+- Speaker check: each of the 39 bursts lands on its own output only (every other output silent) and equals the
+  WAV bit for bit. So the routing (master channel N -> output N) holds in REAPER's render.
+- Background + first drone (event 16, across at 100 km/h, 0-88 s): the render equals the background loop
+  repeated plus the event at its `events.csv` start, exactly (max difference 0.0); level at the centre 60.85 dB
+  SPL (the plan's war 60 + wind 50 + cars 5 + helicopter 50 + insects 30 give 60.8). A first build wrote
+  `events.csv` times rounded to 1 ms while the project used exact times (23 samples apart in the render); starts
+  are now on a sample and written to the microsecond.
+
+Not verified: `demo.RPP` was not rendered or opened in REAPER (same constructs as `allday.RPP`, plus point
+markers); nothing was played on the array; the hardware-output lines (`MASTERHWOUT`) are not exercised by a
+render. ASSUMED, to be confirmed: azimuth counter-clockwise (90° = left) and row N of the list = output N. The
+speakers are not calibrated (`project.json` `calibration_db` is null). No detector was run: nothing here is a
+detection result.
+
+## 249 - REAPER array projects: every drone 10 s
+
+- Date: 2026-11-23
+- Type: Evaluation tooling (Marius: "the drone only needs to be there for 10 seconds")
+- Commit: on `iteration-21-uav16` at 79543cb; uncommitted `scripts/reaper_array.py`, `docs/REPORT.md`
+
+**What.** The *across* pass of entry 248 was 24 s; it is now 10 s (`ACROSS_S`), like *towards* and like the live
+test. Closest approach is at 5 s, mid-pass, so at 50/100/150 km/h the drone starts 69/139/208 m along its line
+from that point. A 9.9-10 s drone file is looped with a 0.1 s crossfade to fill 10 s. Everything else is unchanged:
+seed 0, 16 pool events, 60 drones in 5 h, the same layout, levels and routing.
+
+**Check** (`uv run python scripts/reaper_array.py --verify`): 40 checks, 0 failed. The speaker check is bit-exact
+on its own outputs. The render of background + the first drone (event 16, at 64.109208 s) equals the expected sum
+exactly; centre level 60.9 dB SPL. The pool's heard durations are 9.98-10.53 s: an across pass is heard for a little
+longer than it flies, because Doppler stretches the sound as the drone goes away (towards drones are heard for 10 s,
+ending at impact). The media are now 985 MB (was 1.3 GB). The pool's files, speeds and directions are those of entry 248
+(the same random draws); the drone start times differ, because each is drawn within its slot minus the drone's
+length; `events.csv` holds the new ones.
+
+Not verified, as in entry 248: `demo.RPP` in REAPER, playback on the array, the hardware outputs, the azimuth
+direction and channel order (assumed).
+
+## 250 - REAPER array projects: a drawing of the speaker array
+
+- Date: 2026-11-23
+- Type: Evaluation tooling (Marius asked where the array's visualisation is; there was none)
+- Commit: on `iteration-21-uav16` at 79543cb; uncommitted `scripts/reaper_array.py`, `docs/REPORT.md`
+
+**What.** `reaper_array.py` now also writes `speakers.png` beside `speakers.csv` (`draw_array`). The left panel
+shows the 39 speakers from above: straight up in the centre, then rings at 60, 30, 0 and -30 degrees. Front is at
+the top and left on the left (azimuth counter-clockwise, ASSUMED). Each speaker carries its hardware output
+number, and grey lines show the VBAP triangles the drone is panned over. The floor triangles under the -30 ring
+are not drawn, since no drone goes there. The right panel shows each output on an azimuth-elevation map.
+
+**Check.** I drew the figure from the module (`draw_array`) without rebuilding the projects, then opened and read
+it: 39 numbered speakers, 1 at the top, 2-7 at 60, 8-17 at 30, 18-29 at 0 and 30-39 at -30 degrees, in the order
+of Marius's list. The audio and the projects are unchanged from entry 249.
