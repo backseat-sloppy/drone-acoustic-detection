@@ -78,7 +78,7 @@ RING_S = 600.0                                               # how much of the s
                                                              # manual round (its wait included) must fit
 HOP = DEFAULT.samples_per_hop
 LOGMEL = LogMel(DEFAULT)
-SOURCES = ("virtual", "microphone")
+SOURCES = ("virtual", "microphone", "reaper")             # reaper: scripts/reaper_live.py plays, the microphone scores
 TRIGGERS = ("automatic", "manual")
 
 
@@ -537,15 +537,7 @@ class LiveRun:
         self.plan.live.update(sample_rate=sr, input_sample_rate=in_sr, device=name)
         out_lat = float(out_stream.latency)
 
-        fields = E.row_fields(self.plan) + ["alarm_threshold", "round_length_s", "timeline_s", "mic_lag_ms", "mic_corr"]
-        scores, snrs = {}, {}
-        self.layer_snrs = {}                                 # round|layer|window -> SNR per no-drone window (_scorer)
-        jobs: queue.Queue = queue.Queue()
-        fh = open(t.out / "rounds.csv", "w", newline="", encoding="utf-8")
-        w = csv.DictWriter(fh, fields)
-        w.writeheader()
-        scorer = threading.Thread(target=self._scorer, args=(jobs, w, fh, scores, snrs), daemon=True)
-        scorer.start()
+        jobs, scorer = self._open_results()
 
         produced = 0                                         # timeline samples made
         fed = 0                                              # virtual: timeline samples given to the live display
@@ -615,27 +607,46 @@ class LiveRun:
                     if all(p["done"] for p in self.placed) or time.time() - stopped_at > MAX_LAG_S + AHEAD_S + 1.5:
                         break
                 time.sleep(0.02)
+        self._close_results(jobs, scorer, dict(sample_rate=sr, device=name, underflows=self.fifo.underflows,
+                                               wall_s=round(time.time() - t_wall, 1)),
+                            f"  ·  {self.fifo.underflows} speaker underflow(s)" if self.fifo.underflows else "")
+
+    def _open_results(self):
+        """rounds.csv opened, and the thread that scores each finished round put on `jobs` (None ends it)."""
+        fields = E.row_fields(self.plan) + ["alarm_threshold", "round_length_s", "timeline_s", "mic_lag_ms", "mic_corr"]
+        self._scores, self._snrs = {}, {}
+        self.layer_snrs = {}                                 # round|layer|window -> SNR per no-drone window (_scorer)
+        jobs: queue.Queue = queue.Queue()
+        self._fh = open(self.test.out / "rounds.csv", "w", newline="", encoding="utf-8")
+        w = csv.DictWriter(self._fh, fields)
+        w.writeheader()
+        scorer = threading.Thread(target=self._scorer, args=(jobs, w, self._fh, self._scores, self._snrs), daemon=True)
+        scorer.start()
+        return jobs, scorer
+
+    def _close_results(self, jobs, scorer, info: dict, note: str = "") -> None:
+        """The last rounds scored, then scores.npz, window_snr.npz, summary.csv, config.json and live.json
+        (`info`: the rate, devices and anything else of this run), and the done event."""
+        t = self.test
         jobs.put(None)
-        say("scoring the last rounds...")
+        self.events.put(("status", "scoring the last rounds..."))
         scorer.join()
-        fh.close()
-        np.savez_compressed(t.out / "scores.npz", **scores)
-        np.savez_compressed(t.out / "window_snr.npz", **snrs)
+        self._fh.close()
+        np.savez_compressed(t.out / "scores.npz", **self._scores)
+        np.savez_compressed(t.out / "window_snr.npz", **self._snrs)
         np.savez_compressed(t.out / "layer_snr.npz", **self.layer_snrs)
         E.write_summary(t)
         cfg = json.loads((t.out / "config.json").read_text(encoding="utf-8"))
         cfg["plan"]["live"] = self.plan.live                 # with the rate and the devices it ran on
         (t.out / "config.json").write_text(json.dumps(cfg, indent=1, default=str), encoding="utf-8")
-        live = dict(source=self.source, trigger=self.trigger, sample_rate=sr, device=name, lead_in_s=LEAD_IN_S,
+        live = dict(source=self.source, trigger=self.trigger, lead_in_s=LEAD_IN_S,
                     play_gain_db=20 * np.log10(self.play_gain), mic_gain_db=20 * np.log10(self.mic_gain),
-                    underflows=self.fifo.underflows, stopped=self.stop_flag.is_set(),
-                    wall_s=round(time.time() - t_wall, 1), rounds={str(k): v for k, v in self.info_rounds.items()})
+                    stopped=self.stop_flag.is_set(), **info, rounds={str(k): v for k, v in self.info_rounds.items()})
         (t.out / "live.json").write_text(json.dumps(live, indent=1), encoding="utf-8")
         n = len(t.results)
         self.events.put(("done", (f"stopped: {n} round{'s' * (n != 1)} scored" if self.manual else
                                   f"{'stopped' if self.stop_flag.is_set() else 'plan done'}: {n} of {len(self.order)} "
-                                  f"round{'s' * (len(self.order) != 1)} scored") + f". Results in {t.out}" + (f"  ·  {self.fifo.underflows} speaker underflow(s)"
-                                                          if self.fifo.underflows else "")))
+                                  f"round{'s' * (len(self.order) != 1)} scored") + f". Results in {t.out}" + note))
 
     def _display(self, x16: np.ndarray) -> None:
         for d in self.live_sc.feed(x16):
@@ -647,7 +658,8 @@ class LiveRun:
         job = dict(r=r, T=T, m=m, heard=None, lag=None, corr=None)
         if self.mic:
             rec = self.heard.read(T, T + p["n"] + int(MAX_LAG_S * SR))
-            j, c = estimate_lag(m["mix"].astype(np.float32), rec, int(MAX_LAG_S * SR))
+            ref = p.get("ref", m["mix"])                     # what the speakers played, folded to one channel
+            j, c = estimate_lag(ref.astype(np.float32), rec, int(MAX_LAG_S * SR))
             if c >= MIN_CORR or self.lag is None:
                 if c < MIN_CORR:
                     self.events.put(("warn", f"round {r['round']}: the microphone barely matches the mix "

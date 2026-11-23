@@ -13,8 +13,9 @@ Three pages, a slide show (the arrows at the top, the page names, or Ctrl+Left /
                           spreading and air absorption, optional Doppler). Each file at each speed.
     Live demo test        the modified drone test in real time, out loud (scripts/live_test_engine.py):
                           one soundscape that loops from Play to the end. Source: virtual (scored on
-                          the mix) or microphone (played out of the speaker, scored on what the
-                          microphone hears). Drones: automatic (the plan's rounds one after the
+                          the mix), microphone (played out of the speaker, scored on what the
+                          microphone hears) or reaper (REAPER plays it on the 39-speaker array,
+                          scripts/reaper_live.py; scored on what the microphone hears). Drones: automatic (the plan's rounds one after the
                           other) or manual (Send drone flies in the next drone of the plan). A live
                           view (spectrogram, every detector's confidence, level) runs while it
                           plays; the results are a run folder like the other pages'.
@@ -943,7 +944,14 @@ LIVE_MODES = {("virtual", "automatic"): "The plan's rounds play one after the ot
               ("microphone", "automatic"): "The plan's rounds play one after the other out of the speaker; the detectors "
                                            "score what the microphone hears.",
               ("microphone", "manual"): "The soundscape loops out of the speaker; each press of Send drone flies in the "
-                                        "next drone of the plan. The detectors score what the microphone hears."}
+                                        "next drone of the plan. The detectors score what the microphone hears.",
+              ("reaper", "automatic"): "REAPER plays the plan's rounds one after the other on the 39-speaker array "
+                                       "(scripts/reaper_live.py); the detectors score what the microphone hears. REAPER "
+                                       "must be running with its web remote on port 8080; the speaker choice and "
+                                       "playback gain below set nothing but REAPER's master volume.",
+              ("reaper", "manual"): "REAPER loops the background on the 39-speaker array; each press of Send drone jumps "
+                                    "to the next drone of the plan (the background jumps with it). The detectors score "
+                                    "what the microphone hears. REAPER must be running with its web remote on port 8080."}
 LIVE_UNTIL_STOP = {"automatic": "The test ends when the plan's last round has played, or when you press Stop; then the "
                                 "Results window opens once, with every finished round.",
                    "manual": "There is no number of rounds: a round ends at the drone's impact + the buffer, the next "
@@ -1026,6 +1034,10 @@ class LivePage(Page):
         places = [("w", 0), ("w", (8, 0)), ("e", (12, 4)), ("w", 0), ("e", (12, 4)), ("w", 0)]   # (sticky, padx) per column
         for col, (w, (sticky, padx)) in enumerate(zip(self.mic_widgets, places)):
             w.grid(row=1, column=col, sticky=sticky, padx=padx, pady=(6, 0))
+        self.v_stereo = tk.BooleanVar(value=False)
+        self.cb_stereo = ttk.Checkbutton(dev, text="REAPER: stereo test (the 39 speakers folded to 2 channels, left/right)",
+                                         variable=self.v_stereo)
+        self.cb_stereo.grid(row=2, column=0, columnspan=6, sticky="w", pady=(6, 0))
         ttk.Label(f, text="Full scale is 110 dB SPL in every file. Playback gain changes only what goes to the speaker "
                           "(not the virtual scores); mic gain scales the recording before the detectors hear it. A speaker "
                           "and a microphone are not calibrated, so with the microphone the detectors do not hear the plan's "
@@ -1209,10 +1221,11 @@ class LivePage(Page):
 
     # ---------- modes and plan
     def _mode_changed(self):
-        mic = self.v_source.get() == "microphone"
+        mic = self.v_source.get() in ("microphone", "reaper")
         manual = self.v_trigger.get() == "manual"
         for w in self.mic_widgets:
             w.state(["!disabled"] if mic else ["disabled"])
+        self.cb_stereo.state(["!disabled"] if self.v_source.get() == "reaper" else ["disabled"])
         for w in (self.e_len, self.e_step, self.cb_nodrone):  # automatic only
             w.state(["disabled"] if manual else ["!disabled"])
         self.l_step_note.configure(text="manual: none of these apply. A round runs from the end of the last one (or Play) "
@@ -1234,6 +1247,8 @@ class LivePage(Page):
         if alarm is not None and not 0 < alarm < 1:
             raise ValueError("alarm threshold: above 0 and below 1, or blank")
         p.live = dict(source=self.v_source.get(), trigger=self.v_trigger.get(), threshold=alarm)
+        if p.live["source"] == "reaper":
+            p.live["reaper_channels"] = 2 if self.v_stereo.get() else 39
         if p.live["trigger"] == "manual":                    # the plan only lists the drone settings: one each
             p.step_s, p.no_drone_rounds = p.length_s, False
         return p
@@ -1318,7 +1333,11 @@ class LivePage(Page):
             messagebox.showerror(TITLE, str(e), parent=self)
             return
         self.events = queue.Queue()
-        self.run = L.LiveRun(p, self.events, out_dev=out, in_dev=inp, in_channel=ch, play_gain_db=play, mic_gain_db=mic)
+        if p.live["source"] == "reaper":                     # REAPER plays on the array; playback gain = its master volume
+            import reaper_live
+            self.run = reaper_live.ReaperRun(p, self.events, in_dev=inp, in_channel=ch, play_gain_db=play, mic_gain_db=mic)
+        else:
+            self.run = L.LiveRun(p, self.events, out_dev=out, in_dev=inp, in_channel=ch, play_gain_db=play, mic_gain_db=mic)
         self.test = self.run.test
         self._reset_view(p.detectors, self.run.part_names)
         self.pb.configure(maximum=len(self.run.order), value=0)

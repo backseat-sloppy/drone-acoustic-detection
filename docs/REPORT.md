@@ -17206,3 +17206,176 @@ are not drawn, since no drone goes there. The right panel shows each output on a
 **Check.** I drew the figure from the module (`draw_array`) without rebuilding the projects, then opened and read
 it: 39 numbered speakers, 1 at the top, 2-7 at 60, 8-17 at 30, 18-29 at 0 and 30-39 at -30 degrees, in the order
 of Marius's list. The audio and the projects are unchanged from entry 249.
+
+## 251 - REAPER array projects: a live view of the 39 speakers inside REAPER
+
+- Date: 2026-11-23
+- Type: Evaluation tooling (Marius: he wants to see the speakers in REAPER, as a live visualisation, not an image)
+- Commit: on `iteration-21-uav16` at 340856a; uncommitted `scripts/reaper_array.py`, `docs/REPORT.md`
+
+**What.** The master of `allday.RPP` and `demo.RPP` now carries a JSFX, `drone_array_speaker_view.jsfx`, which
+`reaper_array.py` writes from the layout and copies into REAPER's Effects folder. Its window opens with the project.
+It draws the array from above, like `speakers.png`: the VBAP triangles, and each speaker numbered by output. Every
+speaker lights up with the level actually on its output over the last 50 ms, so it shows whatever plays: a drone
+moving across the array, the background, or the speaker check stepping through outputs 1-39. The top line names the
+loudest speaker and the total level, in dB SPL (full scale = 110). Two sliders set the brightness range (default:
+dark below 30 dB SPL, full at 80). The plugin does not touch the audio.
+
+A first try, left out: one video per drone (the same map, lit by the planned gains), on a video track for REAPER's
+Video window. It was built and one frame was checked, but it was replaced before use. Marius wants a live view, not
+a picture, and the video only showed the plan, not what plays.
+
+**Check.**
+- `uv run python scripts/reaper_array.py --verify`: 40 checks, 0 failed, with the JSFX on the master. REAPER's
+  render still equals the WAVs bit for bit, so the plugin passes the audio through unchanged.
+- I opened `allday.RPP` in REAPER 7.47 on this Mac and looked at the window: 39 numbered speakers in the layout's
+  order. Stopped, they are dark. Playing from 0 s (background only), all 39 lit, the loudest at 58 dB SPL and the
+  total at 62 dB SPL. The background is planned at 60.8 dB SPL; the reading is a 50 ms value with a slow decay.
+- The "dark below" slider read 2.0 after play, not 30. The cause is not known; it may have been moved by hand.
+- Not checked: a drone passing in the view, and the view on the room's computer. That computer needs the JSFX
+  copied into its REAPER Effects folder (REAPER: Options > Show REAPER resource path).
+
+## 252 - Live demo test with REAPER as the player: the GUI controls REAPER, REAPER plays the 39 speakers
+
+- Date: 2026-11-23
+- Type: Evaluation tooling for test 3 (Marius: the audio in REAPER, the control in the Complete test GUI)
+- Commit: on `iteration-21-uav16` at 340856a; uncommitted `scripts/reaper_live.py` (new), `scripts/live_test_engine.py`,
+  `scripts/Complete_Test_Gui.py`, `scripts/reaper_array.py`, `docs/REPORT.md`
+
+**What.** The Live page has a third source, **reaper**, next to virtual and microphone (`scripts/reaper_live.py`,
+class `ReaperRun`, a `LiveRun`). The plan, its rounds, levels, truth and scoring are the live test's own. Only the
+sound's path changes:
+- **Spreading the sound.** Each round's parts (`E.mix_round`, 16 kHz) are spread over the 39 speakers as in the array
+  projects. The drone comes from one direction per round (VBAP; a straight dive keeps its direction), and that
+  direction is stored in the round (`array_azimuth_deg`, `array_climb_deg`, in live.json). War and wind play from
+  every speaker, each speaker taking the layer from its own point in the loop. Cars, helicopter and insects play
+  from fixed speakers.
+- **The project.** The rounds are written as 39-channel 16-bit WAVs into `<run>/reaper/live.RPP`, with the speaker
+  view on the master, and the GUI opens the project in REAPER.
+- **Control.** REAPER's web remote on port 8080 (switched on in this Mac's REAPER, Preferences > Control/OSC/web).
+  The GUI presses Play and Stop, sets the position and the master volume (= playback gain), and reads REAPER's
+  position every 50 ms. Every reading goes to `reaper/transport.csv`.
+- **Automatic.** Lead-in, then the rounds back to back, as on the virtual timeline.
+- **Manual.** REAPER loops a 30 s background region. Send drone jumps to the next drone's region: 2 s of background,
+  the drone, the buffer after impact, then 3 s more. When the round is over the GUI jumps back to the loop. The
+  background jumps too (a cut). A manual round is the region only, not the wait before it, and Stop between drones
+  adds no no-drone round. Both differ from the other sources.
+- **Scoring.** Always on the microphone. A round's recording is placed by REAPER's reported position minus 0.5 s, then
+  by cross-correlation (up to 2 s) with the 39 channels summed.
+- **Shared code.** `LiveRun`'s result writing moved into `_open_results` / `_close_results`, which both runs use, and
+  `_round_job` takes a reference signal (`ref`) when a round has one. Nothing changes for virtual and microphone
+  (`tests/test_live.py`: 18 passed). `reaper_array.project()` builds any array project.
+
+**Check** (this Mac: REAPER 7.47 on the MacBook speakers, which play only outputs 1-2 of 39; the MacBook microphone;
+comb only; one drone file at 100 km/h; war soundscape 60 dB SPL; scratchpad script `reaper_e2e.py`, no GUI):
+- Automatic, 1 round (`20261123_102756_live_reaper_automatic`). Build, open in REAPER, play, round announced and
+  scored, results and live.json written. Over the run the microphone clock and REAPER's position stayed 0.32-0.36 s
+  apart. The measured delay was 504 ms (the 500 ms margin plus about 4 ms), at correlation 0.02.
+- Manual, 2 drones, playback gain +20 dB (`20261123_102844_live_reaper_manual`). `transport.csv` shows each Send drone
+  jumping from the loop to the drone region (0 -> 31 s) and back to 0 s when the round ended. Delays 751 ms at
+  correlation 0.05 and 0.041. The loop wraps from 30 s to 0 s (checked by hand on the remote).
+- The GUI's Live page builds and switches between all six source/trigger modes without error (headless check). A run
+  was not started from the GUI itself.
+- Two faults found and fixed. (1) The speaker view did not compile: JSFX takes no `1e-12`, now written out as
+  0.000000000001 (entry 251's version had it). (2) REAPER's web remote stopped answering while a second client polled
+  it as well, and came back when its settings were re-applied. The player alone made 968 requests in 60 s without a
+  fault. REAPER stopped by hand now counts only after 1 s of being stopped.
+
+Not verified: correlation and delay on the real array. On the laptop only 2 of 39 outputs are heard, so the
+correlations are weak and do not prove the alignment. Not verified either: a long run (WAV size is about 1.2 MB per
+second of rounds), REAPER on Windows (the REAPER path is assumed), and a Results window opened on a reaper run. No
+number here is a detection result.
+
+## 253 - REAPER source: a stereo test (the 39 speakers folded to 2 channels)
+
+- Date: 2026-11-23
+- Type: Evaluation tooling (Marius: set it to 2 channels as a test)
+- Commit: on `iteration-21-uav16` at 340856a; uncommitted, as entry 252, plus this change
+
+**What.** A box on the Live page, "REAPER: stereo test", which is active only for the reaper source and sets
+`plan.live["reaper_channels"] = 2`. With it on, `reaper_live.ReaperRun` folds each round's 39 channels to outputs 1-2
+before writing them (`stereo_fold`). Each speaker goes to left and right by its azimuth (left = 90 degrees,
+gains sqrt((1 ± sin az) / 2)), with power kept, so a laptop or a pair of speakers plays all of it. Off, the run
+is the 39-speaker one of entry 252.
+
+**Check.** `stereo_fold` keeps each speaker's power (rows sum to 1 in power): speaker 21 (90°) goes left only,
+27 (270°) right only, 1 (straight up) to both at 0.707. In a run on this Mac (`20261123_103458_live_reaper_automatic`:
+1 round, comb, war soundscape 60 dB SPL, playback gain +10 dB, MacBook speakers and microphone) the WAV has 2
+channels. The microphone's delay was 558 ms at correlation 0.41, against 0.02-0.05 with 2 of 39 outputs heard
+(entry 252). This is the first run where the recording clearly matches what REAPER played, and it puts the delay at
+the 500 ms margin plus 58 ms. No number here is a detection result.
+
+## 254 - Fault: the war soundscape repeated each event 39 times; event layers are now one copy
+
+- Date: 2026-11-23
+- Type: Bug fix (reported by Marius by ear: "only playing the same 1 second of war soundscape")
+- Commit: on `iteration-21-uav16` at 340856a; uncommitted `scripts/reaper_array.py`, `scripts/reaper_live.py`, `docs/REPORT.md`
+
+**The fault.** Entries 248 and 252 played the war soundscape from all 39 speakers, each copy from a different point
+in its 38.5 s loop:
+- In the REAPER live source (entry 252) the copies were 38.5 / 39 ≈ 1 s apart, so every shot and explosion came back
+  once a second, 39 times. Heard at the centre, or folded to stereo, that is the same second over and over.
+- In `allday.RPP` / `demo.RPP` (entries 248-250) the offsets were random, so each event came back 39 times within each
+  38.5 s, at random intervals.
+
+The "diffuse" spread only suits steady noise. Any layer with distinct events repeats them once per copy.
+
+**The fix.** A layer spread over listed speakers is one copy, the same signal on each, at 1/K amplitude, so the
+coherent sum at the centre stays at the layer's level:
+- war soundscape: outputs 20 and 28 (60° and 300° at ear height);
+- cars, helicopter and insects: as before (21; 11; 33 and 35), now also one copy each.
+
+Wind (Pd), and layers the array project does not list (wind stem, war-shaped noise), stay diffuse over all 39 from
+different points in the loop. The REAPER live source and `reaper_array.background` both follow this.
+
+**Check.**
+- On the first round of Marius's run `20261123_103320_live_reaper_automatic` (its plan, comb only): the war part is
+  on outputs 20 and 28 only. The 39 channels summed correlate with the war part at 0.453 at no delay, 0.0 at 1 s and
+  0.002 at 2 s, so there is no repetition left.
+- `uv run python scripts/reaper_array.py --verify`: 40 checks, 0 failed. `background.csv` shows one offset (32.749 s)
+  for the war soundscape on 20 and 28, at 53.98 dB SPL per speaker.
+- verify.csv's background level reads 58.83 dB SPL (60.9 before). verify sums the channels' power, which undercounts
+  one copy on two speakers by 3 dB. At the centre the two add in amplitude, which gives the planned level.
+- Because the random draws changed, `allday.RPP`'s drone times and directions changed too; `events.csv` has the new
+  ones.
+
+Not verified: listening on the array. Marius's GUI had loaded the old `reaper_live` and must be restarted to use this.
+
+## 255 - REAPER source: the microphone channel and REAPER's remote are checked before anything is built
+
+- Date: 2026-11-23
+- Type: Engineering (GUI use; no mix, scoring or result changed)
+- Commit: on `iteration-21-uav16` at 340856a; uncommitted `scripts/reaper_live.py`, `docs/REPORT.md`
+
+Marius's first GUI runs with the reaper source stopped on "input channel 2 (then 1): the microphone has 1 channel".
+The check came after the rounds had been written and REAPER had opened the project, so each wrong guess cost that
+wait. `ReaperRun._run` now checks the channel, and that REAPER's web remote answers, before it prepares or writes
+anything. The message also says the channels are numbered from 0. Checked: the module imports. Not run again.
+
+## 267 - Rebase onto Nicolai's b98766c; the REAPER entries' numbers 248-255 are used twice
+
+- Date: 2026-11-23
+- Type: Repository housekeeping (Marius: "fix my git problems")
+- Commit: `iteration-21-uav16` at c0f7bf6 (340856a rebased onto origin's b98766c); uncommitted: the REAPER live work
+
+**State before.** The local `iteration-21-uav16` and `origin/iteration-21-uav16` had diverged: one commit each.
+Locally that was 340856a (REAPER projects, entries 248-250), on GitHub b98766c (Nicolai: measured-SNR plots in the
+Conclusions, entries 265-266). The REAPER live work of entries 251-255 was uncommitted and touched three of the files
+b98766c changes.
+
+**What was done.**
+1. The uncommitted work was stashed and 340856a rebased onto b98766c, as c0f7bf6. That went through without conflicts.
+2. The stash was brought back. One conflict, in `scripts/live_test_engine.py`: b98766c adds per-layer SNRs
+   (`self.layer_snrs`, saved as `layer_snr.npz`) inside the result writing that entry 252 moved into
+   `_open_results` / `_close_results`. The two now sit there: started in `_open_results`, saved in
+   `_close_results`, filled by `_scorer` as b98766c does. `REPORT.md` and `Complete_Test_Gui.py` merged on their own.
+3. Nothing was pushed.
+
+Checked: no conflict markers left; `Complete_Test_Gui`, `reaper_live`, `live_test_engine` and `complete_test_engine`
+import; `tests/test_live.py` 18 passed. Not checked: a live run since the merge, and Nicolai's new Conclusions plots
+on a reaper run.
+
+**Entry numbers used twice.** The REAPER entries of 2026-11-23 (the 39-speaker array, its projects and the REAPER live
+source, ending in 255) took the numbers 248-255. Entries 248-264 of iterations 27-31 already use those numbers, and
+the clash went unnoticed then. Per section 1 nothing old is renumbered. From here on, those entries are cited by
+their title and date, or as "248-255 (REAPER, 2026-11-23)", and new entries continue from 268.

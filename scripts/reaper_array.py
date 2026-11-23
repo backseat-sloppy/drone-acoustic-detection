@@ -15,6 +15,8 @@ Writes into --out:
     events.csv          every drone on the all-day timeline (and demo.csv for the demo)
     trajectories/       per pool event, every 10 ms: position, distance, direction, level, 39 speaker gains
     project.json        every setting, the commit, the command, the md5 of every WAV
+    drone_array_speaker_view.jsfx   a live view on the master: the array from above, each speaker lit by the
+                        level on its output as it plays (also copied into REAPER's Effects folder, where REAPER finds it)
     verify.csv          (--verify) REAPER's render of the speaker check and of the first drone, against the WAVs
 
 Routing: the master bus has 40 channels and sends channel N to hardware output N (N = 1..39). Three tracks of 40
@@ -57,10 +59,11 @@ TOWARDS_S, ACROSS_S = 10.0, 10.0                             # 10 s each, as the
 CLOSEST_M = 1.0                                              # towards: the path passes this far above the centre
 FRAME_S = 0.01                                               # VBAP gains and trajectory rows every 10 ms
 LOOP_S, FADE_S = 60.0, 0.1                                   # background loop and its seam crossfade
-# The live test's layers and levels (its latest run's config, 2026-11-22). spread: every speaker, each from its own
-# offset in the loop (diffuse); or a list of outputs (1-based) the layer plays from.
+# The live test's layers and levels (its latest run's config, 2026-11-22). spread "all": every speaker, each from its
+# own offset in the loop (diffuse), only for steady noise: a layer with events (shots, a pass-by) played that way repeats
+# each event once per speaker (entry 254). A list: the outputs (1-based) that play its one copy, the same signal on each.
 LAYERS = {
-    "war soundscape": (E.WAR_SOUNDSCAPE, 60.0, "all"),
+    "war soundscape": (E.WAR_SOUNDSCAPE, 60.0, [20, 28]),    # (60, 0), (300, 0): front left and front right
     "wind (Pd)": (E._wind_file(E.WIND_PD), 50.0, "all"),
     "cars": (E._cars_file(E.CAR_PD), 5.0, [21]),             # (90, 0)
     "helicopter": (E._heli_file(), 50.0, [11]),              # (108, 30)
@@ -204,12 +207,14 @@ def background(rng, media: Path) -> list[dict]:
             raise FileNotFoundError(f"{name}: {f} missing (render it once with the Complete test GUI)")
         x = read_mono(f)
         spk = list(range(1, N + 1)) if spread == "all" else spread
-        gain = E.rms_for(level) / rms(x) / np.sqrt(len(spk))  # incoherent copies: the sum at the centre is `level`
+        # the sum at the centre is `level`: incoherent copies add in power, one copy on several speakers in amplitude
+        gain = E.rms_for(level) / rms(x) / (np.sqrt(len(spk)) if spread == "all" else len(spk))
+        one = int(rng.integers(len(x)))
         for s in spk:
-            off = int(rng.integers(len(x)))
+            off = int(rng.integers(len(x))) if spread == "all" else one
             out[:, s - 1] += gain * seamless(x, off, n)
             rows.append(dict(layer=name, speaker=s, source=str(f.relative_to(ROOT)), offset_s=round(off / SR, 3),
-                             gain=f"{gain:.6g}", level_db_spl_speaker=round(level - 10 * np.log10(len(spk)), 2),
+                             gain=f"{gain:.6g}", level_db_spl_speaker=round(level - (10 if spread == "all" else 20) * np.log10(len(spk)), 2),
                              level_db_spl_layer=level, spread="all" if spread == "all" else "fixed"))
     write39(media / "background_loop.wav", out)
     return rows
@@ -227,6 +232,89 @@ def speaker_check(rng, media: Path):
     write39(media / "speaker_check.wav", out)
 
 
+# ------------------------------------------------------------------ the speaker view (a live meter in REAPER)
+
+JSFX = "drone_array_speaker_view.jsfx"                       # REAPER/Effects/<this>, on the master of both projects
+
+
+def map_xy(p: np.ndarray) -> np.ndarray:
+    """Directions (n x 3) on the top view: centre = straight up, radius 90 - elevation; front up, left left."""
+    p = p / np.linalg.norm(p, axis=-1, keepdims=True)
+    az, rho = np.arctan2(p[..., 1], p[..., 0]), 90 - np.degrees(np.arcsin(np.clip(p[..., 2], -1, 1)))
+    return np.stack([-rho * np.sin(az), rho * np.cos(az)], -1)
+
+
+def jsfx() -> str:
+    """A JSFX that passes the 39 channels through untouched and draws the array from above (as speakers.png), each
+    speaker lit by the level on its output over the last 50 ms (dB SPL at full scale = 110), with the loudest named."""
+    xy = map_xy(SPK)
+    el = np.array(LAYOUT, float)[:, 1]
+    edges = sorted({tuple(sorted((int(tri[i]), int(tri[j])))) for tri in TRI if not (el[tri] == -30).all()
+                    for i, j in ((0, 1), (1, 2), (2, 0))})
+    pins = "".join(f"in_pin:{s + 1}\n" for s in range(N)) + "".join(f"out_pin:{s + 1}\n" for s in range(N))
+    pos = " ".join(f"X[{s}]={xy[s, 0]:.2f}; Y[{s}]={xy[s, 1]:.2f};" for s in range(N))
+    edg = " ".join(f"E[{2 * i}]={a}; E[{2 * i + 1}]={b};" for i, (a, b) in enumerate(edges))
+    return f"""desc:39-speaker array view (drone-acoustic-detection)
+//tags: analysis meter
+// Generated by scripts/reaper_array.py. Audio passes through unchanged.
+slider1:30<0,110,1>Dark below (dB SPL)
+slider2:80<0,110,1>Full brightness at (dB SPL)
+{pins}options:no_meter
+
+@init
+N={N}; NE={len(edges)}; X=0; Y=100; ACC=200; LV=300; E=1000;
+{pos}
+{edg}
+cnt=0;
+
+@sample
+i=0; loop(N, ACC[i] += sqr(spl(i)); i += 1;);
+(cnt += 1) >= srate * 0.05 ? (
+  i=0; loop(N, LV[i] = max(sqrt(ACC[i] / cnt), LV[i] * 0.6); ACC[i] = 0; i += 1;);
+  cnt = 0;
+);
+
+@gfx 640 680
+gfx_clear = 0;
+s = min(gfx_w, gfx_h - 40) / 300; cx = gfx_w / 2; cy = 40 + (gfx_h - 40) / 2;
+gfx_setfont(1, "Arial", max(10, 6 * s));
+gfx_set(0.3, 0.3, 0.3, 1);
+i=0; loop(NE, a=E[2*i]; b=E[2*i+1]; gfx_line(cx + X[a]*s, cy - Y[a]*s, cx + X[b]*s, cy - Y[b]*s); i += 1;);
+best=0; bdb=-999; tot=0;
+i=0; loop(N,
+  tot += sqr(LV[i]);
+  d = LV[i] > 0 ? 110 + 20 * log10(LV[i]) : -999;
+  d > bdb ? (bdb = d; best = i;);
+  k = min(1, max(0, (d - slider1) / (slider2 - slider1)));
+  k > 0 ? gfx_set(0.35 + 0.65 * k, 0.25 + 0.7 * k * k, 0.2 * (1 - k), 1) : gfx_set(0.22, 0.22, 0.22, 1);
+  gfx_circle(cx + X[i]*s, cy - Y[i]*s, (8 + 10 * k) * s, 1, 1);
+  gfx_set(1, 1, 1, 1);
+  sprintf(#n, "%d", i + 1); gfx_measurestr(#n, w, h);
+  gfx_x = cx + X[i]*s - w / 2; gfx_y = cy - Y[i]*s - h / 2; gfx_drawstr(#n);
+  i += 1;
+);
+gfx_set(0.8, 0.8, 0.8, 1);
+#l = "front"; gfx_measurestr(#l, w, h); gfx_x = cx - w / 2; gfx_y = cy - 135 * s; gfx_drawstr(#l);
+#l = "back"; gfx_measurestr(#l, w, h); gfx_x = cx - w / 2; gfx_y = cy + 128 * s; gfx_drawstr(#l);
+gfx_x = cx - 148 * s; gfx_y = cy; gfx_drawstr("left");
+#l = "right"; gfx_measurestr(#l, w, h); gfx_x = cx + 148 * s - w; gfx_y = cy; gfx_drawstr(#l);
+gfx_set(1, 1, 1, 1); gfx_x = 10; gfx_y = 10;
+tot > 0.000000000001 ? gfx_printf("loudest: speaker %d (%.0f dB SPL)    all 39: %.0f dB SPL", best + 1, bdb, 110 + 10 * log10(tot))
+        : gfx_drawstr("silence");
+"""
+
+
+def install_jsfx(out: Path):
+    """The view beside the projects, and in this machine's REAPER Effects folder, where REAPER looks for it."""
+    (out / JSFX).write_text(jsfx())
+    fx = Path.home() / "Library/Application Support/REAPER/Effects"
+    if fx.is_dir():
+        (fx / JSFX).write_text(jsfx())
+        print(f"speaker view installed: {fx / JSFX}")
+    else:
+        print(f"REAPER's Effects folder not found: copy {out / JSFX} into it (REAPER: Options > Show resource path)")
+
+
 # ------------------------------------------------------------------ REAPER projects
 
 def item(pos, length, f, name, loop=0):
@@ -239,16 +327,22 @@ def track(name, items, mute=False):
             f'    MAINSEND 1 0\n{"".join(items)}  >\n')
 
 
-def rpp(length_s, drone_items, markers, check_len):
+def project(tracks: str, markers: list[str], extra: str = "") -> str:
+    """A REAPER project: master of 40 channels, channel N to hardware output N, the speaker view on the master."""
     hw = "".join(f"  MASTERHWOUT {i | 1024} 0 1 0 0 0 {i | 1024} -1\n" for i in range(N))   # master ch N -> output N
+    view = ("  <MASTERFXLIST\n    SHOW 0\n    LASTSEL 0\n    DOCKED 0\n    BYPASS 0 0 0\n"
+            f'    <JS "{JSFX}" ""\n      30 80' + " -" * 62 + "\n    >\n    FLOAT 120 80 640 680\n    WAK 0 0\n  >\n")
     return ('<REAPER_PROJECT 0.1 "7.84/macOS-arm64" 0\n  SAMPLERATE 48000 1 0\n  MASTER_NCH 40 2\n'
-            '  MASTER_VOLUME 1 0 -1 -1 1\n' + hw +
+            '  MASTER_VOLUME 1 0 -1 -1 1\n' + hw + view + extra +
             '  RENDER_FILE "render"\n  RENDER_PATTERN ""\n  RENDER_FMT 0 40 48000\n  RENDER_RANGE 1 0 0 0 1000\n'
-            '  <RENDER_CFG\n    ZXZhdxgAAQ==\n  >\n' + "".join(markers) +
-            track("Background", [item(0, length_s, "media/background_loop.wav", "background", loop=1)]) +
-            track("Drones", drone_items) +
-            track("Speaker check (1 s per speaker, 1..39)", [item(0, check_len, "media/speaker_check.wav", "speaker check")], mute=True) +
-            ">\n")
+            '  <RENDER_CFG\n    ZXZhdxgAAQ==\n  >\n' + "".join(markers) + tracks + ">\n")
+
+
+def rpp(length_s, drone_items, markers, check_len):
+    return project(track("Background", [item(0, length_s, "media/background_loop.wav", "background", loop=1)]) +
+                   track("Drones", drone_items) +
+                   track("Speaker check (1 s per speaker, 1..39)", [item(0, check_len, "media/speaker_check.wav", "speaker check")],
+                         mute=True), markers)
 
 
 def region(i, a, b, name):
@@ -280,6 +374,7 @@ def main():
             tris = [i for i, t in enumerate(TRI) if s in t]
             w.writerow([s + 1, az, el, *(f"{c:.4f}" for c in SPK[s]), " ".join(map(str, tris))])
     draw_array(out / "speakers.png")
+    install_jsfx(out)
 
     print("background loop ...")
     bg = background(rng, media)
