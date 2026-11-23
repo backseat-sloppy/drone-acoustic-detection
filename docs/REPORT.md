@@ -15033,3 +15033,214 @@ ITU ARIS. Reference 26.1 / 0.826 Mathias, 40.0 / 0.877 ITU ARIS.
 **Next.** Read the comb and lgbm baselines from `~/exp251/cross.json` on the server (rerun
 `.venv/bin/python ~/exp251/readout.py`). The scoring of the 50 detectors on t246 (entry 246's Next) stops when this PC
 does. It can continue with `dev_test.py run t246 --extend t243` for the models not yet scored.
+
+## 254 - The crossed runs' baselines; the 50-detector scoring moved to the server's GPUs
+
+- Date: 2026-11-23
+- Iteration: none
+- Type: Result (entry 253's baselines), Infrastructure
+- Commit: uncommitted, on branch `test-protocol-review` (after 1f30b2d).
+
+**Baselines of entry 253** (`~/exp251/readout.py` on the server, same 1392 rounds; gap war / AUC war):
+
+| Baseline | none war % | Mathias | ITU ARIS |
+|---|---|---|---|
+| comb | 6.5 | 33.1 / 0.683 | -2.3 / 0.482 |
+| it6 lgbm | 3.5 | 27.1 / 0.860 | 13.3 / 0.845 |
+
+comb does not separate the ITU ARIS clips from war at all (AUC 0.48). Every network in entry 253 beats both
+baselines on ITU ARIS by AUC, B and the reference included. On Mathias's clips, it6 lgbm (0.860) is close to the
+reference CRNN (0.876) and ahead of B (0.773).
+
+**The 50 detectors.** Over the weekend the PC slept, and on 2026-11-23 the CPU scoring of t246 had 3 of 50
+models done (`it6 CNN`, `it24 CRNN 2s war s0` and `s1`; the `s1` job ran 4098 min wall time, the sleep included).
+The local jobs were stopped and the scoring moved to the server:
+- `scratchpad/t246_pack.py` packs the 71 clips the tune rounds use, the rounds of `t246/rounds.json`, and per model
+  its checkpoint MD5, frontend config and threshold, all read with this PC's code. The backgrounds come from entry
+  253's pack (the same `dev_test.backgrounds()`).
+- On the server, 34 of the 49 checkpoints were found by MD5. The 15 from `iteration-21-uav16` were uploaded.
+  `~/t246/t246_gpu.py` rebuilds the 1892 rounds. Their audio MD5 equals t246's
+  (3c6667627df72dd0cc601ab7e232cc11), so the server scores exactly the audio this PC would. It then scores each
+  model with this PC's `src/dad`, three workers, one per GPU. Each checkpoint's MD5 is checked before loading.
+
+## 255 - A map of every drone recording by spectral shape
+
+- Date: 2026-11-23
+- Iteration: none (a visualisation; nothing trained, tuned or scored)
+- Type: Analysis
+- Commit: uncommitted, on branch `test-protocol-review` (after 1f30b2d).
+- Command: `uv run python scripts/plot_drone_clusters.py`
+- Output: `artifacts/drone_clusters/drone_clusters.png`
+
+**Why.** Mads asked for a picture of how the drone sounds we have group together, the repo's own drone files
+included.
+
+**What.** Every drone-labelled recording in `data/processed/manifest.csv` (ddl, dronenoise, fpv, halmstad,
+nightjar, d3set, lund; no relabel spans, since only label-1 recordings are used), the 24 Glasgow 1 m hover stems,
+`PeterDrones/` and Mathias's `data/recordedDroneClipped/` (23 files, channel 0). ITU ARIS (`sealed_peek`) is left
+out: it is the test set. Per recording, the 8 loudest non-overlapping 1 s windows; per window, the time-mean of the
+frozen 64-band log-mel frontend minus its own mean, so level is removed and only spectral shape is left. Standardise,
+PCA to 20, k-means with k = 3..12 picked by silhouette, t-SNE (perplexity 40, seed 0) for the 2-D picture.
+
+**Result.** 3677 windows from 49 dataset/drone pairs. Silhouette is low for every k (0.30 at k = 3, 0.20-0.24
+for k = 4..12): there are no well-separated clusters of drone sound in this feature.
+- Cluster 0 (1928 windows): flatter spectra; mostly dronenoise Matrice 300, fpv, halmstad, d3set X500.
+- Cluster 1 (1645): low-frequency heavy, steep fall-off; mostly fpv, dronenoise Mini 3 Pro and Yuneec H520E.
+- Cluster 2 (104): only Mathias's recordings. Their mean shape has almost no energy below the first ~5 bands and
+  strong narrow peaks; nothing from the public datasets lands near them. The other 80 of their 184 windows fall in
+  clusters 0/1 (not inspected further).
+- Coloured by dataset, the t-SNE groups follow the dataset (recording setup) more than the drone model: Glasgow,
+  d3set, lund and part of dronenoise form their own islands.
+
+**Reading.** The spread is driven by recording chain and distance as much as by the drone. Mathias's clips sit
+outside what the training data covers, which fits entry 253 (a model trained on one set gains nothing on the other).
+Not checked: whether the missing low end of Mathias's clips is the microphone/recorder or the drones.
+
+## 256 - All 50 detectors on t246 (three drone sources): the PCEN networks lead on gap war, the 2 s CNNs on AUC
+
+- Date: 2026-11-23
+- Iteration: none (the development copy, entries 244-246)
+- Type: Result
+- Commit: uncommitted, on branch `test-protocol-review`. Scores in `~/t246/out` on the server, made by entry 254's
+  `t246_gpu.py` with this PC's code. Judged on the server by this PC's `scripts/dev_test.py` (uploaded to
+  `~/t246/repo`): `dev_test.py judge t246 --ref "it16 CRNN 600k" --boot 1000`, log `~/t246/judge.log`. Chrome blocked
+  the download of the score files over http, so they are on the server only.
+
+**Check against this PC.** Three models were also scored here on CPU (`it6 CNN`, `it24 CRNN 2s war s0`, `s1`).
+The server's scores have the same length. Their sums over all hops differ by 0.003-0.015 over 123-138 thousand
+hops, about 1e-7 per hop. This is GPU against CPU floating point, far below any difference in the table.
+
+**Conditions.** dev_test t246, tune half, 1892 rounds of 10 s (entries 244-246). Window 1 s or 2 s by model, hop
+0.125 s. Drones: Lund, Halmstad and Mathias's recorded clips (tune half: `drone1`, `drone1-2`), each mixed into war
+at 100-60 dB SPL, with and without wind and cars. War at 90 dB SPL (-20 dBFS). Each round counts equally. Gap = mean
+confidence with a drone minus without, in points (entry 245). These are point estimates. The bootstrap (1000 paired
+two-way resamples) was still running when this entry was written.
+
+| # | Model | gap war | Lund | Halmstad | recorded | gap all | none war % | AUC war | AUC war recorded | AUC all |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | it22 CNN pcen s1 | 57.8 | 41.1 | 74.6 | 54.3 | 33.2 | 1.4 | 0.952 | 0.971 | 0.760 |
+| 2 | it22 CNN pcen s0 | 57.4 | 41.2 | 75.2 | 52.2 | 32.1 | 1.5 | 0.949 | 0.967 | 0.750 |
+| 3 | it22 CRNN pcen s0 | 56.1 | 39.1 | 74.5 | 50.8 | 35.8 | 2.8 | 0.929 | 0.950 | 0.763 |
+| 4 | it22 CRNN pcen s1 | 56.0 | 39.4 | 75.2 | 49.8 | 34.9 | 2.3 | 0.930 | 0.959 | 0.758 |
+| 5 | it22 CRNN pcen s2 | 56.0 | 39.4 | 74.9 | 50.1 | 37.2 | 3.1 | 0.920 | 0.937 | 0.767 |
+| 6 | it22 CNN pcen s2 | 55.6 | 39.6 | 73.3 | 50.2 | 29.6 | 1.2 | 0.953 | 0.972 | 0.735 |
+| 7 | it20 CNN bp s2 | 54.8 | 47.8 | 72.4 | 41.9 | 34.3 | 1.3 | 0.946 | 0.922 | 0.755 |
+| 8 | it20 CNN bp s0 | 53.9 | 47.0 | 73.7 | 38.5 | 34.7 | 1.1 | 0.944 | 0.915 | 0.752 |
+| 9 | it20 CNN bp s1 | 53.6 | 50.0 | 72.4 | 36.4 | 32.8 | 1.1 | 0.941 | 0.912 | 0.741 |
+| 10 | it24 CNN 2s war s2 | 53.6 | 49.8 | 69.4 | 40.1 | 38.2 | 0.9 | 0.954 | 0.956 | 0.790 |
+| 11 | it23 CNN 2s colour s1 | 52.3 | 51.0 | 73.0 | 31.3 | 34.0 | 0.5 | 0.952 | 0.943 | 0.745 |
+| 12 | it24 CNN 2s war s0 | 52.2 | 50.9 | 72.2 | 31.9 | 35.1 | 0.4 | 0.954 | 0.946 | 0.761 |
+| 13 | it23 CNN 2s colour s2 | 51.9 | 47.9 | 70.7 | 35.3 | 35.5 | 0.6 | 0.963 | 0.973 | 0.774 |
+| 14 | it16 CNN 600k s1 | 51.2 | 46.9 | 70.2 | 34.6 | 33.2 | 0.9 | 0.949 | 0.935 | 0.748 |
+| 15 | it16 CNN 600k s2 | 50.9 | 47.1 | 69.1 | 34.8 | 33.4 | 1.7 | 0.952 | 0.951 | 0.759 |
+| 16 | it17 CNN 2s 600k s2 | 50.7 | 49.4 | 69.4 | 31.9 | 35.5 | 0.8 | 0.960 | 0.963 | 0.774 |
+| 17 | it24 CNN 2s war s1 | 50.3 | 49.5 | 68.4 | 31.7 | 34.4 | 0.3 | 0.958 | 0.951 | 0.752 |
+| 18 | it23 CNN 2s colour s0 | 50.2 | 49.9 | 71.3 | 27.9 | 35.0 | 0.4 | 0.949 | 0.924 | 0.759 |
+| 19 | it17 CRNN 2s 600k s2 | 50.0 | 48.4 | 68.3 | 31.6 | 33.9 | 1.7 | 0.942 | 0.941 | 0.756 |
+| 20 | it17 CNN 2s 600k s0 | 49.8 | 49.1 | 70.4 | 28.2 | 34.3 | 0.3 | 0.946 | 0.921 | 0.748 |
+| 21 | it23 CRNN 2s colour s2 | 49.6 | 45.6 | 69.6 | 31.4 | 32.5 | 2.3 | 0.922 | 0.925 | 0.762 |
+| 22 | it6 CNN | 49.3 | 41.9 | 66.7 | 37.0 | 29.7 | 2.5 | 0.930 | 0.898 | 0.739 |
+| 23 | it17 CNN 2s 600k s1 | 49.1 | 48.5 | 71.1 | 26.2 | 32.9 | 0.5 | 0.953 | 0.948 | 0.743 |
+| 24 | it16 CNN 600k s0 | 48.5 | 46.9 | 68.9 | 28.0 | 29.9 | 1.2 | 0.930 | 0.882 | 0.726 |
+| 25 | it23 CRNN 2s colour s0 | 48.5 | 44.3 | 67.7 | 31.6 | 32.8 | 2.7 | 0.930 | 0.947 | 0.768 |
+| 26 | it20 CRNN bp s1 | 48.1 | 42.7 | 69.7 | 29.5 | 28.1 | 3.5 | 0.898 | 0.854 | 0.720 |
+| 27 | it23 CRNN 2s colour s1 | 48.1 | 45.5 | 66.2 | 31.0 | 33.5 | 3.3 | 0.914 | 0.928 | 0.767 |
+| 28 | it17 CRNN 2s 600k s0 | 47.7 | 43.9 | 66.5 | 30.7 | 33.0 | 1.6 | 0.948 | 0.966 | 0.762 |
+| 29 | it19 CRNN colour s1 | 47.4 | 43.3 | 66.1 | 31.0 | 29.2 | 4.8 | 0.902 | 0.870 | 0.738 |
+| 30 | it20 CRNN bp s2 | 47.4 | 42.2 | 65.7 | 32.1 | 27.7 | 3.9 | 0.922 | 0.913 | 0.728 |
+| 31 | it23 CRNN relabel colour s1 | 47.3 | 44.0 | 67.6 | 28.3 | 29.7 | 4.4 | 0.911 | 0.891 | 0.746 |
+| 32 | it23 CRNN relabel 600k s1 | 46.7 | 44.8 | 67.6 | 25.9 | 32.2 | 3.3 | 0.898 | 0.867 | 0.757 |
+| 33 | it24 CRNN 2s war s2 | 46.4 | 47.1 | 63.6 | 27.3 | 33.2 | 2.6 | 0.923 | 0.920 | 0.765 |
+| 34 | it16 CRNN 600k s1 | 46.0 | 44.8 | 67.5 | 24.0 | 29.3 | 2.6 | 0.926 | 0.906 | 0.739 |
+| 35 | it9 CNN | 46.0 | 41.9 | 65.5 | 28.7 | 26.8 | 2.9 | 0.904 | 0.826 | 0.717 |
+| 36 | it20 CRNN bp s0 | 45.9 | 39.4 | 64.4 | 31.7 | 26.7 | 3.7 | 0.919 | 0.890 | 0.721 |
+| 37 | it16 CRNN 600k s2 | 45.4 | 42.3 | 64.2 | 27.8 | 28.3 | 4.1 | 0.917 | 0.899 | 0.737 |
+| 38 | it16 CRNN 600k s0 | 45.2 | 41.5 | 65.4 | 26.9 | 28.9 | 3.6 | 0.917 | 0.882 | 0.735 |
+| 39 | it24 CRNN 2s war s1 | 45.2 | 43.0 | 61.3 | 29.9 | 31.7 | 3.4 | 0.913 | 0.908 | 0.768 |
+| 40 | it24 CRNN 2s war s0 | 44.7 | 41.1 | 62.9 | 28.2 | 31.1 | 4.3 | 0.877 | 0.850 | 0.751 |
+| 41 | it25 CRNN relabel double colour s1 | 44.6 | 40.0 | 66.6 | 25.0 | 25.5 | 3.9 | 0.898 | 0.845 | 0.703 |
+| 42 | It9B | 44.0 | 38.3 | 66.1 | 25.3 | 22.3 | 10.9 | 0.857 | 0.760 | 0.682 |
+| 43 | it21 CRNN uav16 s2 | 43.6 | 39.3 | 64.0 | 25.3 | 28.7 | 4.6 | 0.887 | 0.844 | 0.737 |
+| 44 | it17 CRNN 2s 600k s1 | 43.2 | 43.3 | 65.3 | 19.4 | 30.0 | 3.1 | 0.899 | 0.872 | 0.748 |
+| 45 | it21 CRNN uav16 s1 | 42.3 | 38.8 | 62.4 | 23.8 | 26.6 | 6.3 | 0.881 | 0.838 | 0.732 |
+| 46 | it21 CRNN uav16 s0 | 41.1 | 35.1 | 60.3 | 25.8 | 26.5 | 8.2 | 0.860 | 0.805 | 0.731 |
+| 47 | it9 CRNN | 40.5 | 34.5 | 63.0 | 21.5 | 24.3 | 6.9 | 0.841 | 0.734 | 0.695 |
+| 48 | it6 lgbm (baseline) | 29.6 | 16.4 | 41.5 | 28.2 | 5.9 | 3.5 | 0.904 | 0.878 | 0.559 |
+| 49 | comb (baseline) | 12.2 | -3.2 | 3.3 | 35.0 | 8.2 | 6.5 | 0.567 | 0.693 | 0.545 |
+| 50 | it10 CNN | 1.5 | 0.3 | 2.0 | 2.0 | 1.8 | 0.0 | 0.553 | 0.749 | 0.522 |
+
+**Reading (point estimates, to be checked against the intervals).**
+- *Gap war:* iteration 22's PCEN networks hold the top six places, all three seeds of both CNN and CRNN (55.6-57.8).
+  Their lead comes from the recorded drones (49.8-54.3 against at most 41.9 for any other model) and from Halmstad.
+  On Lund they are below the 2 s CNNs (39-41 against 47-51).
+- *AUC:* the 2 s CNNs lead. it23 CNN 2s colour s2 has the best AUC war (0.963), followed by it17 CNN 2s s2 and it24
+  CNN 2s war s1 (0.960, 0.958). it24 CNN 2s war s2 has the best gap all (38.2) and the best AUC all (0.790). The PCEN
+  CNNs are close behind on AUC war (0.949-0.953).
+- *CNN beats CRNN* in almost every family, on gap war and AUC alike. Iteration 24's CRNNs, the newest models, are at
+  places 33-40. Its CNNs are at 10, 12 and 17.
+- *The recorded drones:* gap war recorded is below Halmstad for every network, but AUC war recorded is above 0.95
+  for the best models.
+- *Baselines:* it6 lgbm 29.6 / 0.904, comb 12.2 / 0.567. Every network but it10 CNN beats both on gap war. it10 CNN
+  gives almost no confidence anywhere (1.5 points) and is not a working detector here.
+- *Seeds:* within a family the spread across seeds is 1-3 points of gap war. A lead smaller than that is not a lead.
+
+**Not done.** Intervals, P(best) and P(top 3) from the bootstrap. Only the tune half is scored; the confirm half is
+not. This is the development copy, not REQUIREMENTS.md's tests, and no ITU ARIS figure is involved.
+
+## 257 - Entry 256's intervals: it22 CNN pcen s1 is most often best on gap war, it23 CNN 2s colour s2 on AUC war; the intervals overlap widely
+
+- Date: 2026-11-23
+- Iteration: none
+- Type: Result
+- Commit: uncommitted, on branch `test-protocol-review`. From `~/t246/repo/artifacts/dev_test/t246/judge.json` on
+  the server (the run of entry 256: 1000 paired two-way cluster resamples, recordings and stretches; the
+  recorded drones drawn by recording).
+
+Estimate [95% interval], share of resamples where the model is best / in the top 3:
+
+| Figure | First | Second | Third |
+|---|---|---|---|
+| gap war | it22 CNN pcen s1 57.8 [49.8, 67.7], 73% / 88% | it22 CNN pcen s0 57.4 [49.4, 67.4], 7% / 80% | it22 CRNN pcen s0 56.1 [46.9, 67.2], 7% / 29% |
+| AUC war | it23 CNN 2s colour s2 0.963 [0.940, 0.981], 64% / 90% | it17 CNN 2s 600k s2 0.960 [0.935, 0.981], 9% / 70% | it24 CNN 2s war s1 0.958 [0.937, 0.978], 17% / 53% |
+| gap all | it24 CNN 2s war s2 38.2 [30.2, 46.1], 57% / 77% | it22 CRNN pcen s2 37.2 [28.6, 46.4], 34% / 61% | it22 CRNN pcen s0 35.8 [27.4, 45.1], 1% / 37% |
+| AUC all | it24 CNN 2s war s2 0.790 [0.743, 0.840], 68% / 84% | it17 CNN 2s 600k s2 0.774 [0.725, 0.821], 4% / 37% | it23 CNN 2s colour s2 0.774 [0.721, 0.827], 2% / 38% |
+| gap war recorded | it22 CNN pcen s1 54.3 [45.4, 68.9], 88% / 93% | it22 CNN pcen s0 52.2 [43.4, 66.3], 0% / 80% | it22 CRNN pcen s0 50.8 [42.8, 61.0], 12% / 54% |
+| AUC war recorded | it23 CNN 2s colour s2 0.973 [0.947, 0.992], 40% / 72% | it22 CNN pcen s2 0.972 [0.948, 0.992], 36% / 81% | it22 CNN pcen s1 0.971 [0.945, 0.992], 12% / 68% |
+
+**Baselines and the named references** (gap war; AUC war):
+- it6 lgbm: 29.6 [25.2, 35.4]; 0.904 [0.865, 0.936].
+- comb: 12.2 [7.3, 17.5]; 0.567 [0.538, 0.599].
+- it9 CRNN: 40.5 [34.2, 47.7]; 0.841 [0.793, 0.887].
+
+Paired differences:
+- it22 CNN pcen s1, gap war: +28.2 [+23.4, +34.9] over it6 lgbm, +17.3 [+12.9, +23.3] over it9 CRNN.
+- it23 CNN 2s colour s2, AUC war: +0.058 [+0.036, +0.085] over it6 lgbm, +0.121 [+0.085, +0.158] over it9 CRNN.
+
+**Reading.**
+- The leaders beat both baselines and it9 CRNN clearly. The paired intervals are well clear of zero.
+- Among the top models the intervals overlap almost entirely. The top of gap war spans 49.8-67.7 for the first
+  model and 47.8-62.0 for the seventh (it20 CNN bp s2). The test cannot single out one best model. It can say
+  which family leads on each figure.
+- Two families stand out, each on its own figure:
+  - *PCEN (iteration 22)* on gap war and on the recorded drones. The lead comes from a larger gap, not from a
+    better ranking: its AUC war (0.949-0.953) is not above the 2 s CNNs'.
+  - *2 s CNNs (iterations 17, 23 and 24)* on AUC war and on everything-against-everything (gap all, AUC all).
+- Mads's criterion is the gap (entry 245). By that criterion the answer is the iteration 22 PCEN networks, with
+  it22 CNN pcen s1 best in 73% of resamples. The caveat is entry 245's: the gap also rewards a model whose
+  scores sit higher on the sigmoid, and only the AUC is free of that.
+- Every number here is from the development copy's tune half. None of it has been confirmed on the confirm half or
+  on REQUIREMENTS.md's tests.
+
+## 256 - The microphone impulse response measurement is faulty; not to be used
+
+- Date: 2026-11-23
+- Iteration: none
+- Type: Data note
+- Commit: uncommitted, on branch `test-protocol-review` (after 1f30b2d).
+
+`Microphone_Impulse_response/` (commit 942195f, REW V5.40, 2026-11-18, "Microphone 1", "Microphone 2", "Both
+microphones": log sweep at -12 dBFS through a Scarlett 4i4, no timing reference) was read on 2026-11-23. Relative to
+1 kHz both microphones read about -17 to -18 dB at 50 Hz, -10 to -11 dB at 100 Hz and +11 dB at 4 kHz
+(median over +-10 % around each frequency, from the `.txt` exports). Mads reported the same day that the measurement
+is faulty. It is not used for training, augmentation or evaluation. Entry 255's remark that Mathias's clips lack
+low end stands on its own; it is not evidence about the microphone. A new measurement is awaited.
