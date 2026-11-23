@@ -539,6 +539,7 @@ class LiveRun:
 
         fields = E.row_fields(self.plan) + ["alarm_threshold", "round_length_s", "timeline_s", "mic_lag_ms", "mic_corr"]
         scores, snrs = {}, {}
+        self.layer_snrs = {}                                 # round|layer|window -> SNR per no-drone window (_scorer)
         jobs: queue.Queue = queue.Queue()
         fh = open(t.out / "rounds.csv", "w", newline="", encoding="utf-8")
         w = csv.DictWriter(fh, fields)
@@ -620,6 +621,7 @@ class LiveRun:
         fh.close()
         np.savez_compressed(t.out / "scores.npz", **scores)
         np.savez_compressed(t.out / "window_snr.npz", **snrs)
+        np.savez_compressed(t.out / "layer_snr.npz", **self.layer_snrs)
         E.write_summary(t)
         cfg = json.loads((t.out / "config.json").read_text(encoding="utf-8"))
         cfg["plan"]["live"] = self.plan.live                 # with the rate and the devices it ran on
@@ -696,6 +698,10 @@ class LiveRun:
                     n_grid = max(len(scores[f"{r['round']}|{k}"]) for k in res)
                     for win, x in E.round_window_snrs(m, n_grid).items():
                         snrs[f"{r['round']}|{win}"] = x
+                if res:                                      # every round, from the digital parts as above
+                    n_grid = max(len(scores[f"{r['round']}|{k}"]) for k in res)
+                    for key, x in E.layer_window_snrs(m, n_grid, self.plan.buffer_after_s).items():
+                        self.layer_snrs[f"{r['round']}|{key}"] = x
                 fh.flush()
                 if job["heard"] is not None:
                     (t.out / "heard").mkdir(exist_ok=True)

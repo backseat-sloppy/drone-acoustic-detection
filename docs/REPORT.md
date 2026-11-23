@@ -17064,3 +17064,58 @@ The y-axis follows what is shown.
 - the war soundscape line drops below 0 dB SPL twice. Those are silent stretches in WarSoundScape.wav itself (black in the spectrogram), not a fault.
 
 `uv run pytest`: all pass. A display only: nothing in the results changes.
+
+## 265 - Complete test Conclusions: distractor confidence against the distractor's measured SNR, not its set level
+
+- Date: 2026-11-22
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: on `iteration-21-uav16` at 000645b (the local checkout was on that branch); uncommitted `scripts/complete_test_engine.py`, `scripts/live_test_engine.py`, `scripts/Complete_Test_Gui.py`, `docs/REPORT.md`
+
+**What.** On the comparison page of Conclusions, the section "Confidence during distractors" plotted each detector's mean no-drone confidence against each layer's set level (dB SPL). A layer at one fixed level gave a single point. Each layer's graph now plots the confidence of every no-drone window against that layer's SNR in that same window, measured during the round:
+
+- SNR = 10 log10(layer power / power of everything else in the mix) over the window (1 s, or 2 s for the 2 s models). "Everything else" is the other layers, plus any faint drone sound in a window labelled no-drone.
+- Windows are binned at 2 dB, and bins with fewer than 10 windows are not drawn (the existing `snr_bins`). With one detector the middle half is shaded and the window count per bin is drawn as grey bars.
+- The dotted "layer off" line is unchanged: the mean no-drone confidence of the rounds without the layer.
+- Every layer that played in some round gets a graph, also a layer at only one level. The war soundscape is one of them.
+
+Which windows count: no-drone windows by `window_labels` on the truth with the run's buffer after impact, as `score_round` labels them. Windows where the layer is silent, or where nothing else plays, have no SNR and are left out. A round with the war soundscape alone therefore gives no war-soundscape points.
+
+**How.**
+- `E.layer_window_snrs(m, n, buffer_s)` measures it from a round's separate parts on the score grid.
+- `Test.run` and the live `_scorer` store it for every round in a new `layer_snr.npz` (key `round|layer|window`). The live engine measures it on the digital parts, as for `window_snr.npz`.
+- For runs made before this, the GUI's `layer_snrs` rebuilds each round once and saves the file.
+- `layer_snr_pairs` pairs it with the scores in `scores.npz` (comb squashed as elsewhere).
+
+**Check** (`layer_snr_check.py` in the session scratchpad): a modified plan with the X500 3 m file at 100 km/h, war soundscape 60 dB, helicopter 45/55 dB and also without, no-drone rounds, buffer 1 s, it9 CRNN and comb, 15 rounds.
+- One window by hand (round 1, helicopter, window ending 12.38 s): stored -12.22 dB, by hand -12.22 dB.
+- No finite SNR in any window touching a drone phase plus its 1 s buffer.
+- Deleting `layer_snr.npz` and rebuilding through the GUI gives the same values.
+- The figure was looked at: one curve per detector over -30 to +30 dB. With only two layers, the helicopter's SNR is the war soundscape's mirrored, so the two graphs mirror each other. Comb's no-drone confidence peaks around helicopter SNR -12 dB (49 %).
+- These numbers come from one small check run on a drone file from a training source. They are not detection performance.
+
+`uv run pytest`: everything passes except `tests/test_dronesynth.py::test_real_drone_path_and_stem_split`, `test_quiet_scenes` and `test_vehicle_pass_bys`, which fail with FileNotFoundError on stems that are not on this PC (iteration 25-30 code, untouched here).
+
+## 266 - Complete test Conclusions: drone confidence against the drone's measured SNR over each distractor
+
+- Date: 2026-11-22
+- Type: Evaluation tooling (requested by Nicolai)
+- Commit: on `iteration-21-uav16` at 000645b; uncommitted, together with entry 265
+
+**What.** Entry 265 gave the no-drone windows a graph per layer, against the layer's measured SNR. Nicolai asked for the same for drone confidence. The comparison page of Conclusions now has a further section, "Confidence during distractors: drone windows (higher is better)", with one graph per background layer:
+- **y:** each detector's mean confidence over the drone windows in the bin.
+- **x:** the drone's SNR against that one layer, measured in the same window: 10 log10(drone power / layer power), over 1 s, or 2 s for the 2 s models.
+- **The rest is as in entry 265:** 2 dB bins of at least 10 windows, a band and window counts with one detector, and a dotted line for the mean drone confidence of the rounds without the layer.
+
+Drone windows are those labelled 1 by `window_labels` on the truth with the buffer after impact. Windows in the buffer after the drone file has ended have no drone power and are left out.
+
+**How.**
+- `E.layer_window_snrs` also writes `layer|window|drone` into `layer_snr.npz` for rounds with a drone.
+- `layer_snrs` in the GUI measures a file again when it predates these keys and the run has drone rounds.
+- The per-layer drawing is now one method, `_layer_snr_graphs(axes, layers, sums, drone)`, used by both sections.
+
+**Check** (`layer_snr_check.py` in the session scratchpad, the same plan as entry 265):
+- One drone window by hand (round 1, helicopter, window ending 1.62 s): stored -9.01 dB, by hand -9.01 dB.
+- 1565 drone windows have an SNR, from -38.8 to +42.6 dB.
+- The no-drone values and the rebuild check are unchanged from entry 265.
+- The figure was looked at. it9 CRNN's drone confidence rises from about 10 % at -30 dB to a peak of about 85 % near 0 dB against either layer. It falls again above about +5 dB, the same shape as the existing drone-vs-whole-background SNR graph, where those top bins are few windows.
+- One small check run on a training-source drone file: not detection performance.

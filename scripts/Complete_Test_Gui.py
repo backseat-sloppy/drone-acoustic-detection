@@ -2127,6 +2127,49 @@ def window_snrs(test: E.Test, scores: dict) -> dict[str, np.ndarray]:
     return out
 
 
+def layer_snrs(test: E.Test, scores: dict) -> dict[str, np.ndarray]:
+    """round|layer|window -> each background layer's SNR in every no-drone window (E.layer_window_snrs): read
+    from layer_snr.npz, or, for a run made before it was stored, measured once by rebuilding every round from
+    its parts (with the run's buffer) and saved there. A file from before the drone-window SNRs ("|drone"
+    keys) existed is measured again when the run has drone rounds."""
+    p = test.out / "layer_snr.npz"
+    if p.exists():
+        with np.load(p) as d:
+            got = {k: d[k] for k in d.files}
+        if any(k.endswith("|drone") for k in got) or all(test.by_round[r]["drone"] is None for r in test.results):
+            return got
+    out = {}
+    for rnd in test.results:
+        n = max((len(v) for k, v in scores.items() if k.split("|")[0] == str(rnd)), default=0)
+        if not n:
+            continue
+        m = test.rebuild(test.by_round[rnd])
+        for key, x in E.layer_window_snrs(m, n, test.plan.buffer_after_s).items():
+            out[f"{rnd}|{key}"] = x
+    if out:
+        np.savez_compressed(p, **out)
+    return out
+
+
+def layer_snr_pairs(test: E.Test, det: str, layer: str, scores: dict, lsnr: dict,
+                    drone: bool = False) -> tuple[np.ndarray, np.ndarray]:
+    """Every no-drone window, in every round where `layer` played: (the layer's SNR there in dB, `det`'s
+    confidence there), over the detector's own window (1 s or 2 s); comb squashed as drawn elsewhere.
+    drone=True: every drone window instead, with the drone's SNR against that layer."""
+    w = f"{det_window(det):g}"
+    xs, ys = [], []
+    for rnd in test.results:
+        s, q = scores.get(f"{rnd}|{det}"), lsnr.get(f"{rnd}|{layer}|{w}" + ("|drone" if drone else ""))
+        if s is None or q is None:
+            continue
+        y = E.dwg.squash(s, test.thr[det]) if det == "comb" else s
+        n = min(len(y), len(q))
+        ok = np.isfinite(q[:n]) & np.isfinite(y[:n])
+        xs.append(q[:n][ok])
+        ys.append(y[:n][ok])
+    return (np.concatenate(xs), np.concatenate(ys)) if xs else (np.array([]), np.array([]))
+
+
 def det_window(det: str) -> float:
     return DEFAULT.window_seconds if det == "comb" else E.dwg.model_cfg(det).window_seconds
 
@@ -2243,6 +2286,7 @@ class Conclusions(tk.Toplevel):
         with np.load(p) if p.exists() else nullcontext({}) as d:
             self.scores = {k: d[k] for k in getattr(d, "files", [])}
         self._snr = None                                     # window_snrs(), on first use
+        self._lsnr = None                                    # layer_snrs(), on first use
         ttk.Button(bar, text="Save PNG", command=self.save).pack(side="right")
         ttk.Label(bar, text="false alarms").pack(side="left", padx=(20, 4))   # the threshold's percentile, from the plan
         self.v_fa = tk.StringVar(value=f"{getattr(test.plan, 'fa_percentile', 95.0):g}")
@@ -2693,10 +2737,14 @@ class Conclusions(tk.Toplevel):
            speeds pooled (each speed's rounds weighted by their count), with the 3-7 s before impact shaded;
            and the test 2 figure (mean over those 4 s, every 0.125 s bin counted equally) per speed.
         2. Confidence during distractors: confidence on no-drone windows (lower is better), against each
-           background layer's level, and by which distractors are on (every layer but the war soundscape).
+           background layer's SNR measured window by window during the rounds (layer_snrs), and by which
+           distractors are on (every layer but the war soundscape).
         One pass over the rounds fills every sum."""
         t, dets = self.test, list(self.test.plan.detectors)
-        layers = [n for n in t.plan.layers if len(values_of(t, n)) > 1]
+        if self._lsnr is None:
+            self._lsnr = layer_snrs(t, self.scores) if self.scores else {}
+        layers = [n for n in t.plan.layers if any(k.split("|")[1] == n for k in self._lsnr)]
+        dlayers = [n for n in layers if any(k.split("|")[1] == n and k.endswith("|drone") for k in self._lsnr)]
         dist = [n for n in t.plan.layers if n != "war soundscape"]
         sums, groups = {}, {}
         for rnd, res in t.results.items():
@@ -2716,7 +2764,9 @@ class Conclusions(tk.Toplevel):
         secs = [self._fa_section(dets), self._snr_section(dets),
                 dict(title="Confidence before impact", cells=2 if has_time else 0,
                      note="Only a modified drone test has an impact; this test has no confidence over time."),
-                dict(title="Confidence during distractors: no-drone windows (lower is better)", cells=len(layers) + 1, note="")]
+                dict(title="Confidence during distractors: no-drone windows (lower is better)", cells=len(layers) + 1, note=""),
+                dict(title="Confidence during distractors: drone windows (higher is better)", cells=len(dlayers),
+                     note="No drone round with a background layer: no drone-vs-distractor SNR to measure.")]
         for s in secs:
             s["rows"] = (s["cells"] + 1) // 2
         height = TOP_IN + sum(HEAD_IN + (s["rows"] * ROW_IN if s["cells"] else NOTE_IN) for s in secs)
@@ -2747,6 +2797,8 @@ class Conclusions(tk.Toplevel):
         if has_time:
             lines += self._compare_impact(*axes_of[2], curves)
         lines += self._compare_distractors(axes_of[3], layers, sums, groups, gnames)
+        if axes_of[4]:
+            lines += self._layer_snr_graphs(axes_of[4], dlayers, sums, drone=True)
         self.canvas.draw_idle()
         self.l_text.configure(text="\n".join(lines))
         self.scroll.yview_moveto(0)
@@ -2792,27 +2844,62 @@ class Conclusions(tk.Toplevel):
         ax_s.legend(loc="lower left", fontsize=8, frameon=False)
         return lines
 
+    def _layer_snr_graphs(self, axes, layers: list, sums: dict, drone: bool) -> list[str]:
+        """One graph per layer: each detector's mean confidence against the layer's measured SNR, window by
+        window (layer_snr_pairs). drone=False: no-drone windows, x = the layer against everything else;
+        drone=True: drone windows, x = the drone against that layer. Dotted: the rounds without the layer."""
+        dets = list(self.test.plan.detectors)
+        if drone:
+            mean_off = (lambda s: None if s is None or not s["nt"] else 100 * s["true"] / s["nt"])
+            what, tag = "drone", "Drone vs distractor"
+            lines = ["Drone-vs-distractor SNR = 10 log10(drone power / layer power) over the same window (1 s, or the "
+                     "detector's 2 s), measured in every drone window of every drone round where the layer played."]
+        else:
+            mean_off = (lambda s: None if s is None or not s["nf"] else 100 * s["false"] / s["nf"])
+            what, tag = "no-drone", "Distractors"
+            lines = ["Distractor SNR = 10 log10(layer power / power of everything else in the mix) over the same window "
+                     "(1 s, or the detector's 2 s), measured in every no-drone window of every round where the layer played."]
+        for ax, n in zip(axes, layers):
+            vals = values_of(self.test, n)
+            one = None                                       # with one detector: its band and window counts
+            for d in dets:
+                col = self._color(d)
+                x, y = layer_snr_pairs(self.test, d, n, self.scores, self._lsnr, drone)
+                b = snr_bins(x, y, 0.5) if x.size else None
+                off = mean_off(sums.get((d, n, "off"))) if "off" in vals else None
+                if off is not None:                          # dotted: the same detector with this layer off
+                    ax.axhline(off, color=col, ls=":", lw=1.2)
+                if b is None or not b["x"].size:
+                    lines.append(f"{tag} · {n} · {d}: no {what} windows with this layer playing")
+                    continue
+                if len(dets) == 1:
+                    ax.fill_between(b["x"], 100 * b["p25"], 100 * b["p75"], color=col, alpha=0.18, lw=0, label="middle half")
+                    one = b
+                ax.plot(b["x"], 100 * b["mean"], "-o", color=col, lw=2, ms=3, label=d)
+                lines.append(f"{tag} · {n} · {d} ({x.size} {what} windows, SNR {np.percentile(x, 5):+.0f} to "
+                             f"{np.percentile(x, 95):+.0f} dB, 5-95 %): mean confidence " + ("" if off is None else f"layer off {off:.0f}%;  ")
+                             + ";  ".join(f"{v:+.0f} dB {100 * c:.0f}%" for v, c in zip(b["x"], b["mean"])))
+            if one is not None:                              # how many windows lie behind each point
+                tw = ax.twinx()
+                tw.bar(one["x"], one["n"], SNR_BIN_DB * 0.9, color="#bbb", alpha=0.35, zorder=0)
+                tw.set_ylabel("windows per bin", fontsize=8, color="#888")
+                tw.tick_params(labelsize=7, colors="#888")
+                ax.set_zorder(tw.get_zorder() + 1)
+                ax.patch.set_visible(False)
+            ax.set(ylim=(0, 105), ylabel=f"{what} confidence (%)")
+            ax.set_xlabel((f"drone SNR against {n} (dB, measured; 0 = drone as loud as {n})" if drone else
+                           f"{n} SNR in the window (dB, measured; 0 = as loud as the rest)")
+                          + ("; dotted = layer off" if "off" in vals else ""), fontsize=8)
+            ax.set_title(f"{n}", fontsize=10, loc="left", weight="bold")
+            ax.axhline(50, color="#888", ls="--", lw=1)
+            ax.axvline(0, color="#999", lw=0.8, ls=":")
+            ax.grid(color="#e8e8e8", lw=0.5)
+        return lines
+
     def _compare_distractors(self, axes, layers: list, sums: dict, groups: dict, gnames: list) -> list[str]:
         dets = list(self.test.plan.detectors)
         false = (lambda s: None if s is None or not s["nf"] else 100 * s["false"] / s["nf"])
-        lines = []
-        for ax, n in zip(axes, layers):
-            vals = values_of(self.test, n)
-            nums = [v for v in vals if v != "off"]
-            for d in dets:
-                col = self._color(d)
-                ys = [false(sums.get((d, n, v))) for v in nums]
-                ax.plot(nums, [np.nan if v is None else v for v in ys], "-o", color=col, lw=2, ms=4, label=d)
-                off = false(sums.get((d, n, "off"))) if "off" in vals else None
-                if off is not None:                          # dotted: the same detector with this layer off
-                    ax.axhline(off, color=col, ls=":", lw=1.2)
-                lines.append(f"Distractors · {n} · {d}: no-drone confidence " + ("" if off is None else f"off {off:.0f}%;  ")
-                             + ";  ".join(f"{fmt(v)} dB {y:.0f}%" for v, y in zip(nums, ys) if y is not None))
-            ax.set(ylim=(0, 105), ylabel="no-drone confidence (%)")
-            ax.set_xlabel(f"{n} level (dB SPL)" + ("; dotted = layer off" if "off" in vals else ""))
-            ax.set_title(f"{n}", fontsize=10, loc="left", weight="bold")
-            ax.axhline(50, color="#888", ls="--", lw=1)
-            ax.grid(color="#e8e8e8", lw=0.5)
+        lines = self._layer_snr_graphs(axes, layers, sums, drone=False)
         ax = axes[len(layers)]
         w = 0.8 / max(len(dets), 1)
         for j, d in enumerate(dets):
