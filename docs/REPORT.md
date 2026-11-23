@@ -17119,3 +17119,85 @@ Drone windows are those labelled 1 by `window_labels` on the truth with the buff
 - The no-drone values and the rebuild check are unchanged from entry 265.
 - The figure was looked at. it9 CRNN's drone confidence rises from about 10 % at -30 dB to a peak of about 85 % near 0 dB against either layer. It falls again above about +5 dB, the same shape as the existing drone-vs-whole-background SNR graph, where those top bins are few windows.
 - One small check run on a training-source drone file: not detection performance.
+
+
+## 267 - A GUI that exports WAV files from the data we have, in the detector's audio format
+
+- Date: 2026-11-23
+- Type: Data tooling (requested by Mads)
+- Commit: on `master` at 44158ac; uncommitted
+
+**What.** `scripts/export_wav_gui.py`, a tkinter window that lists every `*.wav` under a folder (default `data/`) with its length, rate and channel count, filters the list by text, and exports the selected files to an output folder (default `data/exports/`). Two output forms:
+- **Detector format:** channel 0 resampled to 16 kHz, read with `dad.wavio.read_wav`, the reader `dad wav` uses. 16-bit PCM or 32-bit float.
+- **Original:** the samples as stored, every channel, at the file's own rate.
+
+Optionally each file is cut into clips of a set length and hop (defaults: the frontend's 1 s window and 0.125 s hop). A sidecar `<name>.json` (drone intervals) is copied for whole files, and shifted and cut to each clip for clips. Every export appends a row per written file to `export_log.csv` in the output folder.
+
+**ITU ARIS.** Exporting is not training, so sealed files can be exported for scoring, but the copy is still ITU ARIS (CLAUDE.md section 5). The GUI marks sealed files in red (detected with `dad.sealed.forbid_in_training`, the training check itself), asks for confirmation before exporting them, and always writes them under a top folder `ITU_ARIS_test_only/`, so the copy keeps a name that `forbid_in_training` stops. A "Hide ITU ARIS" box removes them from the list. Nothing is written into raw dataset folders; the GUI warns if the output folder is inside the data folder but not under `extracted`, `processed` or `exports`.
+
+**Check** (`t.py` and `g.py` in the session scratchpad, run with `uv run python`):
+- Scan of `data/` on this PC: 5643 WAVs in 5.4 s, 5565 marked sealed, 0 unreadable.
+- `recordedDroneClipped/drone1-1_1.wav` (44.1 kHz, 2 channels, 10.03 s): detector format gives 16 kHz mono PCM_16 of 10.032 s; original gives 44.1 kHz 2-channel float; 1 s / 0.125 s clips give 73 files of 1.0 s.
+- `extracted/All/ITU_ARIS_interval_00.wav` was written to `ITU_ARIS_test_only/extracted/All/...` in all three forms, and `forbid_in_training` raises on that path. These were test writes to the scratchpad only.
+- Sidecar clipping by hand: a drone 7-12 s with impact 12 s gives 0.5-1.0 s (impact dropped) for a clip at 6.5 s, 0-0.5 s with impact 0.5 s for a clip at 11.5 s, and no drones for a clip at 13 s.
+- The window was opened and driven from code: filter "recordedDrone" shows 23 files, 3.8 min; "Hide ITU ARIS" leaves 78. The window was not looked at by eye.
+
+No model, split or number of detection performance is affected.
+
+
+## 268 - Export GUI: a "Live test" form with the Complete test Live page's microphone settings
+
+- Date: 2026-11-23
+- Type: Data tooling (requested by Mads)
+- Commit: on `master` at 44158ac; uncommitted, together with entry 267
+
+**What.** Mads asked for the exports of `scripts/export_wav_gui.py` (entry 267) to use the same settings as the live test of `scripts/Complete_Test_Gui.py`. A third output form, "Live test, microphone path", is now the default. It writes a file the way `scripts/live_test_engine.py` writes `heard/round_NNNN.wav`:
+- one input channel (Live page default 0),
+- through the live engine's own `Resampler` (imported, not copied) to 16 kHz,
+- times the mic gain (Live page default 0 dB),
+- clipped to +-1 and written as 32-bit float mono.
+
+The input channel and mic gain have their own fields. "From a live run..." reads `mic_gain_db` from a run's `live.json` under `artifacts/complete_test/`. `live.json` does not store the input channel, so that field stays as set and the GUI says so. The sample-format box is locked to 32-bit float in this form. `export_log.csv` gains the columns `in_channel` and `mic_gain_db`. The detector-format and original forms, clips, sidecars and the ITU ARIS handling are unchanged from entry 267.
+
+**Check** (`l.py` and `r.py` in the session scratchpad, run with `uv run python`):
+- `recordedDroneClipped/drone1-1_1.wav` (44.1 kHz, 2 channels), channel 1, +6 dB: fed to the live engine's path as it runs (512-frame blocks, Resampler, gain, clip), it is identical to the export (max difference 0.0) over the 158400 samples the engine has handed out. The export flushes the resampler and so keeps all 160506 samples (10.032 s), where the streaming engine holds back its last block.
+- On white noise, the live `Resampler` matches `scipy.signal.resample_poly` over the whole signal (max difference 0.0).
+- The written file is 16 kHz, 1 channel, FLOAT, 10.032 s. Channel 2 of a 2-channel file is refused.
+- GUI driven from code: it opens in the live form, 32-bit float, channel 0, gain 0 dB; switching to "original" disables the live fields and enables the sample-format box.
+- The 10 `live_microphone` runs on this PC (2026-11-12) all have `mic_gain_db` 0 in `live.json` or none at all, the same as the default. The device was the laptop's built-in microphone array at 48 or 16 kHz.
+
+What this does not do: the room, the speaker and the microphone are not simulated. A file exported in this form is what the live test does to audio after the microphone, not what a microphone would have heard.
+
+
+## 269 - The export GUI of entries 267 and 268 is removed
+
+- Date: 2026-11-23
+- Type: Data tooling (requested by Mads)
+- Commit: on `master` at 44158ac; uncommitted
+
+Mads asked for `scripts/export_wav_gui.py` (entries 267 and 268) to be deleted, in favour of a download button on the Live page (entry 270). The script is gone; it was never committed and nothing else used it. Entries 267 and 268 stay as the record of what was built and checked, but the tool they describe no longer exists.
+
+## 270 - Live demo test: "Download for physical test" writes each distinct sound of the plan once
+
+- Date: 2026-11-23
+- Type: Evaluation tooling (requested by Mads)
+- Commit: on `master` at 44158ac; uncommitted
+
+**What.** A button "Download for physical test" on the Live page of `scripts/Complete_Test_Gui.py`, next to "Save plan...". It takes the page's plan, asks for a folder (default Downloads), and writes a new subfolder `physical_test_<date>_<time>/` with each distinct sound of the plan as its own WAV. A sound that several rounds use is written once.
+- **Drones:** `drones/`, one file per file x speed x pitch x level at 1 m. Speed changes the sound itself (distance, air absorption, optional Doppler, ground and reverb), so each speed is its own file. Mads chose this (drone x speed + wind) over raw drone files. Each file is the signal the engine mixes in (`Drones.get`): 10 s, its last sample the impact.
+- **Backgrounds:** `background/`, one file per layer x level x that layer's Pure Data settings (wind speed and resonance, car speed and distance). The file is the layer's whole source at that level, rotated to start where the live test's soundscape starts (`Test.start_s`). Looped from its first sample, it plays what the live test plays without a break. A once-per-round car (`car_once`) is the single pass-by.
+- **Playlist:** `rounds.csv` lists every round in the plan's order with its drone file, the drone's start in the round, level, speed and background files.
+- **File list:** `files.csv` lists every file with its settings, length, measured level (dB SPL) and peak (dBFS).
+- **Format:** 16 kHz mono 32-bit float, the engine's own rate and units (full scale = 110 dB SPL).
+
+Starts (several per round length) and the no-drone rounds add rounds but no files. The button is disabled while a live test plays. The logic is in the new `scripts/physical_test_files.py` (`export(plan, folder, progress)`).
+
+**Check** (`p.py` and `b.py` in the session scratchpad, run with `uv run python`). The plan: 4 drones (`recordedDroneClipped/drone1-1_1` to `_4`), 5 speeds (20-100 km/h), level 100 dB at 1 m, wind (Pd) at 55 dB with wind speed 5 and 15 m/s.
+- Round length 10 s: 40 rounds give 22 files (20 drone, 2 wind) and a 40-row playlist.
+- Round length 12 s (3 starts), no-drone rounds on, war soundscape at 60 dB added: 122 rounds give 23 files.
+- In both, round 1 rebuilt from the files (drone placed at its start, backgrounds summed) matches the engine's `mix_round` to 3e-8 (float32 rounding).
+- Drone files measure 77.5-78.5 dB SPL with peaks near -0.4 dBFS at 80-100 km/h. The wind files measure 55.0 dB SPL, 60 s long.
+- The GUI was started from code: the button is on the Live page, enabled, between "Save plan..." and the progress bar. The button itself was not pressed by hand, and no physical test was played.
+- These are test plans on development drone files: tooling, not detection performance.
+
+What is not in the files: the speaker, the room and the microphone. With a speaker, the microphone does not hear the plan's dB SPL until the playback level is calibrated.
