@@ -116,6 +116,9 @@ MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file
              for s in (0, 1, 2)},
           # iteration 27 with half the training windows without a drone (ladder 1), seeds 0-2 (iteration 30, entries 258-260)
           **{f"it30 CRNN half s{s}": (ROOT / f"artifacts/runs/it30_half_s{s}.json", MODEL_DIR / f"it30_half_s{s}_crnn.pt")
+             for s in (0, 1, 2)},
+          # iteration 30 with half the training windows through the array room's measured IR (iteration 30.5, entries 277-280)
+          **{f"it30.5 CRNN ir s{s}": (ROOT / f"artifacts/runs/it30_5_ir_s{s}.json", MODEL_DIR / f"it30_5_ir_s{s}_crnn.pt")
              for s in (0, 1, 2)}}
 OFF = float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
 NO_DRONE = 0.0                                               # drone "speed" of the no-drone row (war only)

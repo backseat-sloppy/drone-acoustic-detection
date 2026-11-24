@@ -52,7 +52,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 28 | 249 to 251 | Road vehicles (FSD50K car, truck, motorcycle, idling, scooter) driven past the microphone through the drone path, as 30% of confusers; three CRNN seeds on the server | Entry 249: in the GUI it27 still alarms on a lone car while it passes close | **Fails rule 2** (quiet/silence FA 0.064/0.058 > 0.05; it27 0.060/0.053 on the same windows). Vehicle FA 0.053 vs it27 0.056, which is noise. In simulation a moving real vehicle was never the problem; the GUI Pd car alarm is likely specific to that car. In the GUI as `it28 CRNN vehicle s0-s2` (entry 251) |
 | Iteration 29 | 256 to 258 | Steady no-drone noises in the iteration 27 simulator: procedural coloured noise (-6 to +3 dB/octave, half low-passed) and synthetic wind, 10 % of beds and 25 % of confusers; ladder kept at 3; threshold on it27's validation set | Entry 256: it27/it28 score steady sounds 0.15-0.55 and wobble 0.1-0.6 in the live demo; council entry 257 | **Stopped at step 0: gate fails.** On validation, it27/it28 give steady beds 0.21-0.31, but also the FSD50K background and wind beds they trained on 0.31-0.34 (war 0.08-0.10): the no-drone level is high on almost every non-war scene, not only steady noise. Not trained (entry 258) |
 | Iteration 30 | 258 to 264 | Training families of 1 scene + 1 drone copy (`--ladder 1`): 50 % drone windows instead of 75 %; everything else as it27; threshold on it27's unchanged validation set | Entry 258: it27/it28 give about 0.3 to almost every non-war no-drone scene; Marius chose to train | **Fails as written, narrowly** (background bed 0.161 > 0.15; UAV16 recall 0.591 < 0.598). No-drone confidence halves (0.193 to 0.102; war 0.085 to 0.039) at unchanged AUC 0.984 and recall 0.915, so mostly a rescaling by the prior; drone confidence at -20 to -10 dB 0.848 to 0.755 (entry 260). In the GUI live mix: mean 0.060, sd 0.065 (it27 0.173 / 0.146), a third less wobble even against its own threshold (entry 262). Steady negatives on top skipped: no weakness on validation (entries 263-264) |
-| Iteration 30.5 | 277 to | it30's recipe with half the training windows heard through the array room: the impulse response measured on 2026-11-23 (`IR_mic_in3.wav`), as a circular convolution of the whole window | Marius's request (2026-11-24): test 3 plays everything through the array's speakers into a microphone; the measured chain cuts below 80 Hz (-10 dB at 50 Hz) and lifts 5-10 kHz by 5-10 dB, which no training window has had | Not run yet |
+| Iteration 30.5 | 277 to | it30's recipe with half the training windows heard through the array room: the impulse response measured on 2026-11-23 (`IR_mic_in3.wav`), as a circular convolution of the whole window | Marius's request (2026-11-24): test 3 plays everything through the array's speakers into a microphone; the measured chain cuts below 80 Hz (-10 dB at 50 Hz) and lifts 5-10 kHz by 5-10 dB, which no training window has had | **Fails as written, on two narrow rules; the room effect is fixed.** Through the room, it30's no-drone confidence rises from 0.102 to 0.163 and AUC falls to 0.975; it30.5 gives 0.111 and 0.983. Plain validation unchanged (AUC 0.983, no-drone 0.101). Failed: faint-drone confidence through the room not above it30's (0.749 against 0.750), and UAV16 false alarms 0.083 > 0.078 (recall rose 0.591 to 0.642). Entry 280 |
 
 ## Templates
 
@@ -17873,3 +17873,109 @@ uv run python scripts/run_worldsim.py --name it30_5_ir_sS --models comb lgbm crn
 
 The only differences from iteration 30's command are `--p-ir 0.5`, the faint probe, the references,
 and the machine (MPS, 6 workers, against CUDA and 8 workers). Expected about 75-90 min per seed.
+
+## 279 - Iteration 30.5 moved to the JupyterLab server
+
+- Date: 2026-11-24
+- Iteration: 30.5
+- Type: Setup
+- Commit: 11237b6 on branch `30.5` (pushed; entries 277-278's code, report and the three IR WAVs)
+
+Marius got access to the server again at about 15:20, so the run of entry 278 moved there: three
+GPUs in parallel, the hardware of iteration 30.
+- **Upload:** the page cannot read files from the Mac, and serving the file from the Mac was
+  refused by the permission check (the server could not reach the Mac anyway: timeout). Marius chose
+  to push branch `30.5` to GitHub; the server fetched it in `~/drone-acoustic-detection`.
+- **Setup:** `~/dad30` copied to `~/dad305`. `dronesynth.py`, `run_worldsim.py`,
+  `test_dronesynth.py` and `IR_mic_in3.wav` taken from the fetched commit; their MD5s match the
+  Mac's. Against `~/dad30` they differ only by entry 277's edits. `pytest tests/test_dronesynth.py`
+  on the server: 7 passed. The it30 s0-s2 checkpoints are in `artifacts/models`.
+- **Launch** (`~/dad305/it305_launch.sh`, 15:28): entry 278's command with `--device cuda
+  --workers 8`, `CUDA_VISIBLE_DEVICES=S`, logs `~/dad305/artifacts/logs/it30_5_ir_sS.log`. All three
+  processes were building validation a minute later.
+- **The Mac run was stopped** after about 25 min, in seed 0 before the CRNN finished. Its run file
+  was deleted; its log is kept as `artifacts/logs/it30_5_ir_s0_mac_stopped.log`. No number from it
+  is used.
+
+## 280 - Iteration 30.5 result: the room no longer lifts no-drone confidence; fails two rules narrowly
+
+- Date: 2026-11-24
+- Iteration: 30.5
+- Type: Evaluation (stage 1: simulated validation, the same windows through the room IR, the faint
+  and steady probes, real UAV16)
+- Commit: 11237b6 on branch `30.5`
+- Run: `~/dad305/artifacts/runs/it30_5_ir_s{0,1,2}.json` on the JupyterLab server, read there
+  through the contents API. Logs `~/dad305/artifacts/logs/it30_5_ir_s*.log`. Whole runs took 6,634,
+  7,159 and 6,378 s; CRNN training ran at 88-106 windows/s, as in iteration 30.
+
+**Conditions:** it27's validation set, unchanged (1,500 families of 1 scene + 3 drone copies,
+held-out Glasgow drones 6, 12, 18 and 24, val stems, quiet scenes p 0.2), 1 s window, 0.125 s hop.
+The threshold is frozen at 5 % false alarms on its no-drone windows. `val_ir` is the same windows
+through `IR_mic_in3.wav`, at that threshold. The it30 references re-score exactly their entry 260
+numbers on the plain set (s0: threshold 0.509, AUC 0.984, no-drone 0.108). it30 below is the mean
+of those three references.
+
+| Scorer (seed mean) | thr | AUC | recall | no drone | background / war bed | drone by SNR 0-10 / -10-0 / -20--10 | through the room: AUC / recall / no drone / drone -20--10 | faint probe -30--20: drone conf / recall / AUC | UAV16 AUC / recall / FA |
+|---|---|---|---|---|---|---|---|---|---|
+| it30 (references) | 0.484 | 0.984 | 0.915 | 0.102 | 0.161 / 0.039 | 0.999 / 0.965 / 0.755 | 0.975 / 0.910 / **0.163** / 0.750 | 0.420 / 0.362 / 0.779 | 0.857 / 0.591 / 0.059 |
+| **it30.5 CRNN** | 0.452 | 0.983 | 0.914 | 0.101 | 0.158 / 0.041 | 0.999 / 0.957 / 0.736 | **0.983** / 0.919 / **0.111** / 0.749 | 0.409 / 0.356 / 0.775 | 0.855 / **0.642** / 0.083 |
+| `lgbm` (trained with the IR) | 0.690 | 0.945 | 0.759 | 0.204 | 0.296 / 0.125 | 0.978 / 0.865 / 0.599 | 0.943 / 0.767 / 0.216 / 0.614 | 0.372 / 0.164 / 0.658 | 0.743 / 0.189 / 0.037 |
+| `comb` | 3.914 | 0.607 | 0.293 | (raw) | - | - | 0.667 / 0.468 / (raw) / - | - / 0.103 / 0.514 | 0.538 / 0.071 / 0.045 |
+
+Per seed, it30.5 CRNN: AUC 0.983 / 0.983 / 0.982; no-drone 0.102 / 0.096 / 0.106; through the
+room AUC 0.983 each, no-drone 0.116 / 0.105 / 0.112, drone -20 to -10 dB 0.754 / 0.742 / 0.750;
+UAV16 recall 0.633 / 0.656 / 0.636, false alarms 0.073 / 0.098 / 0.077. Empty silence 0.005,
+quiet-bed false alarms 0.033, silence-bed 0.046 (means).
+
+**Rules of the box:**
+1. Through the room: AUC 0.983 above it30's 0.975, **pass**. No-drone confidence 0.111, not above
+   it30's 0.163 + 0.02, **pass**. Drone confidence at -20 to -10 dB 0.749 against it30's 0.750:
+   not above, **fails** (a tie).
+2. Plain validation: AUC 0.983, recall 0.914, no-drone 0.101, background bed 0.158, drone
+   confidence 0.999 and 0.957, -20 to -10 dB 0.736 (limit 0.725): **pass**.
+3. Empty silence 0.005, quiet 0.033, silence 0.046: **pass**.
+4. UAV16 recall 0.642, above it30's 0.591, **pass**. False alarms 0.083 above 0.078, **fails
+   narrowly** (seed 1 at 0.098; seeds 0 and 2 at 0.073 and 0.077).
+
+**Verdict: fails as written (rule 1c and rule 4b). The hypothesis was wrong about the mechanism,
+and the change fixes what the room actually does.**
+- The hypothesis expected the room to cost drone confidence. It does not: it30's faint-drone
+  confidence is the same with and without the room (0.750 against 0.755).
+- What the room does to it30 is raise no-drone confidence, from 0.102 to 0.163 (+60 %), and lower
+  AUC from 0.984 to 0.975. That is the measured chain's spectrum (low end cut, top lifted) making
+  no-drone scenes look more drone-like.
+- it30.5 removes that: through the room its no-drone confidence is 0.111 and its AUC 0.983, the
+  same as on the plain set. On the plain set it gives up nothing measurable (AUC 0.983 against
+  0.984, no-drone 0.101 against 0.102). The -20 to -10 dB bin falls 0.019, within the box's limit.
+- On real UAV16 it detects more (recall +0.05) at a lower threshold, with more false alarms
+  (+0.024), at the same AUC (0.855 against 0.857): a move along the same curve, not a better one.
+- The faint probe (-30 to -20 dB) is unchanged, about 0.41 drone confidence and 0.36 recall, for
+  both. Neither network is trained below -20 dB.
+- **Read with care:** `val_ir` uses the same IR that training used. It shows the fit to this
+  room's chain, which is where test 3 runs. It is not evidence for other rooms or microphones.
+
+**Next:** the models are on the server. Fetching them to the Mac and registering
+`it30.5 CRNN ir s0-s2` in the GUIs (as entry 261) waits for Marius. Whether the narrow fails matter
+is his and Mads's call: rule 1c is a tie, and rule 4b is one seed. For the array demo (test 3),
+it30.5 is the better choice of the two.
+
+
+## 281 - The iteration 30.5 networks on the Mac and in the test GUIs
+
+- Date: 2026-11-24
+- Iteration: 30.5
+- Type: Setup
+- Commit: uncommitted, on branch `30.5` at 11237b6
+
+- **Fetched:** `~/it305_results.tgz` was packed on the server (CRNN and `lgbm` checkpoints, run
+  files, logs; 9,227,399 bytes) and downloaded through the browser pane at Marius's request. MD5
+  `9dd6ca04407cf4beec97c919f8a8a454` on the server and on the Mac. Unpacked into `artifacts/`.
+  The stopped Mac run (entry 279) may have left an `it30_5_ir_s0_lgbm.pkl`; if so, the server's
+  file replaced it.
+- **Registered:** `"it30.5 CRNN ir s0/s1/s2"` in `drone_war_grid.MODELS`, `Complete_Test_Gui.py`
+  and `detect_gui.py`, in violets `#4a148c`, `#aa00ff`, `#ea80fc` (pinks were tried first; two
+  were it16's).
+- **Checks** (`MPLBACKEND=agg`, no window): 56 models in the grid, one colour each in
+  `detect_gui` (56 unique) and in the Complete Test GUI (57 with `comb`, all unique). Thresholds
+  from the run files 0.454, 0.422, 0.479. Each scores 0.004-0.008 on a window of zeros.
+- **Not run:** the GUIs with a window open, and any test with the new models.
