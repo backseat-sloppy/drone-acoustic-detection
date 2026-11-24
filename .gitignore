@@ -7,6 +7,11 @@ artifacts/*
 !artifacts/.gitkeep
 # trained models are versioned with the code
 !artifacts/models/
+# REAPER projects for the speaker array; media/ (1 GB, files over GitHub's 100 MB limit) is rebuilt by scripts/reaper_array.py
+!artifacts/reaper_array/
+artifacts/reaper_array/media/
+artifacts/reaper_array/Backups/
+!artifacts/war_stems/
 data/*
 !data/.gitkeep
 !data/recordedDroneClipped/

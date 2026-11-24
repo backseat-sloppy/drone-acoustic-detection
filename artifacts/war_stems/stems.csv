@@ -1,0 +1,6 @@
+source,offset_deg,items,rms_db_fs,files,note
+shoot,-9.0,1,-46.93,WarSoundScape/Media/GUNSHOTS.wav,
+reload,12.0,2,-56.71,"WarSoundScape/Guns, Mechanism, Shotgun, Cock, Reload, Lock 'n Load SND6290 5.wav",
+footsteps,3.0,1,-74.69,WarSoundScape/Media/Human_Movement.wav,
+objects,-6.0,25,-80.83,"WarSoundScape/Media/Objects, Misc, Shells, In Plastic Container, Movement SND19227.wav",
+Talk,0.0,3,-43.29,"WarSoundScape/Media/Crowds, Conversation, Two Males, Australia SND148301.wav",

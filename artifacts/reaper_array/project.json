@@ -1,0 +1,140 @@
+{
+  "command": "uv run python scripts/reaper_array.py --verify",
+  "commit": "0fbeab806bd0ed30ed52f5b91489391d7e6df15b",
+  "seed": 0,
+  "hours": 5.0,
+  "per_hour": 12.0,
+  "pool": 16,
+  "sample_rate": 48000,
+  "wav": "PCM_16, 39 channels",
+  "full_scale_db_spl": 110.0,
+  "calibration_db": null,
+  "conventions": "azimuth counter-clockwise from the front (90 = left), elevation up; row N = output N (ASSUMED)",
+  "drone": {
+    "dir": "data/recordedDroneClipped",
+    "level_db_spl_1m": 80.0,
+    "speeds_kmh": [
+      50.0,
+      100.0,
+      150.0
+    ],
+    "towards_s": 10.0,
+    "across_s": 10.0,
+    "closest_m": 1.0,
+    "towards_climb_deg": [
+      5,
+      40
+    ],
+    "across_height_m": [
+      10,
+      60
+    ],
+    "across_offset_m": [
+      5,
+      50
+    ]
+  },
+  "propagation": {
+    "model": "dad.propagation.propagate",
+    "doppler": true,
+    "temp_c": 10.0,
+    "rh_pct": 70.0,
+    "pa_kpa": 101.325,
+    "speed_of_sound": 337.3099221955511,
+    "left_out": "ground reflection, outdoor reverb"
+  },
+  "panning": {
+    "method": "VBAP over the convex hull, power-normalised",
+    "frame_s": 0.01,
+    "triangles": 74
+  },
+  "war_sources": {
+    "stems": "artifacts/war_stems",
+    "offsets_deg": {
+      "Talk": 0.0,
+      "cloth": 6.0,
+      "objects": -6.0,
+      "reload": 12.0,
+      "footsteps": 3.0,
+      "twigs and ground": -12.0,
+      "shoot": -9.0
+    },
+    "max_deg_s": 0.0,
+    "elevation_deg": 0.0,
+    "segments": "allday: per drone slot; demo: the background region, then from 2 s before each drone",
+    "panner": "drone_array_vbap.jsfx",
+    "seed": [
+      0,
+      1
+    ]
+  },
+  "background": {
+    "loop_s": 60.0,
+    "seam_fade_s": 0.1,
+    "layers": {
+      "war soundscape": {
+        "source": "artifacts/war_stems/mix.wav",
+        "level_db_spl": 60.0,
+        "spread": "stems"
+      },
+      "wind (Pd)": {
+        "source": "artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav",
+        "level_db_spl": 50.0,
+        "spread": "all"
+      },
+      "cars": {
+        "source": "artifacts/complete_test/layers/cars_50kmh_10m_20s_7b41c86f.wav",
+        "level_db_spl": 5.0,
+        "spread": [
+          21
+        ]
+      },
+      "helicopter": {
+        "source": "artifacts/complete_test/layers/helicopter_200kmh_100m_30s_bb69adde.wav",
+        "level_db_spl": 50.0,
+        "spread": [
+          11
+        ]
+      },
+      "insects": {
+        "source": "artifacts/complete_test/layers/bees_t1_n2_2m_60s_00173fc8.wav",
+        "level_db_spl": 30.0,
+        "spread": [
+          33,
+          35
+        ]
+      }
+    }
+  },
+  "speaker_check": {
+    "level_db_spl": 70.0,
+    "burst_s": 1.0,
+    "gap_s": 0.25,
+    "noise": "pink"
+  },
+  "md5": {
+    "background_loop.wav": "e84c0602b9fe6aa7a08f3f267100455f",
+    "event_001.wav": "168d9de93b381afea73d85d86a8387e2",
+    "event_002.wav": "69f27d6bda42c660dea150631f9e3fe8",
+    "event_003.wav": "392351b8ee5f72e91a1eb17e860b2819",
+    "event_004.wav": "613b9ea8a26e1303577864e9b010817d",
+    "event_005.wav": "99be18231d8a31deee9f5b12c69baf56",
+    "event_006.wav": "f083269a25301d688ea79b87ad018c06",
+    "event_007.wav": "35f3e06c2682b6c257786063b889a414",
+    "event_008.wav": "81e25ad38d51c6f3da369b0ed4a9a0d1",
+    "event_009.wav": "ed67e41dbd5a989569ed246e26a9bda8",
+    "event_010.wav": "9905507271bfc327a1105996c114494c",
+    "event_011.wav": "7c98e36260489999b125a2cf8d15f405",
+    "event_012.wav": "82b062a607b80646b09a36d804b4963d",
+    "event_013.wav": "02c1cfc98c39dc52bd062e09ce7c41ec",
+    "event_014.wav": "75d95d1285670b87bee63e1f90e68c4d",
+    "event_015.wav": "38c99923f36b2ea90fc68006c6f6a9cb",
+    "event_016.wav": "4db59c02c6539c8a1498ae83a04bbe1d",
+    "speaker_check.wav": "804edcb5c66cb7e16d09e4fbef450745",
+    "war_Talk.wav": "cefba0b7926ada3d9015a8422e7e5fe1",
+    "war_footsteps.wav": "4c8984062566e7166560753963ec01c4",
+    "war_objects.wav": "619baa9ae24c7f6390761a57f6584b35",
+    "war_reload.wav": "1cd9c1046874d2865bff5eba459972ff",
+    "war_shoot.wav": "ce914624994de9c9e190263e675f52dd"
+  }
+}

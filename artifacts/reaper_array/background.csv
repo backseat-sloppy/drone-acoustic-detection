@@ -1,0 +1,49 @@
+layer,speaker,source,offset_s,gain,level_db_spl_speaker,level_db_spl_layer,spread
+wind (Pd),1,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,38.218,0.00598283,34.09,50.0,all
+wind (Pd),2,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,30.668,0.00598283,34.09,50.0,all
+wind (Pd),3,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,16.187,0.00598283,34.09,50.0,all
+wind (Pd),4,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,18.47,0.00598283,34.09,50.0,all
+wind (Pd),5,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,2.458,0.00598283,34.09,50.0,all
+wind (Pd),6,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,4.514,0.00598283,34.09,50.0,all
+wind (Pd),7,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,0.992,0.00598283,34.09,50.0,all
+wind (Pd),8,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,10.516,0.00598283,34.09,50.0,all
+wind (Pd),9,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,48.797,0.00598283,34.09,50.0,all
+wind (Pd),10,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,38.965,0.00598283,34.09,50.0,all
+wind (Pd),11,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,54.766,0.00598283,34.09,50.0,all
+wind (Pd),12,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,30.218,0.00598283,34.09,50.0,all
+wind (Pd),13,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,36.398,0.00598283,34.09,50.0,all
+wind (Pd),14,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,58.245,0.00598283,34.09,50.0,all
+wind (Pd),15,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,43.77,0.00598283,34.09,50.0,all
+wind (Pd),16,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,37.936,0.00598283,34.09,50.0,all
+wind (Pd),17,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,32.618,0.00598283,34.09,50.0,all
+wind (Pd),18,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,33.595,0.00598283,34.09,50.0,all
+wind (Pd),19,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,56.105,0.00598283,34.09,50.0,all
+wind (Pd),20,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,16.641,0.00598283,34.09,50.0,all
+wind (Pd),21,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,48.952,0.00598283,34.09,50.0,all
+wind (Pd),22,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,40.253,0.00598283,34.09,50.0,all
+wind (Pd),23,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,0.164,0.00598283,34.09,50.0,all
+wind (Pd),24,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,23.649,0.00598283,34.09,50.0,all
+wind (Pd),25,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,51.445,0.00598283,34.09,50.0,all
+wind (Pd),26,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,33.259,0.00598283,34.09,50.0,all
+wind (Pd),27,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,2.015,0.00598283,34.09,50.0,all
+wind (Pd),28,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,45.894,0.00598283,34.09,50.0,all
+wind (Pd),29,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,43.78,0.00598283,34.09,50.0,all
+wind (Pd),30,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,50.795,0.00598283,34.09,50.0,all
+wind (Pd),31,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,10.539,0.00598283,34.09,50.0,all
+wind (Pd),32,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,5.357,0.00598283,34.09,50.0,all
+wind (Pd),33,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,51.791,0.00598283,34.09,50.0,all
+wind (Pd),34,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,1.326,0.00598283,34.09,50.0,all
+wind (Pd),35,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,32.488,0.00598283,34.09,50.0,all
+wind (Pd),36,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,4.824,0.00598283,34.09,50.0,all
+wind (Pd),37,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,17.983,0.00598283,34.09,50.0,all
+wind (Pd),38,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,28.864,0.00598283,34.09,50.0,all
+wind (Pd),39,artifacts/complete_test/layers/wind_40_40_60s_b3d6b3c8.wav,25.361,0.00598283,34.09,50.0,all
+cars,21,artifacts/complete_test/layers/cars_50kmh_10m_20s_7b41c86f.wav,52.018,0.00323079,5.0,5.0,fixed
+helicopter,11,artifacts/complete_test/layers/helicopter_200kmh_100m_30s_bb69adde.wav,0.85,0.0481841,50.0,50.0,fixed
+insects,33,artifacts/complete_test/layers/bees_t1_n2_2m_60s_00173fc8.wav,0.321,0.328793,23.98,30.0,fixed
+insects,35,artifacts/complete_test/layers/bees_t1_n2_2m_60s_00173fc8.wav,0.321,0.328793,23.98,30.0,fixed
+war soundscape: shoot,moving (VBAP),artifacts/war_stems/shoot.wav,0.0,0.379679,54.66,60.0,point source
+war soundscape: reload,moving (VBAP),artifacts/war_stems/reload.wav,0.0,0.379679,44.88,60.0,point source
+war soundscape: footsteps,moving (VBAP),artifacts/war_stems/footsteps.wav,0.0,0.379679,26.9,60.0,point source
+war soundscape: objects,moving (VBAP),artifacts/war_stems/objects.wav,0.0,0.379679,20.76,60.0,point source
+war soundscape: Talk,moving (VBAP),artifacts/war_stems/Talk.wav,0.0,0.379679,58.3,60.0,point source
