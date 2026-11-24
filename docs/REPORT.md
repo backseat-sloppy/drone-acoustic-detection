@@ -17201,3 +17201,153 @@ Starts (several per round length) and the no-drone rounds add rounds but no file
 - These are test plans on development drone files: tooling, not detection performance.
 
 What is not in the files: the speaker, the room and the microphone. With a speaker, the microphone does not hear the plan's dB SPL until the playback level is calibrated.
+
+## 271 - Overlooked models on the development test, war only: set up, started, stopped by Mads
+
+- Date: 2026-11-24
+- Type: Evaluation / Infrastructure
+- Commit: on `master` at be05521; uncommitted
+
+**What.** Mads tests mostly `it9 CRNN`, `it23 CRNN relabel colour s1` and `it30 CRNN half`, and asked which
+other models might do well. Read from this report, without new runs, the candidates were:
+- the iteration 24 networks (MAD war audio in training; DS-CNN Lund recall 0.547, entry 231; never judged);
+- iteration 23's 2 s colour DS-CNN, the only network of that iteration to pass its box (entry 210);
+- It9B (entry 160);
+- it27 quiet, it30's parent, which has higher drone confidence at -20 to -10 dB (entry 260);
+- it17 CRNN 2 s 600k;
+- ensembles (iteration 15; entry 244).
+Mads asked to run them against his four models on the development copy of test 1 (entry 207), tune half.
+
+**Changes made to run it on this PC (kept on Mads's decision):**
+1. `scripts/dev_test.py --war-only`: the war soundscape at 90 dB SPL as the only background; no wind or
+   cars, because Pure Data is not installed here and no kept Pd render exists. The readout gives NaN for the
+   wind and car columns instead of stopping. Only "drone in war", "no drone in war", the helicopter and the
+   war AUC are meaningful in this mode.
+2. `scripts/dev_test.py` registers iteration 23's 2 s colour networks (`it23 CNN/CRNN 2s colour s0-s2`) in
+   `drone_war_grid.MODELS` for this script only; the GUIs are unchanged (entry 232).
+3. New `scripts/dev_test_ensemble.py`: the hop-by-hop mean confidence of several models of a finished run,
+   streams aligned at each round's end. Written, never run.
+4. The six car engine stems (entry 157) built from the local FSD50K dev extraction
+   (`data/extracted/FSD50K/FSD50K.dev_audio`) with `scripts/fetch_car_engines.py`'s own processing,
+   by monkeypatching its readers in a scratchpad wrapper; no download. Written to
+   `data/processed/stems/distracter/idling/`. The script then stopped because this PC has no
+   `data/processed/stems/manifest.csv`; nothing reads that manifest here.
+5. As on the server (entry 207, fault 2): `load_manifest` stopped on the sealed car's row (FSD50K eval
+   278188). The guard was not changed. The row was removed from the derived `data/processed/manifest.csv`
+   (44,195 to 44,194 lines); the old file is kept as `manifest_before_sealed_car_removed.csv`.
+
+**How.**
+```
+uv run python scripts/dev_test.py run cand --half tune --war-only --models comb "it9 CRNN" \
+    "it23 CRNN relabel colour s1" "it30 CRNN half s0" ... "it23 CRNN 2s colour s2"   # 26 models, CPU
+```
+About 2.2 min per model on CPU (torch 2.14.1+cpu); 306 rounds, 22,338 hops at 1 s and 19,890 at 2 s.
+
+**Result.** None. Mads stopped the run after 8 of 26 models (comb, it9 CRNN, it23 CRNN relabel colour s1,
+it30 CRNN half s0-s2, it24 CNN 2s war s0-s1). Their scores are in `artifacts/dev_test/cand/`. `judge` was
+not run, and no figure from them is reported. The question of which overlooked model is best is still open.
+The it24 networks still have no verdict.
+
+**Next.** If it is picked up again: run the 18 remaining models, then `judge cand --ref "it9 CRNN"`. Wind
+and cars need Pure Data or the server's kept renders.
+
+## 272 - Physical test prep: `it23 CRNN relabel colour s1` retrained with the measured microphone IR at the end of the audio pipeline
+- Date: 2026-11-24
+- Type: Training (physical test preparation; not an iteration)
+- Commit: on `master` at 0b7f2d5; uncommitted. Server clone `~/drone-acoustic-detection` (00ee4e8 plus local changes)
+
+**Why.** The physical test is coming. Mads measured the impulse response of the playback chain on
+2026-11-23 (`20261123_120401.zip`: `IR_loopback.wav`, `IR_mic_in3.wav`, `IR_mic_in4.wav`, `ir_plot.png`,
+`raw_recording.wav`) and asked for a model identical to `it23 CRNN relabel colour s1` (entries 228-232) with
+that IR as the last step of the training audio, so the network learns the drone as the real microphone hears it.
+
+**The IR.** Raw files unpacked unchanged into `data/ir/20261123_120401/` (git-ignored; MD5 in3
+c6b84011b93979740f651570f9110ea6, in4 08f11ab0cdcb0c5192b502a553e33aa8). 48 kHz float, 2 s, one channel each.
+The loopback peaks at 5.0 ms with 99 % of its energy within 0.23 ms of that, so it is a pure delay and the mic
+IRs are used as they are (not deconvolved by it). Both mic IRs peak at 13.1 ms; 99.9 % of their energy lies
+before 21.7 ms. in3 and in4 are the same response with opposite polarity (correlation -0.99999), which the
+power spectrum does not see. The IR includes loudspeaker, room and microphone, not the microphone alone. Its
+response at 16 kHz relative to 1 kHz: -17 dB at 50 Hz, -9 dB at 100 Hz, -3 dB at 200 Hz, -9 dB at 500 Hz,
+-0.4 dB at 2 kHz, -1.7 dB at 4 kHz, +1 dB at 7 kHz (unsmoothed; matches `ir_plot.png`).
+
+**What changed.**
+- `src/dad/micir.py`: loads each mic IR, trims it to start 1 ms before its onset (first sample above 5 % of
+  the peak), keeps 100 ms, resamples 48 to 16 kHz (`resample_poly`), scales to unit energy. Causal
+  convolution keeping the window's first n samples, in numpy and batched in torch (FFT, float64).
+  Derived copy `data/processed/ir/20261123_120401_mic_16k.npy` (2 x 1600 taps, float32, MD5
+  e7daacbb9b3c45a590e659ce9923ba9f): the file sent to the server.
+- `scripts/run_range_ir.py`: runs `run_range.py` unchanged, with three patches installed in-process only:
+  1. training (GPU path, `GpuFrontend.train_features`): after mixing, augmentation and the speed change, just
+     before the STFT, each window is filtered by IR in3 or in4, drawn per window;
+  2. the same on the numpy path (`RangeSampler.batch`), for runs without CUDA;
+  3. scoring during the run (`NetScorer.score`): each window filtered by in3 first. So validation, which
+     freezes the 5 % deployment threshold, and the Lund, mower and other readouts are "as through the mic".
+  The saved checkpoint is an ordinary CRNN; nothing is added at inference, since the real microphone applies
+  the IR there. The training EQ augmentation (random per-band tilt) still runs after the IR, as before.
+- Everything else as `it23_relabel_colour_s1`: CRNN, recipe `simdist_colour`, 600k windows, speed 0.8-1.25,
+  1 s window, MFE frontend, pool with nothing held out, `--deploy-fa 0.05`, seed 1,
+  `--relabel labels/nightjar_relabel.csv`.
+
+**How.**
+```
+# local check: numpy and torch convolution agree (max diff 0.0), np.convolve agrees to 1.9e-7;
+# pytest tests/test_gpufront.py passed (13)
+# server, files uploaded through the JupyterLab contents API, MD5s equal to this PC's
+cd ~/drone-acoustic-detection
+CUDA_VISIBLE_DEVICES=0 nohup setsid .venv/bin/python -u scripts/run_range_ir.py \
+    --ir data/processed/ir/20261123_120401_mic_16k.npy -- --name phys_ir_relabel_colour_s1 --pool --arms none \
+    --recipes simdist_colour --models crnn --device cuda --windows 600000 --speed 0.8 1.25 --deploy-fa 0.05 \
+    --seed 1 --frontend mfe --relabel labels/nightjar_relabel.csv > artifacts/runs/phys_ir_relabel_colour_s1.log
+```
+The log shows the same training pool as entry 229 (Nightjar 0-50 m 37.7 min, 21 validation segments).
+
+**Result.** Running; no numbers yet.
+
+**Caveats.** One IR position, one room; the network now expects the low end attenuated by this chain. The
+run-file readouts of this model are on IR-filtered audio and are not directly comparable to
+`it23_relabel_colour_s1`'s, which are on raw audio. Not scored on ITU ARIS. No baselines in this run.
+
+## 273 - Result of entry 272: `phys_ir_relabel_colour_s1` trained
+- Date: 2026-11-24
+- Type: Training result
+- Commit: as entry 272
+
+**Result.** The run of entry 272 finished on the server at 14:45 UTC: training 700 s, final loss 0.343
+(600,000 windows). Files on the server only:
+- `artifacts/models/phys_ir_relabel_colour_s1_none_simdist_colour_crnn.pt` (2,973,077 bytes)
+- `artifacts/runs/phys_ir_relabel_colour_s1.json`, `.log`
+
+Run-file readouts (all on IR-filtered audio, IR_mic_in3; validation = Nightjar 0804-3 and d3set validation,
+2,648 drone and 1,565 no-drone windows, 1 s window, 0.5 s hop; threshold at 5 % false alarms there):
+
+| Model | Threshold | Validation recall | Lund recall (all / 100-200 m) | Mower false alarms |
+|---|---|---|---|---|
+| it23 CRNN relabel colour s1 (entry 230, raw audio) | 0.694 | 0.785 | 0.383 / 0.410 | 0.072 |
+| phys IR relabel colour s1 (through the IR) | 0.663 | 0.786 | 0.360 / 0.355 | 0.072 |
+
+Lund by range at 0.663: 0-50 m 0.936, 50-100 m 0.687, 100-150 m 0.417, 150-200 m 0.234, 200-300 m 0.092,
+300 m and more 0.033 (7,871 windows, 12 recordings).
+
+**Assessment.** Through the IR the network keeps the reference's validation recall and mower false alarms;
+Lund at 100-200 m is 5.5 points lower. The two rows are not on the same audio (raw against IR-filtered), so
+this says the IR costs little, not that one model is better. One seed. Not scored on the development test,
+on ITU ARIS or with the baselines. Not yet downloaded to this PC or added to the test GUIs.
+
+## 274 - `phys IR CRNN relabel colour s1` downloaded and added to the test GUIs
+- Date: 2026-11-24
+- Type: Infrastructure
+- Commit: the commit that carries this entry
+
+**What changed.** On Mads's request, the network of entries 272-273 is on this PC and in the test GUIs.
+- Downloaded through Mads's Chrome from the server's `artifacts/`. SHA-256 equal to the server's (JupyterLab
+  contents API `hash=1`): checkpoint 91cd3b728b67ec1e8a80bf6cff36050fa8a5553b24f0fc680415d1a29183d6fb
+  (MD5 50eca7045e3e6bfca46eec8d2175382b), run file 6096e4c0de658d55825a9e93883cd75182f78d921f54fb52b8dd2b8c5e2471b0.
+- Into `artifacts/models/phys_ir_relabel_colour_s1_none_simdist_colour_crnn.pt` and
+  `artifacts/runs/phys_ir_relabel_colour_s1.json` (force-added: run files are git-ignored, entry 194).
+- `drone_war_grid.MODELS` gains `phys IR CRNN relabel colour s1`; `Complete_Test_Gui.COLORS` and
+  `detect_gui.MODEL_COLORS` gain `#ffd600`.
+
+**How.** The checkpoint loads with `torch.load` (arch crnn, MFE frontend, 64 bands 50-8000 Hz) and the run
+file's threshold reads 0.663. A fuller check (`load_detectors` on noise, `detector_names()`, the whole
+`pytest`) was started and stopped by Claude before it finished, at Mads's word that the model comes first:
+**not verified in the GUIs and the test suite was not run.**
