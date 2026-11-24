@@ -35,6 +35,10 @@ from dad.realdata import load_manifest  # noqa: E402
 from dad.wavio import Clip, stream  # noqa: E402
 
 OUT = dwg.ROOT / "artifacts/dev_test"
+# iteration 23's 2 s colour networks (entries 209-210), taken out of the GUIs in entry 232; registered here only
+dwg.MODELS.update({f"it23 {name} 2s colour s{s}": (dwg.ROOT / f"artifacts/runs/it23_2s_colour_s{s}.json",
+                                                   dwg.MODEL_DIR / f"it23_2s_colour_s{s}_none_simdist_colour_{arch}.pt")
+                   for name, arch in (("CNN", "dscnn"), ("CRNN", "crnn")) for s in (0, 1, 2)})
 SR, N = E.SR, int(10 * E.SR)
 WAR_DB, WIND_DB, CARS_DB, HELI_DB = 90.0, 50.0, 50.0, 80.0
 DRONE_DBS = (100.0, 90.0, 80.0, 70.0, 60.0)
@@ -44,6 +48,7 @@ PD = dict(wind_speed_ms=10.0, car_speed_kmh=50.0, car_dist_m=30.0)
 WAR_BGS = (("war",), ("war", "wind"), ("war", "cars"), ("war", "wind", "cars"))
 NO_DRONE_BGS = WAR_BGS + (("wind",), ("cars",))
 LUND_SUSPECT = "10_flower3"
+WAR_ONLY = False            # --war-only: war soundscape as the only background, no wind or cars (they need Pure Data)
 ALLOW_TYRES_ONLY = False    # --tyres-only: run although the engine recordings are missing (the cars are then tyre noise)
 
 
@@ -76,12 +81,14 @@ def picks(half: str) -> dict[str, list]:
 
 def backgrounds() -> dict:
     """{(stretch, layers): 10 s of background}, layers a tuple out of war, wind, cars."""
+    layers = E.make_layers()
+    war = layers["war soundscape"]
+    if WAR_ONLY:                                                    # --war-only: no Pd layers (no Pure Data here)
+        return {(s, ("war",)): war.window(N, w0, WAR_DB) for s, w0 in enumerate(WAR_STARTS)}
     missing = [p.name for p in E._car_engines() if not p.exists()]
     kept = E._cars_file(E.pd_config("cars", PD)).exists()           # a render made where the engines were
     if missing and not kept and not ALLOW_TYRES_ONLY:               # Pd renders silently without them: tyre noise only
         raise SystemExit(f"car engines missing ({', '.join(missing)}): run scripts/fetch_car_engines.py")
-    layers = E.make_layers()
-    war = layers["war soundscape"]
     wind = E.Layer("wind (Pd)", "", True, lambda: E._wind_pd(E.pd_config("wind (Pd)", PD)))
     cars = E.Layer("cars", "", True, lambda: E._cars(E.pd_config("cars", PD)))
     per_car = len(cars.signal()[0]) / SR / len(E.car_names())       # one pass-by per engine, closest halfway
@@ -145,7 +152,7 @@ def _auc(pos, neg) -> float:
 def readout(rs: list[dict], s: list[np.ndarray], shift: float = 0.0) -> dict:
     """Mean confidence (%) per condition, each round counted equally; AUC over hops."""
     conf = [1 / (1 + np.exp(-(_logit(v) + shift))) for v in s]
-    mean = lambda sel: 100 * float(np.mean([conf[i].mean() for i, r in enumerate(rs) if sel(r)]))   # noqa: E731
+    mean = lambda sel: 100 * float(np.mean([conf[i].mean() for i, r in enumerate(rs) if sel(r)] or [np.nan]))   # noqa: E731
     hops = lambda sel: np.concatenate([conf[i] for i, r in enumerate(rs) if sel(r)])                # noqa: E731
     o = {"drone war": mean(lambda r: r["kind"] == "drone" and r["bg"] == "war"),
          "drone war low": mean(lambda r: r["kind"] == "drone" and r["bg"] == "war" and r["drone_db"] <= 70),
@@ -216,6 +223,10 @@ if __name__ == "__main__":
     j.add_argument("--ref", default="", help="model-name prefix whose mean drone confidence in war is the pin's target")
     r.add_argument("--device", default="cpu")
     r.add_argument("--tyres-only", action="store_true", help="run without the car engine recordings")
+    r.add_argument("--war-only", action="store_true", help="the war soundscape as the only background (no Pure Data)")
     a = ap.parse_args()
+    WAR_ONLY = getattr(a, "war_only", False)
+    if WAR_ONLY:
+        WAR_BGS = NO_DRONE_BGS = (("war",),)
     ALLOW_TYRES_ONLY = getattr(a, "tyres_only", False)
     run(a) if a.cmd == "run" else judge(a)

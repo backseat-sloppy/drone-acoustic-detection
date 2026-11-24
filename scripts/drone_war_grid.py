@@ -119,7 +119,10 @@ MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file
              for s in (0, 1, 2)},
           # iteration 30 with half the training windows through the array room's measured IR (iteration 30.5, entries 277-280)
           **{f"it30.5 CRNN ir s{s}": (ROOT / f"artifacts/runs/it30_5_ir_s{s}.json", MODEL_DIR / f"it30_5_ir_s{s}_crnn.pt")
-             for s in (0, 1, 2)}}
+             for s in (0, 1, 2)},
+          # it23 relabel colour s1 trained with the measured microphone IR as the last audio step (entries 272-274)
+          "phys IR CRNN relabel colour s1": (ROOT / "artifacts/runs/phys_ir_relabel_colour_s1.json",
+                                             MODEL_DIR / "phys_ir_relabel_colour_s1_none_simdist_colour_crnn.pt")}
 OFF = float("-inf")                                          # war gain of "no war": 10 ** (OFF / 20) == 0
 NO_DRONE = 0.0                                               # drone "speed" of the no-drone row (war only)
 

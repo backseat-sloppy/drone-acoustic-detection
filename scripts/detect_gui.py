@@ -125,7 +125,8 @@ MODEL_COLORS = dict(zip(MODELS, ["#2a78d6", "#e8710a", "#9334e6", "#d93025", "#0
                                  "#e65100", "#ff3d00", "#ff9e80",                       # it27 CRNN quiet s0-s2
                                  "#33691e", "#7cb342", "#c5e1a5",                       # it28 CRNN vehicle s0-s2
                                  "#01579b", "#0288d1", "#4fc3f7",                       # it30 CRNN half s0-s2
-                                 "#4a148c", "#aa00ff", "#ea80fc"]))                     # it30.5 CRNN ir s0-s2
+                                 "#4a148c", "#aa00ff", "#ea80fc",                       # it30.5 CRNN ir s0-s2
+                                 "#ffd600"]))                                           # phys IR CRNN relabel colour s1
 assert len(MODEL_COLORS) == len(MODELS), "add a colour for every model in drone_war_grid.MODELS"
 COMB_COLOR = dwg.COLORS["comb"]
 
