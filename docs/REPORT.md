@@ -18152,3 +18152,81 @@ file's threshold reads 0.663. A fuller check (`load_detectors` on noise, `detect
   microphone IR as the last audio step) and iteration 30.5 (entries 277-280, the it30 simulator
   with the array-room IR on half the windows). They use different recipes and readouts and have
   not been compared on the same windows.
+
+## 275 - Physical test prep: it9 CRNN and It9B retrained with the measured microphone IR
+- Date: 2026-11-24
+- Type: Training (physical test preparation; not an iteration)
+- Commit: the commit that carries entry 276
+
+**What.** At Mads's request, the it9 CRNN (`final_crnn`, entry 096) and It9B (entry 160) retrained through the
+microphone IR exactly as entry 272 did for the colour CRNN: `scripts/run_range_ir.py`, the 2 x 1,600-tap IR
+`data/processed/ir/20261123_120401_mic_16k.npy`, training windows filtered by in3 or in4 after the speed
+change, scoring during the run through in3.
+- Kept the same as the originals (their run files' `args`): pool, nothing held out, recipe `simdist`, CRNN,
+  200,000 windows, speed 0.8-1.25, 1 s window, MFE, seed 0; it9 at `--deploy-fa 0.05`, It9B at
+  `--deploy-fa 0.10 --pos-weight 2`.
+- **Changed from the originals:** `--relabel labels/nightjar_relabel.csv`, because CLAUDE.md requires it of every
+  training run from iteration 23 on. The originals predate the relabelling (100 s of Nightjar no-drone turned
+  drone, 50 s left out; entry 228), so these differ from it9 / It9B in the IR *and* in those labels. The pool on
+  today's server is also the one iteration 23 trained on (399 segments, 21 validation segments), not
+  necessarily the one of entry 096.
+
+**How.** Server, `phys_ir_it9_launch.sh` in `~/drone-acoustic-detection`, run with `setsid -f nohup bash`:
+```
+CUDA_VISIBLE_DEVICES=1 .venv/bin/python -u scripts/run_range_ir.py --ir data/processed/ir/20261123_120401_mic_16k.npy -- \
+    --name phys_ir_it9_crnn --pool --arms none --recipes simdist --models crnn --device cuda --windows 200000 \
+    --speed 0.8 1.25 --seed 0 --frontend mfe --relabel labels/nightjar_relabel.csv --deploy-fa 0.05
+CUDA_VISIBLE_DEVICES=2 ... --name phys_ir_It9B ... --deploy-fa 0.10 --pos-weight 2
+```
+**Launch fault.** The first launch (plain `nohup setsid ... &` from the terminal) was judged dead from a broken
+process count and the script launch was started on top of it, so each model ran twice on its GPU for about two
+minutes. The older pair (PIDs 3552516-7) was killed during warm-up, before any checkpoint was written; the
+newer pair (3553416-7) is the one reported. Both pairs wrote to the same log files, so the start of each
+`.log` may hold leftover bytes from the killed run.
+
+**Result.** Running; see entry 276.
+
+## 276 - The same two networks at 600k windows
+- Date: 2026-11-24
+- Type: Training (physical test preparation)
+- Commit: the commit that carries entry 277
+
+**What.** Mads asked for 600,000-window versions as well, since the runs are quick. `phys_ir_it9_crnn_600k` and
+`phys_ir_It9B_600k`: entry 275's commands with `--windows 600000`, both on GPU 0
+(`phys_ir_it9_600k_launch.sh`, started with `setsid -f nohup bash`; one process each, checked with `pgrep`).
+600k is the window count of iteration 16 on, against 200k for the original it9 and It9B.
+
+**Result.** Running; see entry 277.
+
+## 277 - Result of entry 275: `phys IR it9 CRNN` and `phys IR It9B` (200k), downloaded and in the GUIs
+- Date: 2026-11-24
+- Type: Training result, Infrastructure
+- Commit: the commit that carries this entry
+
+**Result.** Both 200k runs finished (216 s training each; final loss 0.409 it9, 0.387 It9B; no traceback).
+Run-file readouts: the IR rows on IR-filtered audio (in3), the originals on raw audio, so the rows compare
+operating points, not models (as entry 273). Validation 2,648 drone and 1,565 no-drone windows, 1 s window,
+0.5 s hop.
+
+| Model | Threshold (FA) | Validation recall | Lund recall (all / 100-200 m) | Mower false alarms |
+|---|---|---|---|---|
+| it9 CRNN (`final_crnn`, raw) | 0.483 (5 %) | 0.785 | 0.389 / 0.454 | 0.264 |
+| phys IR it9 CRNN | 0.492 (5 %) | 0.782 | 0.361 / 0.353 | 0.280 |
+| It9B (raw) | 0.554 (10 %) | 0.802 | 0.433 / 0.518 | 0.584 |
+| phys IR It9B | 0.544 (10 %) | 0.804 | 0.443 / 0.547 | 0.728 |
+
+As for the colour CRNN, validation recall holds through the IR. Lund 100-200 m falls 10 points for it9 and
+rises 3 points for It9B; one seed each, so neither is read as an effect. It9B's mower false alarms rise 0.58 to
+0.73 at its 10 % threshold.
+
+**Downloaded.** Through Mads's Chrome. The files arrived as Chrome's pending `.tmp` downloads (Chrome was
+waiting on a save dialog); their SHA-256 equal the server's (contents API `hash=1`) and they were copied in:
+- `artifacts/models/phys_ir_it9_crnn_none_simdist_crnn.pt` 7fe28dc2905246cf00e58a974e21d845152752941458e1fb3734624140e89150
+- `artifacts/runs/phys_ir_it9_crnn.json` 55bec0dc7eef239e2b018847c343f06d7d55669f3bb15d3020f39717a2e997da
+- `artifacts/models/phys_ir_It9B_none_simdist_crnn.pt` ee908b2f389905218023f5dcbfe1709f308a3952da6e586460c4cbf4b069aa5c
+- `artifacts/runs/phys_ir_It9B.json` 5261e2822a2a7e7f2f6bcac546968952643d05313511679657a4fe1611350f8b
+
+**GUIs.** `drone_war_grid.MODELS` gains `phys IR it9 CRNN` and `phys IR It9B`; colours in `Complete_Test_Gui`
+and `detect_gui`. Check: `drone_war_grid._detectors` loads all three IR models on CPU with the run files'
+thresholds (0.663, 0.492, 0.544) and scores 1 s of white noise at -40 dBFS at 0.15-0.21, 0.32-0.36 and
+0.54-0.58. The GUIs were not opened; `pytest` was not run.
