@@ -18230,3 +18230,32 @@ waiting on a save dialog); their SHA-256 equal the server's (contents API `hash=
 and `detect_gui`. Check: `drone_war_grid._detectors` loads all three IR models on CPU with the run files'
 thresholds (0.663, 0.492, 0.544) and scores 1 s of white noise at -40 dBFS at 0.15-0.21, 0.32-0.36 and
 0.54-0.58. The GUIs were not opened; `pytest` was not run.
+
+## 278 - Result of entry 276: `phys IR it9 CRNN 600k` and `phys IR It9B 600k`, downloaded and in the GUIs
+- Date: 2026-11-24
+- Type: Training result, Infrastructure
+- Commit: the commit that carries this entry
+
+**Result.** Both 600k runs finished on GPU 0 (920 s and 929 s training, side by side; final loss 0.360 it9,
+0.343 It9B; no traceback). Readouts as entry 277 (IR rows on IR-filtered audio):
+
+| Model | Windows | Threshold (FA) | Validation recall | Lund recall (all / 100-200 m) | Mower false alarms |
+|---|---|---|---|---|---|
+| phys IR it9 CRNN | 200k | 0.492 (5 %) | 0.782 | 0.361 / 0.353 | 0.280 |
+| phys IR it9 CRNN 600k | 600k | 0.652 (5 %) | 0.781 | 0.308 / 0.252 | 0.064 |
+| phys IR It9B | 200k | 0.544 (10 %) | 0.804 | 0.443 / 0.547 | 0.728 |
+| phys IR It9B 600k | 600k | 0.671 (10 %) | 0.791 | 0.342 / 0.298 | 0.256 |
+
+The 600k networks sit at higher thresholds with far fewer mower false alarms and lower Lund recall: the same
+shifted operating point entry 230 saw, not a measured change in separation. One seed each.
+
+**Downloaded.** Through Mads's Chrome; SHA-256 equal to the server's:
+- `artifacts/models/phys_ir_it9_crnn_600k_none_simdist_crnn.pt` 8f51fa0cb5f9ff3e7611034c9fea337b7efa82bb0f4d17143bae48433782f692
+- `artifacts/runs/phys_ir_it9_crnn_600k.json` 452935ca12a7a08d09d0b8bdd601da22d2635861ea5fc89f0b2fbbd13f7128cd
+- `artifacts/models/phys_ir_It9B_600k_none_simdist_crnn.pt` de6834f560a26cbd8c103dc5d37583c36c5860548571e9fb0fcb46232be274ad
+- `artifacts/runs/phys_ir_It9B_600k.json` aa51f1e08c25ab6eda5999b1fd046d3b6bdda77e635c6579345a3588f58a0aa6
+
+**GUIs.** `phys IR it9 CRNN 600k` and `phys IR It9B 600k` in `drone_war_grid.MODELS`, with colours in
+`Complete_Test_Gui` and `detect_gui`. `drone_war_grid._detectors` loads both with thresholds 0.652 and 0.671.
+An import check of `detect_gui` printed nothing within 120 s and was not repeated; the GUIs were not opened and
+`pytest` was not run.
