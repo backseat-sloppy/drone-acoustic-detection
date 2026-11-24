@@ -18,7 +18,9 @@ Three pages, a slide show (the arrows at the top, the page names, or Ctrl+Left /
                           scripts/reaper_live.py; scored on what the microphone hears). Drones: automatic (the plan's rounds one after the
                           other) or manual (Send drone flies in the next drone of the plan). A live
                           view (spectrogram, every detector's confidence, level) runs while it
-                          plays; the results are a run folder like the other pages'.
+                          plays; the results are a run folder like the other pages'. "Download for
+                          physical test" writes each distinct drone and background sound of the plan
+                          once, as its own WAV, with the rounds as a playlist (physical_test_files.py).
 
 The Synthetic drone test page (Pure Data drones) was replaced by the Live demo test on 2026-11-12; its runs
 still open with "Open results...", and the engine still runs synthetic plans.
@@ -68,6 +70,7 @@ from tkinter import filedialog, messagebox, ttk
 sys.path.insert(0, str(Path(__file__).parent))
 import complete_test_engine as E  # noqa: E402
 import live_test_engine as L  # noqa: E402
+import physical_test_files as PT  # noqa: E402
 
 import matplotlib  # noqa: E402
 matplotlib.use("TkAgg") if os.environ.get("MPLBACKEND", "").lower() != "agg" else None
@@ -1108,12 +1111,42 @@ class LivePage(Page):
         self.b_results = ttk.Button(bar, text="Results window", command=self.open_results, state="disabled")
         self.b_results.grid(row=0, column=3, padx=4)
         ttk.Button(bar, text="Save plan...", command=self.save_plan).grid(row=0, column=4, padx=4)
+        self.b_physical = ttk.Button(bar, text="Download for physical test", command=self.download_physical)
+        self.b_physical.grid(row=0, column=5, padx=4)
+        bar.columnconfigure(5, weight=0)
+        bar.columnconfigure(6, weight=1)
         self.pb = ttk.Progressbar(bar, mode="determinate")
-        self.pb.grid(row=0, column=5, sticky="ew", padx=(10, 0))
+        self.pb.grid(row=0, column=6, sticky="ew", padx=(10, 0))
         self.l_status = ttk.Label(f, text="Set up 1-5 above, then Play. While it plays, only Stop (and Send drone) act; "
                                           "the Results window opens once, when the plan is done or you press Stop.",
                                   style="Muted.TLabel", wraplength=1000, justify="left")
         self.l_status.grid(row=4, column=0, sticky="w", pady=(6, 0))
+
+    def download_physical(self):
+        """Each distinct drone and background sound of the plan once, as its own WAV, plus the rounds as a
+        playlist (physical_test_files.export), in a new folder under the one chosen."""
+        p = self.checked_plan()
+        if p is None:
+            return
+        d = filedialog.askdirectory(parent=self, title="Where to put the physical test's audio files",
+                                    initialdir=str(Path.home() / "Downloads"))
+        if not d:
+            return
+        self.b_physical.state(["disabled"])
+        say = lambda m: self.after(0, lambda: self.l_status.configure(text=m))   # noqa: E731
+
+        def work():
+            try:
+                out = PT.export(p, Path(d), say)
+                msg = (f"Wrote {sum(1 for _ in out.rglob('*.wav'))} audio files for {len(p.rounds())} rounds to\n{out}\n\n"
+                       "rounds.csv is the playlist: each round's drone file, where it starts, and its background files.")
+                self.after(0, lambda: messagebox.showinfo(TITLE, msg, parent=self))
+            except Exception as e:                           # noqa: BLE001  (a missing file, Pure Data, ...)
+                self.after(0, lambda e=e: messagebox.showerror(TITLE, f"Download for physical test failed:\n{e}", parent=self))
+            finally:
+                self.after(0, lambda: self.b_physical.state(["!disabled"]))
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _send_ready(self, ready: bool):
         """Send drone: red when a press would fly a drone in now, grey otherwise."""
@@ -1344,6 +1377,7 @@ class LivePage(Page):
         self.b_start.state(["disabled"])
         self.b_stop.state(["!disabled"])
         self.b_results.state(["disabled"])
+        self.b_physical.state(["disabled"])                    # not while it plays: the audio must not stutter
         self._lock(True)
         self.l_status.configure(text="preparing: drones, layers and detectors...")
         self.error = None
@@ -1421,6 +1455,7 @@ class LivePage(Page):
             self._lock(False)
             self.b_start.state(["!disabled"])
             self.b_stop.state(["disabled"])
+            self.b_physical.state(["!disabled"])
             self.dirty = True
             self._redraw()
             self.after(200, self._after_run)

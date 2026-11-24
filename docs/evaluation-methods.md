@@ -87,10 +87,50 @@ For example, at 150 km/h a drone 7 seconds from impact is about 290 metres away.
 
 *Question:* how does the detector behave outside a virtual test?
 
-The detector runs live as a demo in a surround-sound speaker array, with drone
-and background sounds played around the microphone.
+The detector runs live, listening through a real headset microphone while
+drone and background sounds are played around it from a surround-sound
+speaker array. It is the only test in which the sound passes through a real
+room, real loudspeakers and a real microphone before it reaches the models.
 
-> **To be specified.** The details of this test are still being decided.
+### Setup
+
+| Part | What is used |
+|---|---|
+| **Room** | A semi-anechoic room at the GN headquarters |
+| **Playback** | A surround-sound speaker array, driven from Reaper with a setup made for this array |
+| **Microphone** | A FalCom headset placed in the room, among the speakers |
+| **Detector** | A laptop that receives the headset's microphone signal and runs the models live |
+
+### Procedure
+
+1. **Choose the test drones.** A small set of drone recordings, likely 3 to 5
+   drones, is selected for the demo. To keep the result meaningful, they
+   should come from recordings the models were not trained on (see
+   [Keeping test data apart](#keeping-test-data-apart)).
+2. **Make the test clips.** In Reaper, a number of clips are built from these
+   drones for the speaker array. The clips vary in whether a drone is present,
+   the drone's speed and the distractors that are played with it.
+3. **Play the clips.** All clips are played through the speaker array, one
+   after the other, with the FalCom headset in the room.
+4. **Detect live.** The headset's microphone signal is relayed to the laptop,
+   where the models score it window by window, as they would in use.
+5. **Log the results.** For every clip, the detection software logs each
+   model's confidence over time and stores it together with the clip's
+   metadata.
+
+### What is logged per clip
+
+- **Confidence** of each model, for every window, with its time.
+- **Clip metadata:** whether a drone is present (and when), which drone, its
+  speed, and which distractors are played.
+
+With the metadata stored next to the confidence, the windows with and without
+a drone can be told apart afterwards, and the results can be grouped by drone,
+speed and distractor in the same way as in tests 1 and 2.
+
+> **Still to be decided:** which drones are used, how many clips are made and
+> what each contains, the playback levels, and which figures the test is
+> reported with.
 {: .text-grey-dk-000 }
 
 ## Keeping test data apart
