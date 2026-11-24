@@ -248,12 +248,13 @@ def background(rng, media: Path) -> list[dict]:
 def war_media(media: Path) -> list[dict]:
     """media/war_<source>.wav: each stem, mono, at the war layer's level (the stems' sum at LAYERS' dB SPL), its end
     running on into its start so REAPER can loop it."""
+    stems = WS.load(SR)                                      # first: renders the stems and mix.wav on a fresh clone
     f, level, _ = LAYERS["war soundscape"]
     gain = E.rms_for(level) / rms(read_mono(f))
     rows = []
     for old in media.glob("war_*.wav"):                      # a source the project no longer has
         old.unlink()
-    for src, x in WS.load(SR).items():
+    for src, x in stems.items():
         y = gain * seamless(x, 0, len(x))
         sf.write(media / f"war_{src}.wav", y.astype(np.float32), SR, subtype="PCM_24")
         rows.append(dict(layer=f"war soundscape: {src}", speaker="moving (VBAP)", source=str((WS.OUT / f"{src}.wav").relative_to(ROOT)),

@@ -17616,3 +17616,25 @@ it, but only after the 120 s wait had run out: REAPER answered with that run's r
 its last one. The likely cause is REAPER asking to save the project it had open (`allday.RPP`). The wait is now
 600 s; Stop in the GUI still ends it at once. The error now names the likely cause. Checked: the module imports.
 Not checked: a full run.
+
+## 276 - The REAPER projects rebuild on a fresh clone
+
+- Date: 2026-11-24
+- Type: Bug fix and data (REAPER array)
+- Commit: `iteration-21-uav16`, after 9fe8a87; `scripts/reaper_array.py` (`war_media`)
+
+A team member could not run `scripts/reaper_array.py` from a clone. GitHub did not have everything the build reads.
+Pushed so far: the built projects and tables (8d9db25), the four background renders the build reads from
+`artifacts/complete_test/layers` (cc16361), and the bee loops `bee_clean0-2.wav` (9fe8a87). The bees render is looked
+up by a hash that includes `bee_clean1.wav`, so the build needs that loop even when the render is there. The loops are
+FSD50K derivatives under CC BY 3.0, credited in `Pure-data+Script/BeeDistractor/CREDITS.md`. `media/` (1 GB) stays off
+GitHub and is rebuilt; so are the war stem WAVs.
+
+**Bug.** `war_media` read `artifacts/war_stems/mix.wav` before `war_stems.load` had built it. A fresh clone has no
+`mix.wav`, so the build stopped with a libsndfile "System error". It now calls `load` first, which renders the stems
+when they are missing.
+
+**Checked.** I made a fresh clone of the pushed branch in the scratchpad and ran
+`python scripts/reaper_array.py` in it (this Mac's `.venv`, `PYTHONPATH` set to the clone). It ran in 16 s.
+`allday.RPP`, `demo.RPP`, `events.csv`, `war_positions.csv` and all 23 media files are byte-identical to this Mac's
+build. Not checked: a clone on Windows, or with a new `uv sync`.
