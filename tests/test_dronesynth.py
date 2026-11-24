@@ -123,3 +123,13 @@ def test_steady_noises_slope():
         ds.STEADY_SLOPE_DB_OCT = old
     w = ds.synth_wind(np.random.default_rng(0), n, fs)
     assert abs(w.std() - 1.0) < 1e-6 and band(w, 50, 800) > 10 * band(w, 2000, 8000)
+
+
+def test_apply_ir_is_circular_convolution():
+    """Iteration 30.5: an impulse gives the IR folded to the window; noise gives a periodic signal's steady state."""
+    from dad.dronesynth import apply_ir
+    rng = np.random.default_rng(0)
+    ir, x, d = rng.standard_normal(2500), rng.standard_normal(1000), np.zeros(1000)
+    d[0] = 1.0
+    assert np.allclose(apply_ir(d, ir), np.pad(ir, (0, 500)).reshape(-1, 1000).sum(0))
+    assert np.allclose(apply_ir(x, ir), np.convolve(np.tile(x, 4), ir)[3000:4000])

@@ -33,7 +33,9 @@ from dad.config import DEFAULT  # noqa: E402
 VAL_DRONES = (6, 12, 18, 24)      # one in six, fixed before any number (entry 239)
 VAL_SEED = 25_000
 BEDS = ("background", "wind", "war")    # war is test 1's bed, so it is a bed here too, not only a confuser
-SNR_BINS = ((0.0, 10.0), (-10.0, 0.0), (-20.0, -10.0))
+SNR_BINS = ((0.0, 10.0), (-10.0, 0.0), (-20.0, -10.0), (-30.0, -20.0))   # the last only in the faint probe
+IR_FILE = REPO / "Microphone_Impulse_response/ir_measurements/20261123_120401/IR_mic_in3.wav"   # the array room, 2026-11-23
+FAINT_SEED, FAINT_SNR = 31_000, (-30.0, -20.0)   # iteration 31's faint probe: test 1's quietest drone is ~-30 dB
 
 
 def sources(split: str, glasgow_ids, uav16: bool) -> tuple[list, list]:
@@ -50,6 +52,21 @@ def validation_set(n_families: int, uav16: bool = False, p_quiet: float = 0.0, p
                         p_quiet=p_quiet, p_vehicle=p_vehicle)
     print(f"validation: {s.describe()}", flush=True)
     rng = np.random.default_rng(VAL_SEED)
+    w = [m for _ in range(n_families) for m in s.family(rng)]
+    return dict(audio=np.stack([a for a, *_ in w]).astype(np.float32), y=np.array([t for _, t, *_ in w]),
+                snr=np.array([v for *_, v, _ in w]), bed=np.array([i["bed"] for *_, i in w]),
+                confuser=np.array([i["confuser"] for *_, i in w]),
+                twin=np.array([bool(i.get("twin")) for *_, i in w]))
+
+
+def faint_probe(n_families: int, p_quiet: float = 0.0, p_vehicle: float = 0.0) -> dict:
+    """Iteration 31: validation families with the drone at FAINT_SNR, a readout only (never the threshold).
+    Validation's sampler (held-out drones, val stems, twins) with another seed and the drone range moved down."""
+    drones, twins = sources("val", VAL_DRONES, False)
+    s = ds.SynthSampler([], seed=FAINT_SEED, drones=drones, twin=twins, ladder=3, stem_split="val", bed_groups=BEDS,
+                        p_quiet=p_quiet, p_vehicle=p_vehicle, snr_db=FAINT_SNR)
+    print(f"faint probe: {s.describe()}", flush=True)
+    rng = np.random.default_rng(FAINT_SEED)
     w = [m for _ in range(n_families) for m in s.family(rng)]
     return dict(audio=np.stack([a for a, *_ in w]).astype(np.float32), y=np.array([t for _, t, *_ in w]),
                 snr=np.array([v for *_, v, _ in w]), bed=np.array([i["bed"] for *_, i in w]),
@@ -120,7 +137,9 @@ def readout(s: np.ndarray, v: dict, thr: float) -> dict:
         r["conf_empty_silence"] = float(s[empty].mean())
     for lo, hi in SNR_BINS:
         m = pos & (v["snr"] >= lo) & (v["snr"] < hi)
-        r[f"conf_drone_snr_{lo:g}_{hi:g}"] = float(s[m].mean())
+        if m.any():
+            r[f"conf_drone_snr_{lo:g}_{hi:g}"] = float(s[m].mean())
+            r[f"recall_snr_{lo:g}_{hi:g}"] = float((s[m] >= thr).mean())
     for key in ("bed", "confuser"):
         for g in np.unique(v[key]):
             m = v[key] == g
@@ -134,7 +153,8 @@ def readout(s: np.ndarray, v: dict, thr: float) -> dict:
 def show(tag: str, r: dict) -> None:
     print(f"  {tag:<28} AUC {r['auc']:.3f}  @thr {r['threshold']:.3f}: recall {r['recall_at_thr']:.3f} "
           f"FA {r['fa_at_thr']:.3f} (twin {r['fa_twin_at_thr']:.3f})  conf no drone {r['conf_no_drone']:.3f}  "
-          f"drone by SNR " + " / ".join(f"{r[f'conf_drone_snr_{lo:g}_{hi:g}']:.3f}" for lo, hi in SNR_BINS)
+          f"drone by SNR " + " / ".join(f"{r[f'conf_drone_snr_{lo:g}_{hi:g}']:.3f}" for lo, hi in SNR_BINS
+                                       if f"conf_drone_snr_{lo:g}_{hi:g}" in r)
           + "  war bed AUC " + (f"{r['bed_war']['auc']:.3f}" if "bed_war" in r else "-")
           + "  war confuser AUC " + (f"{r['confuser_war']['auc']:.3f}" if "confuser_war" in r else "-")
           + "".join(f"  {g} conf no drone {r[f'bed_{g}']['conf_no_drone']:.3f} FA {r[f'bed_{g}']['fa_at_thr']:.3f}"
@@ -166,6 +186,13 @@ def main() -> None:
     p.add_argument("--ladder", type=int, default=3,
                    help="training families of 1 scene + LADDER drone copies (3: 75%% drone windows; 1: 50%%, iteration 30). "
                         "Validation stays ladder 3")
+    p.add_argument("--p-ir", type=float, default=0.0,
+                   help="iteration 30.5: share of training windows heard through the measured array-room IR (IR_FILE); "
+                        "> 0 also reads out validation through the IR")
+    p.add_argument("--snr-lo", type=float, default=-20.0,
+                   help="iteration 31: training drones from SNR-LO to +10 dB (default -20, as before). Validation unchanged")
+    p.add_argument("--faint-families", type=int, default=0,
+                   help="iteration 31: families in the faint probe, drone at -30 to -20 dB (0: none)")
     p.add_argument("--probe-families", type=int, default=500, help="iteration 29: families in the steady probe (0: none)")
     p.add_argument("--reference", nargs="*", default=[], metavar="CKPT",
                    help="checkpoints under artifacts/models scored on the same validation windows")
@@ -176,6 +203,9 @@ def main() -> None:
     t0 = time.time()
     val = validation_set(args.val_families, args.uav16, args.p_quiet, args.p_vehicle)
     probe = steady_probe(args.probe_families) if args.probe_families else None
+    ir = ds.load_ir(IR_FILE) if args.p_ir else None
+    val_ir = dict(val, audio=np.stack([ds.apply_ir(a, ir) for a in val["audio"]])) if ir is not None else None
+    faint = faint_probe(args.faint_families, args.p_quiet, args.p_vehicle) if args.faint_families else None
     u16 = uav16_real() if ds.UAV16.exists() else None
     if u16 is not None:
         print(f"uav16 real: {int(u16['y'].sum())} drone, {int((u16['y'] == 0).sum())} no-drone windows", flush=True)
@@ -185,7 +215,8 @@ def main() -> None:
     train_ids = [d for d in range(1, 25) if d not in VAL_DRONES]
     drones, twins = sources("train", train_ids, args.uav16)
     sampler = ds.SynthSampler([], seed=args.seed, drones=drones, twin=twins, ladder=args.ladder, stem_split="train",
-                              bed_groups=BEDS, p_quiet=args.p_quiet, p_vehicle=args.p_vehicle, p_steady=args.p_steady)
+                              bed_groups=BEDS, p_quiet=args.p_quiet, p_vehicle=args.p_vehicle, p_steady=args.p_steady,
+                              snr_db=(args.snr_lo, 10.0), ir=ir, p_ir=args.p_ir)
     print(f"training: {sampler.describe()}", flush=True)
     results = []
 
@@ -198,14 +229,25 @@ def main() -> None:
             r["uav16_real"] = real_readout(scorer.score(u16["audio"]), u16, thr)
         if probe is not None:
             r["steady_probe"] = readout(scorer.score(probe["audio"]), probe, thr)
+        if val_ir is not None:   # the same windows and threshold, heard through the array room
+            r["val_ir"] = readout(scorer.score(val_ir["audio"]), val_ir, thr)
+        if faint is not None:
+            r["faint_probe"] = readout(scorer.score(faint["audio"]), faint, thr)
         results.append(r)
         show(tag, r["val"])
+        if val_ir is not None:
+            show("  through the room IR", r["val_ir"])
+        if faint is not None:
+            q = r["faint_probe"]
+            print(f"  {'':<28} faint probe (-30 to -20 dB) @thr: drone conf {q['conf_drone_snr_-30_-20']:.3f} "
+                  f"recall {q['recall_snr_-30_-20']:.3f}  AUC {q['auc']:.3f}  no drone {q['conf_no_drone']:.3f}", flush=True)
         if probe is not None:
             q = r["steady_probe"]
             print(f"  {'':<28} steady probe @thr: " + "  ".join(
                 f"{k} no drone {q[k]['conf_no_drone']:.3f} FA {q[k]['fa_at_thr']:.3f}"
                 for k in sorted(q) if k.startswith(("bed_", "confuser_")) and k != "confuser_none")
-                + f"  drone by SNR " + " / ".join(f"{q[f'conf_drone_snr_{lo:g}_{hi:g}']:.3f}" for lo, hi in SNR_BINS), flush=True)
+                + f"  drone by SNR " + " / ".join(f"{q[f'conf_drone_snr_{lo:g}_{hi:g}']:.3f}" for lo, hi in SNR_BINS
+                                                 if f"conf_drone_snr_{lo:g}_{hi:g}" in q), flush=True)
         if u16 is not None:
             q = r["uav16_real"]
             print(f"  {'':<28} uav16 real: AUC {q['auc']:.3f} recall {q['recall_at_thr']:.3f} (<20 m "

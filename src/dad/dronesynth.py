@@ -283,7 +283,8 @@ class SynthSampler:
                  p_vehicle: float = 0.0, p_steady: float = 0.0, p_steady_confuser: float = STEADY_CONFUSER_SHARE,
                  drones: list[tuple[np.ndarray, float]] | None = None, twin: tuple[np.ndarray, float] | list | None = None,
                  p_twin: float = 0.5, ladder: int = 0, stem_split: str | None = None,
-                 bed_groups: tuple[str, ...] = BED_GROUPS, confuser_groups: tuple[str, ...] = CONFUSER_GROUPS) -> None:
+                 bed_groups: tuple[str, ...] = BED_GROUPS, confuser_groups: tuple[str, ...] = CONFUSER_GROUPS,
+                 ir: np.ndarray | None = None, p_ir: float = 0.0) -> None:
         self.cfg, self.seed, self.n = cfg, seed, cfg.samples_per_window
         self.p_drone, self.p_confuser, self.snr_db, self.confuser_db = p_drone, p_confuser, snr_db, confuser_db
         self.p_rig_bed = p_rig_bed if rig_recs else 0.0
@@ -295,6 +296,7 @@ class SynthSampler:
         self.beds = _by_group(_load_stems(bed_groups, cfg.sample_rate, stem_split))
         self.confusers = _by_group(_load_stems(confuser_groups, cfg.sample_rate, stem_split))
         self.p_steady, self.p_steady_confuser = p_steady, p_steady_confuser   # iteration 29
+        self.ir, self.p_ir = ir, (p_ir if ir is not None else 0.0)            # iteration 30.5: the array room
         self.p_vehicle = p_vehicle   # share of confusers that are a road vehicle driving past (iteration 28)
         self.vehicles = [(np.round(np.clip(x, -1, 1) * 32767).astype(np.int16), VEHICLE_R_REF) for _, x in
                          _load_stems(("distracter",), cfg.sample_rate, stem_split, VEHICLE_CLS)] if p_vehicle else []
@@ -315,7 +317,8 @@ class SynthSampler:
                 + f", SNR {self.snr_db[0]:g} to {self.snr_db[1]:g} dB"
                 + (f", quiet scenes p={self.p_quiet:g} (confuser alone p={self.p_quiet_confuser:g})" if self.p_quiet else "")
                 + (f", vehicle pass-bys ({len(self.vehicles)} stems) as p={self.p_vehicle:g} of confusers" if self.p_vehicle else "")
-                + (f", steady beds p={self.p_steady:g} and steady confusers p={self.p_steady_confuser:g}" if self.p_steady else ""))
+                + (f", steady beds p={self.p_steady:g} and steady confusers p={self.p_steady_confuser:g}" if self.p_steady else "")
+                + (f", through the measured IR p={self.p_ir:g}" if self.p_ir else ""))
 
     def _crop(self, rng: np.random.Generator, x: np.ndarray) -> np.ndarray:
         if len(x) < self.n:
@@ -431,9 +434,29 @@ class SynthSampler:
         else:
             y = (rng.random(batch_size) < self.p_drone).astype(np.int64)
             audio = [self.window(rng, bool(t)) for t in y]
+        if self.p_ir:   # its own stream: every other draw (scenes, drones, EQ) is the same as without the IR
+            u = np.random.default_rng([self.seed, index, 305]).random(len(audio))
+            audio = [apply_ir(a, self.ir) if v < self.p_ir else a for a, v in zip(audio, u)]
         L = np.stack([self.fe.frames(a) for a in audio])
         L = L + np.stack([rr._eq_curve(rng, L.shape[1]) for _ in y])[:, :, None]
         return rr.level_normalise(L), y
+
+
+def load_ir(path: Path, sr: int = DEFAULT.sample_rate) -> np.ndarray:
+    """A measured impulse response (speaker -> room -> microphone, iteration 30.5): channel 0 at sr, peak 1."""
+    import soundfile as sf
+    forbid_in_training(path, where="impulse response")
+    x, fs = sf.read(path, dtype="float64", always_2d=True)
+    x = resample_poly(x[:, 0], sr, fs) if fs != sr else x[:, 0]
+    return x / np.max(np.abs(x))
+
+
+def apply_ir(x: np.ndarray, ir: np.ndarray) -> np.ndarray:
+    """x as the microphone hears it through ir. Circular convolution (the IR folded to the window's length),
+    so the window is in steady state from its first sample. The level is left to level_normalise."""
+    n = len(x)
+    fold = np.pad(ir, (0, -len(ir) % n)).reshape(-1, n).sum(0)
+    return np.fft.irfft(np.fft.rfft(x) * np.fft.rfft(fold), n).astype(x.dtype, copy=False)
 
 
 def _by_group(stems: list[tuple[str, np.ndarray]]) -> dict[str, list[np.ndarray]]:

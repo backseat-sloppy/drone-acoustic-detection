@@ -52,6 +52,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 28 | 249 to 251 | Road vehicles (FSD50K car, truck, motorcycle, idling, scooter) driven past the microphone through the drone path, as 30% of confusers; three CRNN seeds on the server | Entry 249: in the GUI it27 still alarms on a lone car while it passes close | **Fails rule 2** (quiet/silence FA 0.064/0.058 > 0.05; it27 0.060/0.053 on the same windows). Vehicle FA 0.053 vs it27 0.056, which is noise. In simulation a moving real vehicle was never the problem; the GUI Pd car alarm is likely specific to that car. In the GUI as `it28 CRNN vehicle s0-s2` (entry 251) |
 | Iteration 29 | 256 to 258 | Steady no-drone noises in the iteration 27 simulator: procedural coloured noise (-6 to +3 dB/octave, half low-passed) and synthetic wind, 10 % of beds and 25 % of confusers; ladder kept at 3; threshold on it27's validation set | Entry 256: it27/it28 score steady sounds 0.15-0.55 and wobble 0.1-0.6 in the live demo; council entry 257 | **Stopped at step 0: gate fails.** On validation, it27/it28 give steady beds 0.21-0.31, but also the FSD50K background and wind beds they trained on 0.31-0.34 (war 0.08-0.10): the no-drone level is high on almost every non-war scene, not only steady noise. Not trained (entry 258) |
 | Iteration 30 | 258 to 264 | Training families of 1 scene + 1 drone copy (`--ladder 1`): 50 % drone windows instead of 75 %; everything else as it27; threshold on it27's unchanged validation set | Entry 258: it27/it28 give about 0.3 to almost every non-war no-drone scene; Marius chose to train | **Fails as written, narrowly** (background bed 0.161 > 0.15; UAV16 recall 0.591 < 0.598). No-drone confidence halves (0.193 to 0.102; war 0.085 to 0.039) at unchanged AUC 0.984 and recall 0.915, so mostly a rescaling by the prior; drone confidence at -20 to -10 dB 0.848 to 0.755 (entry 260). In the GUI live mix: mean 0.060, sd 0.065 (it27 0.173 / 0.146), a third less wobble even against its own threshold (entry 262). Steady negatives on top skipped: no weakness on validation (entries 263-264) |
+| Iteration 30.5 | 277 to | it30's recipe with half the training windows heard through the array room: the impulse response measured on 2026-11-23 (`IR_mic_in3.wav`), as a circular convolution of the whole window | Marius's request (2026-11-24): test 3 plays everything through the array's speakers into a microphone; the measured chain cuts below 80 Hz (-10 dB at 50 Hz) and lifts 5-10 kHz by 5-10 dB, which no training window has had | Not run yet |
 
 ## Templates
 
@@ -17720,3 +17721,155 @@ Starts (several per round length) and the no-drone rounds add rounds but no file
 - These are test plans on development drone files: tooling, not detection performance.
 
 What is not in the files: the speaker, the room and the microphone. With a speaker, the microphone does not hear the plan's dB SPL until the playback level is calibrated.
+
+# Iteration 30.5 - it30 heard through the array room
+
+> **Changed from iteration 30 (`it30_half_s0-s2`):** half of the training windows (`--p-ir 0.5`) are
+> played through the impulse response measured in the speaker-array room on 2026-11-23
+> (`Microphone_Impulse_response/ir_measurements/20261123_120401/IR_mic_in3.wav`). The whole window
+> (scene, confuser and drone together) is convolved, because in the room every sound reaches the
+> microphone through a speaker. Nothing else changes.
+>
+> **Why:** Marius's request (2026-11-24). Test 3 (REQUIREMENTS.md) runs the product in the
+> surround array, so the network hears every sound through a speaker, the room and a microphone.
+> The measured chain (entry 277) is dry, 40 dB down within 18 ms, so what it changes is the
+> spectrum: about -10 dB at 50 Hz and -40 dB at 20 Hz, and +5 to +10 dB from 5 kHz up. No training
+> window has had that shape. The per-window random EQ tilt (`realrun._eq_curve`) is smooth and
+> cannot make the low-end cut. Half, not all, because tests 1 and 2 score files with no room.
+> The number is 30.5 at Marius's choice, on its own branch `30.5`. The steady-noise iteration 31
+> of entry 264 never ran.
+>
+> **Council:** not convened. This is a change to how training audio is prepared (an augmentation),
+> not a new model family, frontend, detection algorithm, metric or split (CLAUDE.md section 4).
+> The primary validation and its frozen threshold are unchanged. The new readout below is extra.
+>
+> **Kept the same:** everything in iteration 30's box: Glasgow drones (20 for training, 4 held
+> out), beds, confusers, twins, quiet scenes (p 0.2), SNR -20 to +10 dB, ladder 1 (50 % drone
+> windows), the buried variant, CRNN, 600,000 windows, seeds 0-2 on the JupyterLab server.
+> - **Validation is it27's, unchanged,** and the threshold is frozen on it at 5 % false alarms.
+> - **New readout, `val_ir`:** the same validation windows, each through the same IR, at that
+>   threshold. It reads how the network does in this room's chain. It uses the IR that training
+>   uses: there is one measurement (`in4` is the same signal with the opposite polarity, correlation
+>   -0.99996), so it measures fit to this room, not to rooms in general. Test 3 is in this room.
+> - it30 s0-s2 are scored as references on both, in the same run.
+> - The faint probe (drones at -30 to -20 dB, seed 31,000; code from the preparation for a later
+>   iteration) is read out, as a readout only.
+> - `comb` and `lgbm` run as the required baselines. `lgbm` trains on the same sampler, IR included.
+>
+> **Hypothesis:** through the room, it30 loses drone confidence, most for faint drones, because the
+> low-end cut takes the drone's lowest harmonics. Training through the IR wins that back on
+> `val_ir`, at no cost on the plain validation.
+>
+> **Judged by** (fixed before any number), seed means, it30 = the it30 references in the same runs:
+> 1. `val_ir`: AUC above it30's, and drone confidence in the -20 to -10 dB bin above it30's. No-drone
+>    confidence at most 0.02 above it30's.
+> 2. Plain validation: AUC 0.974 or above; recall at threshold 0.895 or above; no-drone confidence
+>    0.12 or below and on the background bed 0.18 or below; drone confidence 0.95 or above in the
+>    0 to +10 and -10 to 0 dB bins; the -20 to -10 dB bin no more than 0.03 below it30's 0.755.
+> 3. Empty silence below 0.2, and quiet-bed and silence-bed false alarms at most 0.05.
+> 4. Real UAV16 recall no more than 0.03 below it30's 0.591, and false alarms at most 0.078.
+
+## 277 - Branch 30.5: master merged in, the measured impulse response, and the code for iteration 30.5
+
+- Date: 2026-11-24
+- Iteration: 30.5
+- Type: Setup and code
+- Commit: branch `30.5`, created from `iteration-21-uav16` at c1b7e44; merge of `origin/master`
+  (0b7f2d5) is 934b070; the code below is uncommitted on it
+
+**Merge.** Marius asked for master to be merged in, for its impulse-response work.
+- `WarSoundScape/WarSoundScape.RPP` conflicted in three view and render settings only (cursor,
+  zoom, render pattern). Those were taken from master. The tracks merged without conflict and play
+  the same items as before (`war_stems.items`: shoot 1, footsteps 1, Talk 3, reload 2, objects
+  25), so the war stems do not change. A first attempt took master's whole file and dropped Pedro's
+  GUNSHOTS and Human_Movement edits; it was undone before the merge was committed.
+- `.DS_Store` files that master stopped tracking were removed.
+- `docs/REPORT.md` merged by union. No line of either side is missing (a sorted line comparison
+  of both parents against the result).
+- **Entry numbers 267-270 are now used twice:** master's 267-270 (Mads's export GUI and the
+  "Download for physical test" button) and this branch's 267-270 (REAPER and war-stem entries). The
+  report is append-only, so neither is renumbered. Cite them with their titles.
+- The doubled glance-table rows (Iteration 22 twice, two "Iteration 1" table rows) were already in
+  both parents.
+
+**The impulse response.** Marius gave the measurement folder `20261123_120401` as a zip. Master
+held only its `ir_plot.png` (byte-identical to the zip's), because `*.wav` is ignored. The WAVs now
+sit beside it: `IR_mic_in3.wav`, `IR_mic_in4.wav`, `IR_loopback.wav` (48 kHz, 2 s, float) and
+`raw_recording.wav` (the sweep recording, 3 channels, 33.5 s). They were made with master's
+`measure_ir.py` (exponential sweep, 20 Hz-20 kHz, deconvolved, peak-normalised).
+
+Read from the files (scratchpad scripts, `uv run python`):
+- `in3` and `in4` are the same signal with opposite polarity: correlation -0.99996. One microphone
+  path, or two at the same place.
+- Peak 13.1 ms after the start of the file, the loopback's at 5.0 ms. The energy decay reaches
+  -20 dB 3 ms after the peak and -40 dB at 18 ms: a dry room.
+- Magnitude, `in3` (mean over 1/1.2-1.2 x the band): 50 Hz -11.7 dB, 100 Hz -3.5, 200 Hz 1.6,
+  400 Hz -3.7, 800 Hz 1.5, 1.6 kHz 3.6, 3.2 kHz 2.1, 6.4 kHz 6.3. The loopback is flat (3.4-4.1 dB).
+
+**Code.**
+- `src/dad/dronesynth.py`:
+  - `load_ir(path)` reads channel 0, resamples to 16 kHz and peak-normalises. It calls
+    `forbid_in_training`, like every reader that feeds training.
+  - `apply_ir(x, ir)` is a circular convolution: the IR is folded to the window's length, so the
+    window is in steady state from its first sample. The level is left to `level_normalise`.
+  - `SynthSampler(ir=, p_ir=)` sends a share `p_ir` of each batch's windows through the IR, after
+    mixing and before the frontend. The choice has its own random stream (`[seed, index, 305]`), so
+    scenes, drones and EQ curves are the same draws as without the IR.
+- `scripts/run_worldsim.py`:
+  - `--p-ir` (default 0) and `IR_FILE`.
+  - `val_ir`: the validation windows through the IR, read out at the frozen threshold.
+  - Also two options from the preparation of a later iteration, both off by default: `--snr-lo`
+    (training drones from SNR-LO to +10 dB, default -20 as before) and `--faint-families` (the
+    faint probe, drones at -30 to -20 dB). The validation readout gains a recall per SNR bin, and a
+    bin with no windows is now left out instead of being NaN.
+
+**Checks.**
+- `apply_ir` against `np.convolve` of the window repeated four times (the steady state): largest
+  relative difference 7e-16. An impulse gives the folded IR. New test
+  `test_apply_ir_is_circular_convolution`; `uv run pytest tests/test_dronesynth.py`: 6 passed,
+  1 skipped.
+- `SynthSampler.batch(3, 32)` with `p_ir` 0, or with no IR, is identical to before (features and
+  labels).
+- `batch(3, 64)` with `p_ir` 0.5: labels identical, 32 windows changed. They are the IR draws
+  except one, which drew the IR but is digital silence (silence bed, no confuser; silence stays
+  silence through any filter).
+- No training and no smoke run on the Mac.
+
+**Planned launch** (JupyterLab server, one seed per GPU, not started):
+
+```
+run_worldsim.py --name it30_5_ir_sS --models comb lgbm crnn --p-quiet 0.2 --ladder 1 --p-ir 0.5 \
+    --windows 600000 --faint-families 500 --device cuda --seed S --workers 8 \
+    --reference it30_half_s0_crnn.pt it30_half_s1_crnn.pt it30_half_s2_crnn.pt   # S = 0, 1, 2
+```
+
+
+## 278 - Iteration 30.5: smoke run, and the three seeds started on the Mac
+
+- Date: 2026-11-24
+- Iteration: 30.5
+- Type: Setup
+- Commit: branch `30.5` at 934b070, with entry 277's code uncommitted
+
+**Where.** Marius has no access to the JupyterLab server today, so the seeds train on this Mac
+(Apple M1 Pro, MPS), as allowed off campus. Iteration 25 trained a CRNN on 600,000 windows of this
+simulator here in 2,569 s. The ladder-1 recipe was 1.7-1.9 times slower than it27's on the server,
+because building windows is CPU work.
+
+**Smoke run** (`--windows 2000 --lgbm-windows 1000 --val-families 100 --faint-families 30
+--probe-families 0 --ladder 1 --p-quiet 0.2 --p-ir 0.5 --reference it30_half_s1_crnn.pt`): ran
+end to end in 107 s. Training described itself as "through the measured IR p=0.5", and every
+scorer printed the plain validation, `val_ir` and the faint probe. CRNN training ran at 152
+windows/s. Not a result (2,000 windows, 100 families); its files were deleted.
+
+**Launch** (`artifacts/logs/it30_5_launch.sh`, under `caffeinate -i`, started 15:07), seeds 0, 1,
+2 one after another, logs `artifacts/logs/it30_5_ir_sS.log`:
+
+```
+uv run python scripts/run_worldsim.py --name it30_5_ir_sS --models comb lgbm crnn --p-quiet 0.2 \
+    --ladder 1 --p-ir 0.5 --windows 600000 --faint-families 500 --device mps --seed S --workers 6 \
+    --reference it30_half_s0_crnn.pt it30_half_s1_crnn.pt it30_half_s2_crnn.pt
+```
+
+The only differences from iteration 30's command are `--p-ir 0.5`, the faint probe, the references,
+and the machine (MPS, 6 workers, against CUDA and 8 workers). Expected about 75-90 min per seed.
