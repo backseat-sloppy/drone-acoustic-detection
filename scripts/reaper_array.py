@@ -10,17 +10,26 @@ Writes into --out:
     demo.RPP            a background-only region to loop, then one region per drone; marker N jumps to drone N
     media/              background_loop.wav (60 s), event_NNN.wav (the drone pool), speaker_check.wav; 39 ch, 48 kHz
     speakers.csv        the layout (row N = hardware output N) and the VBAP triangles; speakers.png draws it
-    background.csv      every layer on every speaker: source, loop offset, gain, level
+    background.csv      every layer on every speaker: source, loop offset, gain, level (the war sources: their gain)
+    war_positions.csv   every war source in every segment: start, end, azimuth at the start, elevation, degrees/s
     pool.csv            every rendered drone event: path, speed, file, geometry
     events.csv          every drone on the all-day timeline (and demo.csv for the demo)
     trajectories/       per pool event, every 10 ms: position, distance, direction, level, 39 speaker gains
     project.json        every setting, the commit, the command, the md5 of every WAV
+    drone_array_vbap.jsfx           the war sources' panner (also copied into REAPER's Effects folder)
     drone_array_speaker_view.jsfx   a live view on the master: the array from above, each speaker lit by the
                         level on its output as it plays (also copied into REAPER's Effects folder, where REAPER finds it)
-    verify.csv          (--verify) REAPER's render of the speaker check and of the first drone, against the WAVs
+    verify.csv          (--verify) REAPER's render of the speaker check, of the first drone and of the war sources'
+                        first 30 s, against the WAVs (the war: against this script's own VBAP of the same automation)
 
-Routing: the master bus has 40 channels and sends channel N to hardware output N (N = 1..39). Three tracks of 40
-channels feed it: Background (the loop), Drones, Speaker check (muted; 1 s of pink noise per speaker in turn).
+Routing: the master bus has 40 channels and sends channel N to hardware output N (N = 1..39). Tracks of 40
+channels feed it: Background (the loop: wind, cars, helicopter, insects), one "War: <source>" track per war soundscape
+source (war_stems.py), Drones, Speaker check (muted; 1 s of pink noise per speaker in turn).
+
+The war sources: each track loops its mono stem through drone_array_vbap.jsfx, a VBAP panner (the same triangles
+and gains as here) whose Azimuth and Elevation are automated. The automation is a new random place per segment
+(all day: per drone slot; demo: the background region and each drone's region), the whole scene in one direction
+(war_stems.place). Move a source by editing its envelopes in REAPER; war_positions.csv has what was written.
 
 Conventions (ASSUMED until Mads/Marius confirm): azimuth counter-clockwise from the front (90 = left), elevation up;
 the listener (microphone) at the array's centre. Levels in WAV units: full scale = 110 dB SPL; the speakers are not
@@ -34,6 +43,7 @@ import csv
 import glob
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -45,6 +55,7 @@ from scipy.spatial import ConvexHull
 
 sys.path.insert(0, str(Path(__file__).parent))
 import complete_test_engine as E  # noqa: E402
+import war_stems as WS  # noqa: E402
 from dad import propagation as prop  # noqa: E402
 
 SR = 48000
@@ -62,8 +73,9 @@ LOOP_S, FADE_S = 60.0, 0.1                                   # background loop a
 # The live test's layers and levels (its latest run's config, 2026-11-22). spread "all": every speaker, each from its
 # own offset in the loop (diffuse), only for steady noise: a layer with events (shots, a pass-by) played that way repeats
 # each event once per speaker (entry 254). A list: the outputs (1-based) that play its one copy, the same signal on each.
+# "stems": the war soundscape's tracks, each on its own speaker (war_stems.SPEAKER); the level is their sum's.
 LAYERS = {
-    "war soundscape": (E.WAR_SOUNDSCAPE, 60.0, [20, 28]),    # (60, 0), (300, 0): front left and front right
+    "war soundscape": (WS.OUT / "mix.wav", 60.0, "stems"),
     "wind (Pd)": (E._wind_file(E.WIND_PD), 50.0, "all"),
     "cars": (E._cars_file(E.CAR_PD), 5.0, [21]),             # (90, 0)
     "helicopter": (E._heli_file(), 50.0, [11]),              # (108, 30)
@@ -91,6 +103,18 @@ def vbap(p: np.ndarray) -> np.ndarray:
     out = np.zeros((len(p), N))
     np.put_along_axis(out, TRI[best], gb / np.linalg.norm(gb, axis=1, keepdims=True), axis=1)
     return out
+
+
+def to_samples(gf: np.ndarray, n: int, sr: int = SR) -> np.ndarray:
+    """Gains per FRAME_S frame (frames x 39) to n samples, linear between frames."""
+    idx = np.arange(n) / sr / FRAME_S
+    return np.stack([np.interp(idx, np.arange(len(gf)), gf[:, s]) for s in range(N)], 1)
+
+
+def moving_gains(pl: dict, n: int, sr: int = SR) -> np.ndarray:
+    """n x 39 VBAP gains of a source at pl (war_stems.place: azimuth at sample 0, elevation, degrees per second)."""
+    tf = np.arange(0, n / sr + FRAME_S, FRAME_S)
+    return to_samples(vbap(unit(pl["azimuth_deg"] + pl["deg_s"] * tf, np.full(len(tf), pl["elevation_deg"]))), n, sr)
 
 
 def read_mono(f: Path) -> np.ndarray:
@@ -167,8 +191,7 @@ def render_event(k: int, kind: str, speed: float, src: Path, rng, media: Path, t
     pf = pos(np.interp(tf, arrive, t))                        # where the drone was when that sound left it
     gf = vbap(pf)
     n = len(y)
-    idx = np.arange(n) / SR / FRAME_S
-    g = np.stack([np.interp(idx, np.arange(len(tf)), gf[:, s]) for s in range(N)], 1)
+    g = to_samples(gf, n)
     write39(media / f"event_{k:03d}.wav", y[:, None] * g)
     hop = int(FRAME_S * SR)
     lvl = [db(rms(y[i:i + 10 * hop])) for i in range(0, n, hop)]   # 100 ms windows
@@ -203,6 +226,8 @@ def background(rng, media: Path) -> list[dict]:
     n = int(LOOP_S * SR)
     out, rows = np.zeros((n, N)), []
     for name, (f, level, spread) in LAYERS.items():
+        if spread == "stems":                                # tracks of their own (war_tracks)
+            continue
         if not f.exists():
             raise FileNotFoundError(f"{name}: {f} missing (render it once with the Complete test GUI)")
         x = read_mono(f)
@@ -218,6 +243,65 @@ def background(rng, media: Path) -> list[dict]:
                              level_db_spl_layer=level, spread="all" if spread == "all" else "fixed"))
     write39(media / "background_loop.wav", out)
     return rows
+
+
+def war_media(media: Path) -> list[dict]:
+    """media/war_<source>.wav: each stem, mono, at the war layer's level (the stems' sum at LAYERS' dB SPL), its end
+    running on into its start so REAPER can loop it."""
+    f, level, _ = LAYERS["war soundscape"]
+    gain = E.rms_for(level) / rms(read_mono(f))
+    rows = []
+    for old in media.glob("war_*.wav"):                      # a source the project no longer has
+        old.unlink()
+    for src, x in WS.load(SR).items():
+        y = gain * seamless(x, 0, len(x))
+        sf.write(media / f"war_{src}.wav", y.astype(np.float32), SR, subtype="PCM_24")
+        rows.append(dict(layer=f"war soundscape: {src}", speaker="moving (VBAP)", source=str((WS.OUT / f"{src}.wav").relative_to(ROOT)),
+                         offset_s=0.0, gain=f"{gain:.6g}", level_db_spl_speaker=round(db(rms(y)), 2),
+                         level_db_spl_layer=level, spread="point source"))
+    return rows
+
+
+def envelope(segs: list[tuple]) -> list[tuple]:
+    """REAPER envelope points (time, value, shape) for segments (t0, t1, value at t0, per second): linear inside a
+    segment, a jump between segments; an azimuth wraps at 360 / 0 by two points at one time (the same direction)."""
+    pts = []
+    for t0, t1, a, r in segs:
+        t = t0
+        pts.append((t, a, 0))
+        while r:
+            b = 360.0 if r > 0 else 0.0
+            tc = t + (b - a) / r
+            if tc >= t1:
+                break
+            pts += [(tc, b, 1), (tc, 360.0 - b, 0)]
+            t, a = tc, 360.0 - b
+        pts.append((t1, a + r * (t1 - t), 1))
+    return pts
+
+
+def war_tracks(bounds: list[float], rng, project_name: str) -> tuple[str, list[dict]]:
+    """One track per war source, its panner automated: a new place in each segment [bounds[i], bounds[i + 1])."""
+    srcs = list(WS.load(SR))
+    places = [WS.place(rng, srcs) for _ in bounds[:-1]]
+    tracks, rows = "", []
+    for src in srcs:
+        segs = [(a, b, pl[src]) for a, b, pl in zip(bounds[:-1], bounds[1:], places)]
+        rows += [dict(project=project_name, segment=i + 1, source=src, start_s=round(a, 6), end_s=round(b, 6), **pl)
+                 for i, (a, b, pl) in enumerate(segs)]
+        az = envelope([(a, b, pl["azimuth_deg"], pl["deg_s"]) for a, b, pl in segs])
+        el = envelope([(a, b, pl["elevation_deg"], 0.0) for a, b, pl in segs])
+        fx = (f'    <FXCHAIN\n      SHOW 0\n      LASTSEL 0\n      DOCKED 0\n      BYPASS 0 0 0\n'
+              f'      <JS "{VBAP_JSFX}" ""\n        {segs[0][2]["azimuth_deg"]} {segs[0][2]["elevation_deg"]}' + " -" * 62 +
+              "\n      >\n" + parmenv(0, 0, 360, az) + parmenv(1, -30, 90, el) + "      WAK 0 0\n    >\n")
+        tracks += track(f"War: {src}", [item(0, bounds[-1], f"media/war_{src}.wav", src, loop=1)], fx=fx)
+    return tracks, rows
+
+
+def parmenv(i, lo, hi, pts) -> str:
+    return (f"      <PARMENV {i} {lo} {hi} {pts[0][1]:.4f}\n        ACT 1 -1\n        VIS 1 1 1\n        LANEHEIGHT 0 0\n"
+            "        ARM 0\n        DEFSHAPE 0 -1 -1\n" + "".join(f"        PT {t:.6f} {v:.4f} {s}\n" for t, v, s in pts) +
+            "      >\n")
 
 
 def speaker_check(rng, media: Path):
@@ -304,15 +388,63 @@ tot > 0.000000000001 ? gfx_printf("loudest: speaker %d (%.0f dB SPL)    all 39: 
 """
 
 
+VBAP_JSFX = "drone_array_vbap.jsfx"
+
+
+def vbap_jsfx() -> str:
+    """A JSFX that pans channel 1 to the 39 outputs by VBAP, exactly as vbap() here: the same triangles and inverse
+    matrices, the triangle whose smallest gain is largest, gains clipped at 0 and power-normalised. The gains glide
+    linearly over each block, so automation moves the source without clicks."""
+    tri = " ".join(f"TRI[{i}]={v};" for i, v in enumerate(TRI.ravel()))
+    inv = " ".join(f"INV[{i}]={v:.9f};" for i, v in enumerate(TRI_INV.ravel()))
+    pins = "in_pin:mono\n" + "".join(f"out_pin:{s + 1}\n" for s in range(N))
+    return f"""desc:39-speaker array VBAP panner (drone-acoustic-detection)
+//tags: spatial panner
+// Generated by scripts/reaper_array.py. Channel 1 in, outputs 1-39 out (the array's VBAP gains).
+slider1:0<0,360,0.1>Azimuth (deg, counter-clockwise, 90 = left)
+slider2:0<-30,90,0.1>Elevation (deg)
+{pins}
+@init
+N={N}; NT={len(TRI)}; TRI=0; INV=1000; G=2000; G0=2100; DG=2200; first=1;
+{tri}
+{inv}
+function target() local(az el px py pz t k g1 g2 g3 m bmin b1 b2 b3 best nrm i) (
+  az = slider1 * $pi / 180; el = slider2 * $pi / 180;
+  px = cos(el) * cos(az); py = cos(el) * sin(az); pz = sin(el);
+  bmin = -1000000; t = 0;
+  loop(NT,
+    k = INV + 9 * t;
+    g1 = px * k[0] + py * k[3] + pz * k[6]; g2 = px * k[1] + py * k[4] + pz * k[7]; g3 = px * k[2] + py * k[5] + pz * k[8];
+    m = min(g1, min(g2, g3));
+    m > bmin ? (bmin = m; best = t; b1 = max(g1, 0); b2 = max(g2, 0); b3 = max(g3, 0););
+    t += 1;
+  );
+  nrm = sqrt(b1 * b1 + b2 * b2 + b3 * b3);
+  i = 0; loop(N, G[i] = 0; i += 1;);
+  G[TRI[3 * best]] = b1 / nrm; G[TRI[3 * best + 1]] = b2 / nrm; G[TRI[3 * best + 2]] = b3 / nrm;
+);
+
+@block
+target();
+first ? (i = 0; loop(N, G0[i] = G[i]; i += 1;); first = 0;);
+i = 0; loop(N, DG[i] = (G[i] - G0[i]) / samplesblock; i += 1;);
+
+@sample
+x = spl0;
+i = 0; loop(N, G0[i] += DG[i]; spl(i) = x * G0[i]; i += 1;);
+"""
+
+
 def install_jsfx(out: Path):
-    """The view beside the projects, and in this machine's REAPER Effects folder, where REAPER looks for it."""
-    (out / JSFX).write_text(jsfx())
+    """The view and the panner beside the projects, and in this machine's REAPER Effects folder, where REAPER looks."""
     fx = Path.home() / "Library/Application Support/REAPER/Effects"
-    if fx.is_dir():
-        (fx / JSFX).write_text(jsfx())
-        print(f"speaker view installed: {fx / JSFX}")
-    else:
-        print(f"REAPER's Effects folder not found: copy {out / JSFX} into it (REAPER: Options > Show resource path)")
+    for name, text in ((JSFX, jsfx()), (VBAP_JSFX, vbap_jsfx())):
+        (out / name).write_text(text)
+        if fx.is_dir():
+            (fx / name).write_text(text)
+            print(f"installed: {fx / name}")
+        else:
+            print(f"REAPER's Effects folder not found: copy {out / name} into it (REAPER: Options > Show resource path)")
 
 
 # ------------------------------------------------------------------ REAPER projects
@@ -322,9 +454,9 @@ def item(pos, length, f, name, loop=0):
             f'      <SOURCE WAVE\n        FILE "{f}"\n      >\n    >\n')
 
 
-def track(name, items, mute=False):
+def track(name, items, mute=False, fx=""):
     return (f'  <TRACK\n    NAME "{name}"\n    VOLPAN 1 0 -1 -1 1\n    MUTESOLO {int(mute)} 0 0\n    NCHAN 40\n'
-            f'    MAINSEND 1 0\n{"".join(items)}  >\n')
+            f'    MAINSEND 1 0\n{fx}{"".join(items)}  >\n')
 
 
 def project(tracks: str, markers: list[str], extra: str = "") -> str:
@@ -338,8 +470,8 @@ def project(tracks: str, markers: list[str], extra: str = "") -> str:
             '  <RENDER_CFG\n    ZXZhdxgAAQ==\n  >\n' + "".join(markers) + tracks + ">\n")
 
 
-def rpp(length_s, drone_items, markers, check_len):
-    return project(track("Background", [item(0, length_s, "media/background_loop.wav", "background", loop=1)]) +
+def rpp(length_s, drone_items, markers, check_len, war=""):
+    return project(track("Background", [item(0, length_s, "media/background_loop.wav", "background", loop=1)]) + war +
                    track("Drones", drone_items) +
                    track("Speaker check (1 s per speaker, 1..39)", [item(0, check_len, "media/speaker_check.wav", "speaker check")],
                          mute=True), markers)
@@ -377,8 +509,9 @@ def main():
     install_jsfx(out)
 
     print("background loop ...")
-    bg = background(rng, media)
+    bg = background(rng, media) + war_media(media)
     write_csv(out / "background.csv", bg)
+    war_rng = np.random.default_rng([a.seed, 1])              # its own stream: the drones stay as they were
     speaker_check(rng, media)
     check_len = N * (CHECK_S + CHECK_GAP_S)
 
@@ -405,7 +538,8 @@ def main():
         items.append(item(t0, e["duration_s"], e["file"], f"{i + 1}: event {e['event']}"))
         marks.append(region(i + 1, t0, t0 + e["duration_s"], f"{i + 1}: event {e['event']} {label(e)}"))
     write_csv(out / "events.csv", events)
-    (out / "allday.RPP").write_text(rpp(length, items, marks, check_len))
+    war, war_rows = war_tracks([i * slot for i in range(int(length // slot))] + [length], war_rng, "allday")
+    (out / "allday.RPP").write_text(rpp(length, items, marks, check_len, war))
 
     # demo: region 1 is background only (loop it); then each pool event once, marker N one second before drone N
     t, demo, items, marks = LOOP_S, [], [], [region(100, 0, LOOP_S, "background only: loop me")]
@@ -418,7 +552,9 @@ def main():
                          end_s=round(t0 + e["duration_s"], 6), event=e["event"], label=label(e)))
         t = round((t0 + e["duration_s"] + 3) * SR) / SR
     write_csv(out / "demo.csv", demo)
-    (out / "demo.RPP").write_text(rpp(t, items, marks, check_len))
+    war, rows = war_tracks([0.0] + [d["start_s"] - 2 for d in demo] + [t], war_rng, "demo")   # each region its own place
+    write_csv(out / "war_positions.csv", war_rows + rows)
+    (out / "demo.RPP").write_text(rpp(t, items, marks, check_len, war))
 
     commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
     meta = dict(command="uv run python scripts/reaper_array.py " + " ".join(sys.argv[1:]), commit=commit, seed=a.seed,
@@ -431,6 +567,10 @@ def main():
                 propagation=dict(model="dad.propagation.propagate", doppler=True, temp_c=prop.TEMP_C, rh_pct=prop.RH_PCT,
                                  pa_kpa=prop.PA_KPA, speed_of_sound=prop.speed_of_sound(), left_out="ground reflection, outdoor reverb"),
                 panning=dict(method="VBAP over the convex hull, power-normalised", frame_s=FRAME_S, triangles=len(TRI)),
+                war_sources=dict(stems=str(WS.OUT.relative_to(ROOT)), offsets_deg=WS.OFFSET_DEG,
+                                 max_deg_s=WS.SCENE_DEG_S, elevation_deg=0.0,
+                                 segments="allday: per drone slot; demo: the background region, then from 2 s before each drone",
+                                 panner=VBAP_JSFX, seed=[a.seed, 1]),
                 background=dict(loop_s=LOOP_S, seam_fade_s=FADE_S,
                                 layers={k: dict(source=str(f.relative_to(ROOT)), level_db_spl=lv, spread=sp) for k, (f, lv, sp) in LAYERS.items()}),
                 speaker_check=dict(level_db_spl=CHECK_DB, burst_s=CHECK_S, gap_s=CHECK_GAP_S, noise="pink"),
@@ -444,20 +584,27 @@ def main():
 # ------------------------------------------------------------------ check: REAPER's own render against what we wrote
 
 REAPER = "/Applications/REAPER.app/Contents/MacOS/REAPER"
+WAR_CHECK_S, WAR_TOL = 30.0, 0.01                            # the panner glides per block, vbap() per 10 ms frame: -40 dB
+
+
+def only(text: str, *names: str) -> str:
+    """The project with every track muted except those whose name starts with one of names."""
+    def f(m):
+        name = re.search(r'NAME "([^"]*)"', m.group(0)).group(1)
+        return re.sub(r"MUTESOLO \d", f"MUTESOLO {0 if name.startswith(names) else 1}", m.group(0), count=1)
+    return re.sub(r"  <TRACK\n.*?\n  >\n", f, text, flags=re.S)
 
 
 def verify(out: Path):
-    """Renders two stretches of allday.RPP with REAPER and writes verify.csv: (1) the speaker check alone (background
-    muted): each burst must land on its own output and nowhere else, bit-exact; (2) background + the first drone:
-    the render must equal background_loop.wav repeated plus the event at its events.csv start (16-bit steps only)."""
+    """Renders three stretches of allday.RPP with REAPER and writes verify.csv: (1) the speaker check alone: each burst
+    must land on its own output and nowhere else, bit-exact; (2) background + the first drone: the render must equal
+    background_loop.wav repeated plus the event at its events.csv start (16-bit steps only); (3) the war sources alone,
+    WAR_CHECK_S s: the panner's render against moving_gains() of war_positions.csv, within WAR_TOL (relative RMS)."""
     t = (out / "allday.RPP").read_text()
-    bg_on = 'MUTESOLO 0 0 0\n    NCHAN 40\n    MAINSEND 1 0\n    <ITEM\n      POSITION 0.000000\n      LENGTH ' + f"{float(t.split('LENGTH ')[1].split()[0]):.6f}"
-    chk_off = 'MUTESOLO 1 0 0\n    NCHAN 40\n    MAINSEND 1 0\n    <ITEM\n      POSITION 0.000000\n      LENGTH ' + f"{N * (CHECK_S + CHECK_GAP_S):.6f}"
-    assert bg_on in t and chk_off in t
     e = next(csv.DictReader(open(out / "events.csv")))
     end = float(e["end_s"]) + 2
-    jobs = {"check": (N * (CHECK_S + CHECK_GAP_S), t.replace(bg_on, bg_on.replace("MUTESOLO 0", "MUTESOLO 1")).replace(chk_off, chk_off.replace("MUTESOLO 1", "MUTESOLO 0"))),
-            "mix": (end, t)}
+    jobs = {"check": (N * (CHECK_S + CHECK_GAP_S), only(t, "Speaker check")), "mix": (end, only(t, "Background", "Drones")),
+            "war": (WAR_CHECK_S, only(t, "War: "))}
     rows, ev = [], sf.read(out / e["file"])[0]
     bg = sf.read(out / "media/background_loop.wav")[0]
     for name, (length, text) in jobs.items():
@@ -474,6 +621,18 @@ def verify(out: Path):
                 rows.append(dict(test="speaker check", item=s + 1, expected_output=s + 1, loudest_output=int(lv.argmax()) + 1,
                                  level_db_spl=round(db(lv.max()), 2), other_outputs_max_db_spl=round(db(np.sort(lv)[-2]), 2),
                                  max_abs_diff=float(np.abs(x[s * step:(s + 1) * step, :N] - ref[s * step:(s + 1) * step]).max())))
+        elif name == "war":                                  # the panner against vbap() of the same first segment
+            exp = np.zeros((len(x), N))
+            for w in csv.DictReader(open(out / "war_positions.csv")):
+                if w["project"] == "allday" and w["segment"] == "1":
+                    y = sf.read(out / f"media/war_{w['source']}.wav")[0]
+                    pl = {k: float(w[k]) for k in ("azimuth_deg", "elevation_deg", "deg_s")}
+                    exp += np.take(y, np.arange(len(x)), mode="wrap")[:, None] * moving_gains(pl, len(x))
+            lv, le = np.sqrt((x[:, :N] ** 2).mean(0)), np.sqrt((exp ** 2).mean(0))
+            rows.append(dict(test="war sources (VBAP panner)", item=f"allday 0-{WAR_CHECK_S:g} s", expected_output=int(le.argmax()) + 1,
+                             loudest_output=int(lv.argmax()) + 1, level_db_spl=round(db(np.sqrt((lv ** 2).sum())), 2),
+                             other_outputs_max_db_spl="", max_abs_diff=float(np.abs(x[:, :N] - exp).max()),
+                             rel_err=round(rms(x[:, :N] - exp) / rms(exp), 5)))
         else:
             exp = np.take(bg, np.arange(len(x)), axis=0, mode="wrap")
             j = int(round(float(e["start_s"]) * SR))
@@ -485,7 +644,8 @@ def verify(out: Path):
         wav.unlink()
         (out / f"verify_{name}.RPP").unlink()
     write_csv(out / "verify.csv", rows)
-    bad = [r for r in rows if r["max_abs_diff"] > 2 ** -15 or (r["test"] == "speaker check" and r["loudest_output"] != r["expected_output"])]
+    bad = [r for r in rows if (r["rel_err"] > WAR_TOL if "rel_err" in r else r["max_abs_diff"] > 2 ** -15)
+           or (r["test"] != "background + drone" and r["loudest_output"] != r["expected_output"])]
     print(f"verify: {len(rows)} checks, {len(bad)} failed -> {out / 'verify.csv'}")
     return not bad
 
@@ -531,7 +691,7 @@ def draw_array(f: Path):
 
 def write_csv(f: Path, rows: list[dict]):
     with open(f, "w", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        w = csv.DictWriter(fh, fieldnames=list(dict.fromkeys(k for r in rows for k in r)))
         w.writeheader()
         w.writerows(rows)
 

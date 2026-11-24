@@ -6,8 +6,10 @@ levels, background layers, round lengths, truth and scoring). What differs is wh
     the sound    each round's parts (E.mix_round, 16 kHz) are spread over the 39 speakers of the array
                  (scripts/reaper_array.py's layout): the drone from one direction per round (VBAP; the
                  approach is a straight dive, so its direction stays put), each background layer as the
-                 array project does (wind from every speaker, each from its own point in the loop; the war
-                 soundscape, cars, helicopter and insects as one copy each from fixed speakers). The rounds are written as 39-channel
+                 array project does (wind from every speaker, each from its own point in the loop; cars,
+                 helicopter and insects as one copy each from fixed speakers); the war soundscape as its tracks
+                 (war_stems.py), each a point source, the whole scene in one direction, new each round (VBAP;
+                 r["war_sources"] in live.json). The rounds are written as 39-channel
                  WAVs into a REAPER project in the run folder (reaper/live.RPP), which REAPER opens and plays.
     the control  REAPER's web remote (Preferences > Control/OSC/web > Web browser interface, port 8080):
                  the GUI presses Play and Stop, sets the play position, sets the master volume (playback gain)
@@ -46,11 +48,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 import complete_test_engine as E  # noqa: E402
 import live_test_engine as L  # noqa: E402
 import reaper_array as RA  # noqa: E402
+import war_stems as WS  # noqa: E402
 
 SR = L.SR
 PORT = 8080
 PRE_S = 2.0                                                  # manual: background before the drone in its region
 TAIL_S = L.MAX_LAG_S + 1.0                                   # background after a round: heard while the GUI catches up
+OPEN_WAIT_S = 600.0                                          # REAPER may first ask to save the project it had open
 IDLE_S = 300.0                                               # manual: the background loop between drones (whole
                                                              # passes of every layer; a short one repeats its start)
 MARGIN_S = 0.5                                               # a round's recording starts this much before REAPER's
@@ -94,6 +98,18 @@ def spatial(r: dict, m: dict, layers: dict, offset: float) -> np.ndarray:
             out += x[:, None] * RA.vbap(RA.unit(r["array_azimuth_deg"], r["array_climb_deg"])[None])[0]
             continue
         spread = RA.LAYERS.get(name, (None, None, "all"))[2]
+        if spread == "stems":                                # each war track a point source: x split into its parts
+            full, rr = layers[name].signal()
+            i = int(round(offset * SR)) % len(full)
+            parts = {k: np.take(v, np.arange(i, i + n), mode="wrap") * (E.rms_for(r["background"][name]) / rr)
+                     for k, v in WS.load(SR).items()}
+            if not np.allclose(sum(parts.values()), x, atol=1e-6):
+                raise ValueError(f"the war layer is not the sum of {WS.OUT}: plan.war_file must be its mix.wav")
+            seed = int(hashlib.md5(f"{r.get('round')}|{r.get('drone')}|{offset:.4f}|war".encode()).hexdigest()[:8], 16)
+            r["war_sources"] = WS.place(np.random.default_rng(seed), parts)   # one place each round
+            for k, v in parts.items():
+                out += (v[:, None] * RA.moving_gains(r["war_sources"][k], n, SR)).astype(np.float32)
+            continue
         spk = list(range(RA.N)) if spread == "all" else [s - 1 for s in spread]
         if spread != "all":                                  # one copy, the same on each of its speakers (entry 254)
             out[:, spk] += (x / len(spk))[:, None].astype(np.float32)
@@ -117,6 +133,8 @@ class ReaperRun(L.LiveRun):
 
     def __init__(self, plan: E.Plan, events, in_dev=None, in_channel: int = 0, play_gain_db: float = 0.0,
                  mic_gain_db: float = 0.0):
+        WS.load(SR)                                          # the war soundscape as stems: its layer is their sum
+        plan.war_file = str((WS.OUT / "mix.wav").relative_to(RA.ROOT))
         super().__init__(plan, events, None, in_dev, in_channel, play_gain_db, mic_gain_db)
         self.mic = True
         self.rp = Reaper()
@@ -204,8 +222,9 @@ class ReaperRun(L.LiveRun):
         say("opening the project in REAPER (if REAPER asks to save the project it had open, answer it)")
         t0 = time.time()
         while not any(self.tag in name for name in self.rp.regions()):
-            if time.time() - t0 > 120 or self.stop_flag.is_set():
-                raise RuntimeError(f"REAPER did not open {f}")
+            if time.time() - t0 > OPEN_WAIT_S or self.stop_flag.is_set():   # Stop in the GUI ends the wait sooner
+                raise RuntimeError(f"REAPER did not open {f} within {OPEN_WAIT_S / 60:g} min: is a dialog open in "
+                                   "REAPER (save the old project?)")
             time.sleep(0.5)
         self.rp("1016", "SET/POS/0", f"SET/REPEAT/{int(self.manual)}", f"SET/TRACK/0/VOL/{self.play_gain:.6f}")
 

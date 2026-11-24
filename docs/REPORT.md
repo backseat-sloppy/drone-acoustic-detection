@@ -17379,3 +17379,240 @@ on a reaper run.
 source, ending in 255) took the numbers 248-255. Entries 248-264 of iterations 27-31 already use those numbers, and
 the clash went unnoticed then. Per section 1 nothing old is renumbered. From here on, those entries are cited by
 their title and date, or as "248-255 (REAPER, 2026-11-23)", and new entries continue from 268.
+
+## 268 - The war soundscape as point sources: one speaker per track of WarSoundScape.RPP
+
+- Date: 2026-11-23
+- Type: Test setup (the 39-speaker array; Marius: "Build without the 3")
+- Commit: uncommitted, on `iteration-21-uav16` at 0fbeab8; `scripts/war_stems.py` (new), `scripts/reaper_array.py`,
+  `scripts/reaper_live.py`
+- Command: `uv run python scripts/war_stems.py`; `uv run python scripts/reaper_array.py --verify --out <scratchpad>/ra`
+
+**Why.** Until now the war soundscape (`WarSoundScape.wav`, a stereo mixdown) played as one copy on outputs 20 and 28
+(the REAPER entry of 2026-11-23 that fixed "the same 1 second"). Two voices coming out of two speakers on either side
+are not two people in one place. The lab has no recordings, but the project's sources are mono effects, so each
+track can be a point source on its own.
+
+**What was built.** `scripts/war_stems.py` renders every item of `WarSoundScape/WarSoundScape.RPP` per track: position,
+length, source offset, linear fades, item and track volume, mono as the channel mean, 48 kHz, 38.5 s. Not rendered:
+the master's kHs Reverb (an AU; on the array the room adds its own). Output in `artifacts/war_stems/`: one WAV per
+source, `mix.wav` (their sum) and `stems.csv`.
+
+| Source | Output | Azimuth, elevation | Items | Note |
+|---|---|---|---|---|
+| Talk (two males) | 20 | 60, 0 | 3 | |
+| cloth | 19 | 30, 0 | 41 | |
+| objects (shells) | 29 | 330, 0 | 25 | track volume -41 dB: barely audible, as in the project |
+| reload | 28 | 300, 0 | 2 | |
+| bomb_far | 24 | 180, 0 | 2 | stand-in for 'shoot' items 1 and 3 |
+| bomb_close | 26 | 240, 0 | 1 | stand-in for 'shoot' item 2 |
+| footsteps | (18) | | 24 | **missing** (Soundly SND125790, only on Pedro's machine) |
+| twigs and ground | (22) | | 10 | **missing** (Soundly SND145768) |
+
+The speakers are a choice: the people in front, the explosions behind, none shared with the cars (21), the helicopter
+(11) or the insects (33, 35). They are in `war_stems.SPEAKER`.
+
+**The three missing stems.** The fireworks (SND162366), the footsteps and the body drag are Soundly files that sit
+only on Pedro's machine. The scene is built without them until they come; `war_stems.py` uses a stem's file as soon as
+it appears in `WarSoundScape/Media/`. 'shoot' plays `WarSoundScape/Bombs/bomb_far.wav` / `bomb_close.wav` at its
+three items' times and lengths. Their level is set from the data: the mixdown minus every rendered stem, over the
+shoot items, is the missing fireworks. The raw bombs were 15.1 dB louder than that, so they are lowered by 15.1 dB.
+
+**Checks that ran.**
+- Our stems against the mixdown (`WarSoundScape.wav`, mono, 48 kHz). Outside the shots, the rendered stems match the
+  mixdown to 0.1 dB (16-38.5 s: -41.2 against -41.3 dBFS; 0-5.5 s: -45.3 against -45.2). The rendering of positions,
+  offsets and volumes is right, and the missing footsteps and drag (plus the reverb) come to about -58 dBFS there.
+- The array projects, rebuilt into the scratchpad with `--verify`: 40 checks, 0 failed. Background, long-term level per
+  speaker at a war layer of 60 dB SPL: Talk 57.0, bomb_far 54.4, bomb_close 52.5, reload 43.6, cloth 43.1 and
+  objects 19.5 dB SPL. The sum is 60.0.
+- The live REAPER source (`reaper_live.spatial`) splits the war layer into the stems. A REAPER run sets
+  `plan.war_file` to `artifacts/war_stems/mix.wav`, so the layer is the stems' sum and its level, the layer SNRs and
+  the reference match what the speakers play. The split sums back to the layer within 2e-9 at three offsets. It puts
+  the stems on outputs 19, 20, 24, 26, 28 and 29 and nowhere else. A layer that is not that sum raises an error
+  (checked with the old mixdown).
+- `tests/test_live.py`: 18 passed.
+
+**Not done or not verified.** `artifacts/reaper_array/` itself is not rebuilt yet: REAPER had a project open, and
+overwriting its WAVs takes them offline. No live run with the stems, and nothing on the real array (Wednesday). A
+REAPER run's war layer now differs from a virtual run's (`WarSoundScape.wav`): different balance, no reverb, and no
+footsteps or drag. Its config records `war_file`, so the two can be told apart, but they are not the same background.
+
+## 269 - artifacts/reaper_array rebuilt with the war stems
+
+- Date: 2026-11-23
+- Type: Test setup (follows 268)
+- Commit: uncommitted, on `iteration-21-uav16` at 0fbeab8
+- Command: `uv run python scripts/reaper_array.py --verify`
+
+Marius closed the project in REAPER, and `allday.RPP`, `demo.RPP` and their media were rebuilt in place.
+`background.csv` has the 6 war-stem rows of entry 268. Verify: 40 checks, 0 failed.
+
+## 270 - The war sources move: a random place per round or segment, people walking, editable in REAPER
+
+- Date: 2026-11-23
+- Type: Test setup (the 39-speaker array; follows 268-269)
+- Commit: uncommitted, on `iteration-21-uav16` at 0fbeab8; `scripts/war_stems.py`, `scripts/reaper_array.py`,
+  `scripts/reaper_live.py`
+- Command: `uv run python scripts/reaper_array.py --verify`
+
+**Why.** Entry 268 put each war source on a fixed speaker that I chose. Marius: "it should be able to change". He chose
+three things: a random place per round, sources moving during a round, and changing them by hand in REAPER.
+
+**What changed.**
+- `war_stems.place(rng, sources)` replaces the fixed `SPEAKER` table.
+  - The people (Talk, cloth, objects, reload, and the footsteps and drag when they come) are one group at 0 degrees
+    elevation. Each source sits a few degrees from the group's centre (`PEOPLE`, -12 to +12 degrees). The group walks
+    round the array at a rate drawn from -4 to +4 degrees/s (about 1.4 m/s at 20 m).
+  - Each bomb is a fixed point of its own, at a random azimuth and 0-15 degrees up.
+- `reaper_array.moving_gains` pans a source with the drones' VBAP: power-normalised gains every 10 ms, linear between
+  frames.
+- **The REAPER projects** (`allday.RPP`, `demo.RPP`) have one track per war source, "War: <source>". Each track loops
+  `media/war_<source>.wav` (mono, 24-bit, at the war layer's level of 60 dB SPL) through a new JSFX,
+  `drone_array_vbap.jsfx`.
+  - The JSFX is a VBAP panner with the same triangles and inverse matrices as `vbap()`. Its gains glide linearly over
+    each audio block.
+  - Its Azimuth and Elevation are automated: a new place per drone slot (all day: 60 segments of 300 s; demo: the
+    background region, then from 2 s before each drone). The azimuth is linear within a segment, wraps at 360/0 with
+    two points at one time, and jumps between segments.
+  - A source is moved by editing its envelopes or its sliders. `war_positions.csv` has what was written (462 rows).
+  - The background loop now holds only wind, cars, helicopter and insects.
+- **The live REAPER source** (`reaper_live.spatial`) draws a place per round, seeded by the round, the drone and the
+  loop offset. The people walk through the round, and the place is logged as `r["war_sources"]`, in live.json with
+  the round. A live run's sources are not editable in REAPER: its round files are rendered by Python, so what is
+  logged is what played.
+
+**Checks that ran.**
+- `reaper_array.py --verify`: 41 checks, 0 failed. The new check renders the war tracks alone for the first 30 s with
+  REAPER and compares them against `moving_gains()` of `war_positions.csv`: relative RMS error 0.00074 (-63 dB),
+  loudest output 19 in both.
+- Two more REAPER renders, by hand (not in verify.csv):
+  - across the Talk group's first azimuth wrap (81.8-91.8 s): relative error 0.00049;
+  - across the change from segment 1 to segment 2 (295-305 s): relative error 0.00223. The panner takes one block to
+    glide to the new place, against one 10 ms frame in Python.
+- `spatial()` on two rounds: new places in each (round 1 people at about 263 degrees, round 2 at about 60), and the
+  power at the centre equal to the layer's (ratio 1.0).
+- `tests/test_live.py`: 18 passed.
+
+**Not done or not verified.** Nothing on the real array, and no live GUI run with moving sources. The group, the
+offsets, the walking rate and the bomb heights are my choices, not measured ones. Sources do not change distance or
+level as they move (direction only).
+
+## 271 - The war soundscape with Pedro's new renders: gunshots and human movement
+
+- Date: 2026-11-24
+- Type: Test setup (follows 268-270)
+- Commit: uncommitted, on `iteration-21-uav16` at 0fbeab8; `scripts/war_stems.py`, `scripts/reaper_array.py`
+- Command: `rm -rf artifacts/war_stems && uv run python scripts/war_stems.py`; `uv run python scripts/reaper_array.py --verify`
+
+**What changed in the project** (`WarSoundScape/WarSoundScape.RPP`, changed 2026-11-24 11:00, not by me). All its
+audio is now in the repository:
+- **shoot:** one item of the new `Media/GUNSHOTS.wav`, a mono 38.5 s render; the shots are at 5.0-14.6 s.
+- **footsteps:** a new track with `Media/Human_Movement.wav`, mono, 38.5 s, active 0.1-37.3 s.
+- **Muted:** the old footsteps, cloth and "twigs and ground" tracks, which used the Soundly files that were missing.
+- **Talk, reload, objects:** unchanged.
+- **The bombs:** `Media/bomb_close.wav` and `bomb_far.wav` are there, but no item uses them.
+
+**What I changed.**
+- `war_stems.items()` now skips muted tracks; before, it only skipped muted items, and the muted tracks would have
+  been rendered.
+- The bomb stand-ins of entry 268 are no longer used: the 'shoot' file now exists.
+- `reaper_array.war_media` deletes old `media/war_*.wav` first, so a removed source leaves no file behind.
+
+| Source | Group | Long-term level per source at a war layer of 60 dB SPL |
+|---|---|---|
+| Talk | people | 58.3 dB SPL |
+| shoot (GUNSHOTS) | own point | 54.7 |
+| reload | people | 44.9 |
+| footsteps (Human_Movement) | people | 26.9 |
+| objects | people | 20.8 |
+
+**Checks that ran.**
+- `reaper_array.py --verify`: 41 checks, 0 failed. The war panner check (0-30 s) has a relative error of 0.0025.
+- `allday.RPP` has 8 tracks, 5 of them war sources.
+- `tests/test_live.py`: 18 passed.
+- `reaper_live.spatial` places all 5 sources.
+
+**Not checked.** `WarSoundScape.wav` (the mixdown) was not re-rendered with the new tracks, so the stems can't be
+compared with it as in entry 268. Virtual runs still use that older mixdown. The movement track sits low: Human_Movement
+is at -55 dBFS and the track volume is -19 dB, so it comes to 27 dB SPL, 31 dB below the talk. That is the project's
+balance; I have not changed it.
+
+## 272 - The war scene from one direction
+
+- Date: 2026-11-24
+- Type: Test setup (follows 270-271)
+- Commit: uncommitted, on `iteration-21-uav16` at 0fbeab8; `scripts/war_stems.py`, `scripts/reaper_array.py`,
+  `scripts/reaper_live.py`
+- Command: `rm -rf artifacts/war_stems && uv run python scripts/war_stems.py`; `uv run python scripts/reaper_array.py --verify`
+
+**Why.** In entry 270 only the people were one group; 'shoot' and the bombs each had a random direction of their
+own. The war soundscape therefore came from two sides of the array. Marius: the audio should play from one direction,
+not from two sides.
+
+**What changed.** `war_stems.place` puts every source at ear height, at the scene's centre plus a fixed offset
+(`OFFSET_DEG`: shoot -9, objects -6, Talk 0, footsteps +3, reload +12 degrees). They all share one rate, up to
+4 degrees/s. The scene is still drawn anew per round or segment and still moves. The separate bomb directions and
+heights are gone. `stems.csv` has an offset column instead of the group column.
+
+**Checks that ran.**
+- `reaper_array.py --verify`: 41 checks, 0 failed. War panner relative error 0.0015.
+- `war_positions.csv`, all day: segment 1 has all five sources between 311 and 332 degrees; segment 2 between 279
+  and 300 degrees, all at 3.65 degrees/s.
+- `tests/test_live.py`: 18 passed.
+
+Not checked on the array.
+
+## 273 - The war scene stands still
+
+- Date: 2026-11-24
+- Type: Test setup (follows 272)
+- Commit: uncommitted, on `iteration-21-uav16` at 0fbeab8; `scripts/war_stems.py` (`SCENE_DEG_S = 0`)
+- Command: `uv run python scripts/reaper_array.py --verify`
+
+**Why.** Marius: move it if that is more realistic and the WAV files support it, otherwise not. They do not:
+- No stem is recorded moving. The talk, gunshots, reload, objects and Human_Movement each keep one level and one
+  perspective throughout, with no Doppler.
+- Turning the scene at up to 4 degrees/s (entries 270 and 272) gave up to 1200 degrees in a 300 s all-day segment,
+  more than three turns round the listener, gunshots and all.
+
+A scene that stands still in one direction is closer to what the recordings are.
+
+**What changed.** The rate is 0. The scene still gets a new random direction per round (live) or segment (projects),
+and the envelopes in REAPER can still be edited to move it. Setting `SCENE_DEG_S` above 0 turns it again.
+
+**Checks that ran.**
+- `reaper_array.py --verify`: 41 checks, 0 failed. The war panner's relative error is 2e-05: with no motion, the
+  block glide and the 10 ms frames agree.
+- `war_positions.csv`: deg_s = 0 everywhere.
+- `tests/test_live.py`: 18 passed.
+
+## 274 - Bug: a long-running GUI paired the new war mix with yesterday's stems
+
+- Date: 2026-11-24
+- Type: Bug fix (live REAPER source)
+- Commit: uncommitted, on `iteration-21-uav16` at 0fbeab8; `scripts/war_stems.py`
+
+**What happened.** A live REAPER run (`artifacts/complete_test/20261124_111819_live_reaper_automatic`) stopped before
+any round was scored, on the guard from entry 268: "the war layer is not the sum of artifacts/war_stems". The GUI
+process had started on 2026-11-23 at 14:20. `war_stems.load` was cached for the life of the process, so it still held
+that day's stems (with the bomb stand-ins). The run's new layer read `mix.wav`, which was rebuilt on 2026-11-24 at
+11:13 (entry 271). The guard caught the mismatch, as it is meant to; nothing was played or scored wrong.
+
+**Fix.** `load` is now cached per modification time of `mix.wav`, so a rebuild is read again. Checked: touching
+`mix.wav` makes `load` return new arrays, and `spatial()` then splits the layer without error. `tests/test_live.py`:
+18 passed.
+
+The running GUI also still had the older code: separate directions and a moving scene (entries 270-271). Restarting it
+loads entries 272-274.
+
+## 275 - The live REAPER source waits up to 10 minutes for REAPER to open the project
+
+- Date: 2026-11-24
+- Type: Bug fix (live REAPER source)
+- Commit: uncommitted, on `iteration-21-uav16` at 0fbeab8; `scripts/reaper_live.py` (`OPEN_WAIT_S`)
+
+A live run (`20261124_112158_live_reaper_automatic`) stopped with "REAPER did not open .../live.RPP". REAPER did open
+it, but only after the 120 s wait had run out: REAPER answered with that run's regions afterwards, and the project is
+its last one. The likely cause is REAPER asking to save the project it had open (`allday.RPP`). The wait is now
+600 s; Stop in the GUI still ends it at once. The error now names the likely cause. Checked: the module imports.
+Not checked: a full run.
