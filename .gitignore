@@ -15,12 +15,15 @@ artifacts/reaper_array/Backups/
 data/*
 !data/.gitkeep
 !data/recordedDroneClipped/
+!data/Test Drones/
 .venv-dml/
 
 # generated audio (Pure Data renders, scenes, drone_only/)
 *.wav
 # recorded drone clips are versioned
 !data/recordedDroneClipped/**/*.wav
+# the four test drones of the Complete test (two own clips; Steady_07 and Steady_10 are ITU ARIS, test only)
+!data/Test Drones/*.wav
 # Pedro Soundscape wavs should be pushed
 !WarSoundscape/**/*.wav
 # drone_only/ sidecars, ignored for now

@@ -18792,3 +18792,25 @@ Checked: no conflict markers; `Complete_Test_Gui` parses and imports; `uv run py
 **Entry numbers.** Entry 283 (pull, 2026-11-25) said new entries continue from 284; that is wrong now, because
 7022171 uses 283-293. Nothing is renumbered (section 1). The pull entry is cited as "283 (pull, 2026-11-25)", and
 new entries continue from 295.
+## 295 - data/Test Drones is versioned: the four test drone WAVs on GitHub
+
+- Date: 2026-11-25
+- Type: Repository housekeeping (Nicolai: "push this folder in github")
+- Commit: on `master` after e25f571
+
+`data/Test Drones` (4 WAV files, 7.6 MB, largest 3.4 MB) is now tracked: `.gitignore` gets `!data/Test Drones/`
+and `!data/Test Drones/*.wav`, as for `data/recordedDroneClipped`. Files, unchanged:
+- `drone1_2_Audio_2_raw_00m14-00m24.wav`, `drone_2_Audio_2_raw_0127-0137.wav`: own 10 s drone clips (entry at
+  report line 12313: cut from the user's files in `Downloads/aup3_wav`).
+- `Steady_07.wav`, `Steady_10.wav`: copies of `data/extracted/steady_peek` files, so ITU ARIS (CC BY 4.0,
+  `docs/datasets.md`).
+
+Asked before pushing, Nicolai chose to push all four as they are, without a README or attribution file and without
+widening `src/dad/sealed.py`. Two consequences are recorded here:
+- The repository is public, so the two ITU ARIS clips are now published from it. CC BY 4.0 allows that with
+  attribution; `docs/datasets.md` gives the source, but nothing next to the files does.
+- `forbid_in_training` matches names and paths (`steady_peek`, `aris`, ...). `data/Test Drones/Steady_07.wav`
+  matches none of them, so a training reader would not be stopped by code. CLAUDE.md section 5 still applies:
+  these two files are for scoring finished models only.
+
+No model, threshold or setting is changed.
