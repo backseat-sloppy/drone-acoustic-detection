@@ -1045,7 +1045,7 @@ class Test:
                     progress(f"stopped after {i - 1} of {len(self.rounds)} rounds")
                     break
                 m = self.rebuild(r)
-                res = score_round(m, self.thr, self.scorers, self.plan.buffer_after_s)
+                res = score_round(dict(m, mix=m.get("heard", m["mix"])), self.thr, self.scorers, self.plan.buffer_after_s)
                 q = snr(m)                                       # the same for every detector of the round
                 for v in res.values():
                     v["row"].update(q)

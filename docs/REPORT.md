@@ -18967,3 +18967,160 @@ So the two do not isolate the room. No baselines (`comb`, `lgbm`) in the plan. T
 scores.npz, window_snr.npz, layer_snr.npz, summary.csv) and `plan_modified.json` are added with `git add -f`; `artifacts/*` stays ignored. Not
 versioned: every WAV, so `heard/` (the recordings, some of them of ITU ARIS drones, test only) and the REAPER projects of the three parts stay on
 Marius's Mac. Nothing is scored again; no model, threshold or setting is changed.
+
+## 303 - Why plan_modified scores lower on the server than the array run: the war track differs, and the drone reaches the microphones stronger
+
+- Date: 2026-11-25
+- Type: Analysis of the runs of entries 300 and 301 (asked by Marius); nothing scored
+- Commit: uncommitted, on `master` at 7153cdb; scratch scripts, not kept in the repo
+
+Both runs have the same settings in all 488 rounds and the same digital drone level (56.6 dB) and mean digital SNR (-3.2 against -3.1 dB). The recorded
+rounds and the digital mix have the same RMS (-49.2 against -49.1 dBFS; every 20th drone round), so it is not the overall level. The mean
+confidence in drone windows is 0.289 on the array and 0.212 digitally (it30), in no-drone windows 0.056 and 0.066.
+
+1. **War track (measured).** A REAPER run always replaces the plan's war file with `artifacts/war_stems/mix.wav` (`ReaperRun.__init__`); the server run kept
+   `WarSoundScape.wav`. They are the same 38.5 s (correlation 0.97), but the stems have no reverb, footsteps or drag: 47 % of their 0.25 s frames are more than 20 dB
+   below the mean level, against 23 %. The array's war background therefore has about twice as much quiet between the shots.
+2. **The microphones (estimated).** Over every fourth drone round, 0.25 s band powers of the recording were fitted as drone + background + a constant (non-negative,
+   relative error). The drone came out 2.4 to 7.6 dB stronger against the background than digitally in each octave-like band above 125 Hz (drone1_2 only 0 to 5 dB, Steady_10
+   up to 13 dB; below 125 Hz the fit is not usable). It is a rough fit: room decay after shots is not modelled and pulls the background's gain down.
+   Hypothesis, not tested: the drone is one direction, the backgrounds come from many speakers, and the average of the two microphones favours the first.
+3. In the same digital 1 s SNR bins below 0 dB the array's recall stays higher (it30, -20 to -15 dB: 0.304 against 0.159), so the mean SNR does not explain it.
+
+How much is the war track and how much the microphones is not known: that takes the same plan digitally with `mix.wav`, which has not been run.
+Entry 301's caution stands.
+
+## 304 - plan_modified with the array's war track on the server: the gap is part war track, part room and microphones; correction to 303
+
+- Date: 2026-11-25
+- Type: Scoring run requested by Marius
+- Commit: uncommitted, on `master` at 7153cdb; server clone `~/ct_25_11` as entry 301
+- Command (server): `.venv/bin/python -u scripts/complete_test_run.py artifacts/complete_test/plan_modified_mixwav.json --out artifacts/complete_test/20261125_jupyter_plan_modified_mixwav`
+
+`plan_modified_mixwav.json` is the plan with `war_file` = `artifacts/war_stems/mix.wav` and nothing else changed. `war_stems.py` built the file on the server: sample for
+sample the Mac's. 488 of 488 rounds, 33 s. The digital SNR of every drone round equals the array run's (largest difference 3e-14 dB), so array and mix.wav differ only
+in what lies between the mix and the detector: speakers, room, microphones, averaging. Results downloaded, MD5 checked, opened by `load_test`.
+Conditions as entries 300 and 301; no baselines (`comb`, `lgbm`); two of the four drone files are ITU ARIS, finished models only.
+
+| | it30: array | it30: digital, mix.wav | it30: digital, WarSoundScape.wav | it30.5: array | it30.5: digital, mix.wav | it30.5: digital, WarSoundScape.wav |
+|---|---|---|---|---|---|---|
+| Recall, all 480 drone rounds | 0.290 | 0.239 | 0.200 | 0.291 | 0.259 | 0.216 |
+| FPR, drone rounds' no-drone windows | 0.018 | 0.070 | 0.033 | 0.012 | 0.049 | 0.022 |
+| FPR, the 8 no-drone rounds | 0.009 | 0.042 | 0.038 | 0.006 | 0.032 | 0.034 |
+| Drone rounds detected | 0.723 | 0.733 | 0.692 | 0.715 | 0.723 | 0.702 |
+| Drone rounds with a false alarm | 0.371 | 0.525 | 0.435 | 0.287 | 0.454 | 0.354 |
+| Recall, drone1_2 | 0.595 | 0.524 | 0.481 | 0.557 | 0.551 | 0.504 |
+| Recall, drone_2 | 0.390 | 0.301 | 0.238 | 0.377 | 0.323 | 0.256 |
+| Recall, Steady_07 (ITU ARIS) | 0.175 | 0.118 | 0.076 | 0.226 | 0.155 | 0.099 |
+| Recall, Steady_10 (ITU ARIS) | 0.003 | 0.011 | 0.007 | 0.002 | 0.006 | 0.003 |
+
+Mean recall differences (paired over the 480 rounds, 95 % bootstrap over rounds; the rounds share four drone files, so too narrow):
+- War track (mix.wav minus WarSoundScape.wav, both digital): it30 +0.038 (0.031 to 0.046), it30.5 +0.043 (0.036 to 0.051).
+- Room and microphones (array minus digital mix.wav): it30 +0.052 (0.041 to 0.063), it30.5 +0.032 (0.021 to 0.044).
+So the recall gap is about half each: 42 % war track for it30, 57 % for it30.5.
+
+**What the war track does to false alarms is not a simple gain:** digitally, mix.wav raises recall and also more than doubles the false positive rate (it30 0.033 to 0.070). The room
+lowers it to 0.018. The threshold is the same throughout, so comparing recall alone flatters mix.wav. The array is better on both counts than either digital run.
+Which property of the room does it (the drone's level against the background, entry 303's estimate, or the loss of digital silence and of the sharp gaps) is not tested.
+
+**Correction to entry 303.** It said the stems have no footsteps or drag. Footsteps are in mix.wav now (`stems.csv`: Human_Movement, -74.7 dBFS against -41.6 for the mix, so
+very quiet), and the old drag track is muted in the project. What is certainly absent is the master's reverb. The quiet-gap figures (47 % against 23 %) are measured and stand.
+
+## 305 - A virtual test that hears the plan through the array's room: agrees with the array run on 96-98 % of the decisions
+
+- Date: 2026-11-25
+- Type: Evaluation tooling and a scoring run (Marius: the test must be as close as possible to the real one)
+- Commit: uncommitted, on `master` at 3279bac; `scripts/array_room.py` (new), `scripts/complete_test_run.py` (`--room`), `scripts/complete_test_engine.py` (one line)
+- Commands: `uv run python scripts/array_room.py artifacts/complete_test/20261125_{114710,124342,134037}_live_reaper_automatic`;
+  `uv run python scripts/complete_test_run.py artifacts/complete_test/plan_modified.json --gpus 0 --room --out artifacts/complete_test/20261125_array_room_plan_modified` (Mac, CPU, 2393 s)
+
+**Method.** The only measured impulse response (2026-11-23) is one speaker's. Instead the 39 paths from speaker to averaged microphones are estimated from the three
+array runs: what each speaker played (`reaper/round_*.wav`) against what was heard (`heard/`). Per frequency a weighted least squares (ridge 1e-4), rounds realigned to a
+fraction of a sample, cut to -20..+120 ms; then the power per frequency (gain and noise floor) fitted over 128 ms frames (`power_fit`). Virtual rounds go
+through `reaper_live.spatial` (same directions as on the array; the signals equal the played files to one 16-bit step), are written to 16 bit as for REAPER, filtered and
+given the noise floor. The war track is `mix.wav`, as ReaperRun sets. SNRs stay the digital ones. The option is off by default; the protocol, metric and other runs are
+unchanged, so the council was not convened.
+
+**Hygiene.** The 240 rounds with an ITU ARIS drone are never in the fit. Of the other 248, 62 are held out of it. Three versions were judged, and the detectors' results on the
+held-out rounds chose between them, so those are no longer untouched:
+1. noise from the fit's residual: noise 3 dB too loud in quiet moments (false positive rate 0.10 against 0.04, helicopter off; run kept as
+   `20261125_array_room_v1_plan_modified`),
+2. noise from the recorders' quietest second and the power gain: 60-250 Hz noise 1.5-3 dB too loud, recall 0.46 against 0.60,
+3. noise and gain from the recordings at all levels, and the exact 16-bit rounding (the wind is near the last bit per speaker): used.
+The ARIS rounds were scored at versions 1 and 3 only and chose nothing.
+
+**Fit, held-out rounds.** Mean level error per band, 0.25 s frames, 125 Hz to 8 kHz in octaves: 0.15, 0.13, 0.13, 0.22, 0.71, 2.04 dB (bias +1.3 dB at 4-8 kHz). Without any room: 1.69, 1.40,
+3.24, 3.94, 3.19, 2.15 dB.
+
+**Scores, 488 rounds.** Conditions as entry 300; own thresholds; no baselines (`comb`, `lgbm`) in the plan. "Digital" is entry 304.
+
+| | it30: array | it30: room | it30: digital mix.wav | it30.5: array | it30.5: room | it30.5: digital mix.wav |
+|---|---|---|---|---|---|---|
+| Recall, 480 drone rounds | 0.290 | 0.271 | 0.239 | 0.291 | 0.270 | 0.259 |
+| FPR, drone rounds' no-drone windows | 0.018 | 0.012 | 0.070 | 0.012 | 0.009 | 0.049 |
+| FPR, the 8 no-drone rounds | 0.009 | 0.008 | 0.042 | 0.006 | 0.005 | 0.032 |
+| Drone rounds detected | 0.723 | 0.708 | 0.733 | 0.715 | 0.708 | 0.723 |
+| Drone rounds with a false alarm | 0.371 | 0.300 | 0.525 | 0.287 | 0.250 | 0.454 |
+| Recall, drone1_2 | 0.595 | 0.569 | 0.524 | 0.557 | 0.531 | 0.551 |
+| Recall, drone_2 | 0.390 | 0.350 | 0.301 | 0.377 | 0.341 | 0.323 |
+| Recall, Steady_07 (ITU ARIS) | 0.175 | 0.161 | 0.118 | 0.226 | 0.208 | 0.155 |
+| Recall, Steady_10 (ITU ARIS) | 0.003 | 0.003 | 0.011 | 0.002 | 0.002 | 0.006 |
+
+Window by window against the array, at the same threshold (correlation of confidence, share of equal decisions): held out 0.966 / 95.7 % (it30), 0.967 / 95.5 % (it30.5), ARIS 0.940 / 98.1 %
+and 0.957 / 98.3 %. The digital mix: held out 0.796 / 87.2 % and 0.808 / 88.3 %, ARIS 0.640 / 93.3 % and 0.707 / 93.9 %.
+
+**Left over.** The simulation is slightly harder than the array: recall 0.02 lower, false alarms a little fewer. Above 4 kHz the recordings do not follow the speaker signals
+linearly (coherence 0.4-0.9), and some rounds have small jumps in the recording's timing (round 207: about 1.5 samples). Only one room position, one day, one gain (0 dB) and
+these microphones are represented; new measurements are needed if any of these change.
+**To check by ear.** The fitted filters put the lower ring (outputs 30-39, 30 degrees below ear height) about 9 dB below the mean of the rest, and speaker 24 and the top one also low. The lower ring
+gets only wind and the insects, so this is a weak estimate; it is not confirmed and may mean nothing.
+
+Not run: the server (scripts and `room.npz` are not there), the GUI windows on screen, `pytest`.
+
+## 306 - What makes the array run better than the digital one: one room effect at a time; correction to 303
+
+- Date: 2026-11-25
+- Type: Ablation through the room model of entry 305 (asked by Marius)
+- Commit: uncommitted, on `master` at 3279bac; scratch scripts, not kept in the repo; Mac, CPU
+
+32 of the 240 rounds with an own drone (evenly spaced, no ITU ARIS; most of them were in the room's fit), plan and thresholds as entry 304 (war track mix.wav), no baselines
+in the plan. Each row feeds the detectors a different version of the same rounds. Recall / false positive rate (no-drone windows of these drone rounds):
+
+| What the detectors get | it30 | it30.5 |
+|---|---|---|
+| 1 digital mix | 0.418 / 0.092 | 0.444 / 0.056 |
+| 2 digital + the room's noise floor (-85 dBFS) | 0.457 / 0.074 | 0.465 / 0.044 |
+| 3 digital + 16-bit rounding noise of the speaker files (-85 dBFS) | 0.439 / 0.108 | 0.464 / 0.072 |
+| 4 digital + both noises | 0.461 / 0.082 | 0.458 / 0.052 |
+| 5 digital, drone and background at their levels at the mics | 0.401 / 0.092 | 0.430 / 0.056 |
+| 6 digital, one common colour (EQ) | 0.494 / 0.127 | 0.468 / 0.056 |
+| 7 digital, own colour for drone and for background | 0.449 / 0.111 | 0.405 / 0.065 |
+| 8 = 7 + room noise floor | 0.467 / 0.077 | 0.406 / 0.041 |
+| 9 the 39 paths (echo, direction, colour), no noise | 0.433 / 0.044 | 0.408 / 0.027 |
+| 10 = 9 + room noise floor | 0.449 / 0.020 | 0.416 / 0.018 |
+| 11 = 10 + rounding noise (as entry 305) | 0.446 / 0.019 | 0.410 / 0.012 |
+| 12 the real recordings | 0.481 / 0.025 | 0.432 / 0.015 |
+
+**Reading** (32 rounds, so differences of about 0.03 in recall are within what these rounds can show).
+- False positives are what the room changes most: 0.092 to 0.025 (it30), 0.056 to 0.015 (it30.5). The 39 paths alone bring half of that (0.044, 0.027), and the room's noise floor on top of them
+  the rest (0.020, 0.018). Neither the noise alone (rows 2 and 4) nor the colour alone (6 and 7) does it, so the echo and the spread over speakers are needed; those two are not separated here.
+- Recall on these rounds is higher in the recordings for it30 (0.481 against 0.418) and not for it30.5 (0.432 against 0.444). The gain over all 480 rounds was 0.052 and 0.032 (entry 304).
+  It is not one effect: noise floor and common colour each raise it30's recall, and the model's version of the room keeps only part of it.
+- The 16-bit rounding is as loud as the room noise, but it makes hardly any difference to the result (rows 10 and 11). It is a property of our playback files, not of the room.
+
+**Correction to entry 303.** Its estimate that the drone reaches the microphones 2 to 8 dB stronger against the background is wrong. Through the fitted paths the change of level is -0.3 dB for the
+drone (standard deviation 1.5), +0.3 dB for the war soundscape, -0.5 for the helicopter, +3 for the cars and -12 for the insects (the two speakers on the lower ring). The wind's +4 dB includes the rounding noise.
+The least squares of entry 303 used 0.25 s band powers that smear shots. Its hypothesis about averaging the two microphones was not tested and is now without support. Its measured points (the war track's gaps) stand.
+
+**Hypothesis for why the room lowers false positives, not tested.** The detectors learned from recordings, which have echo and a noise floor; the digital mix has digital silence and
+perfectly dry shots.
+
+## 307 - The results and the room file of entries 304-306 are versioned
+
+- Date: 2026-11-25
+- Type: Housekeeping (requested by Marius: "push everything")
+- Commit: the commit that adds this entry, `master`
+
+As entry 302: `artifacts/complete_test/20261125_jupyter_plan_modified_mixwav` and `20261125_array_room_plan_modified` (config.json, live.json, rounds.csv, scores.npz, window_snr.npz,
+layer_snr.npz, summary.csv) and `artifacts/array_room/room.npz` (the filters and noise floor of entry 305) are added with `git add -f`. Not versioned: the superseded
+`20261125_array_room_v1_plan_modified`, the shard folders, `plan.json`, and every WAV (the recordings and the speaker files).
