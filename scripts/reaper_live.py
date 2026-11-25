@@ -157,7 +157,7 @@ class ReaperRun(L.LiveRun):
         f = d / f"round_{k:04d}.wav"
         self._write(f, y)
         n = len(m["mix"])
-        return dict(r=r, m=m, n=n, P=P, offset=offset, file=f.name, len_s=len(y) / SR, ref=y[:n].sum(axis=1).astype(np.float64))
+        return dict(r=r, m=m, n=n, P=P, offset=offset, file=f.name, len_s=len(y) / SR, ref=y[:n].sum(axis=1))
 
     def _build(self, say) -> Path:
         """The rounds' WAVs and live.RPP in <run>/reaper/; self.slots in play order."""
@@ -169,18 +169,19 @@ class ReaperRun(L.LiveRun):
         if not self.manual:                                  # lead-in, the rounds back to back, a tail
             first = self.order[0]
             lead = self._slot(dict(first, drone=None, drone_level_db=None, start_s=None, length_s=L.LEAD_IN_S), 0.0,
-                              t.start_s, d, 0)
+                              t.start_s + self.skip_s, d, 0)
             items.append(RA.item(0, lead["len_s"], f"round_0000.wav", "lead-in"))
             marks.append(RA.region(1000, 0, L.LEAD_IN_S, f"{tag} lead-in"))
             P = L.LEAD_IN_S
             for i, r in enumerate(self.order):
                 say(f"writing the rounds for the 39 speakers: {i + 1} of {len(self.order)}")
                 last = i == len(self.order) - 1
-                s = self._slot(r, P, t.start_s + P, d, r["round"], tail_s=TAIL_S if last else 0.0)
+                s = self._slot(r, P, t.start_s + self.skip_s + P, d, r["round"], tail_s=TAIL_S if last else 0.0)
                 t.offset_s[r["round"]] = s["offset"]
                 items.append(RA.item(P, s["len_s"], s["file"], f"round {r['round']}"))
                 marks.append(RA.region(r["round"], P, P + s["n"] / SR, f"round {r['round']}: " +
                                        (E.drone_label(r["drone"]) if r["drone"] is not None else "no drone")))
+                del s["m"]                                   # 18 MB a round: made again when the round starts (_loop)
                 self.slots.append(s)
                 P += s["n"] / SR
             self.end_P = P + TAIL_S - 0.5
@@ -218,6 +219,7 @@ class ReaperRun(L.LiveRun):
     def _open(self, f: Path, say) -> None:
         self.rp.transport()                                  # REAPER is up and its web remote answers
         self.rp("1016")                                      # stop whatever plays
+        self.rp("40859")                                     # a new project tab: no question about saving the last one
         cmd = REAPER_APP.get(sys.platform, REAPER_APP["win32"])
         subprocess.Popen([*cmd, str(f)])
         say("opening the project in REAPER (if REAPER asks to save the project it had open, answer it)")
@@ -284,6 +286,12 @@ class ReaperRun(L.LiveRun):
                 self._display(x16)
         self.pos = self.heard.end
 
+    def _score(self, jobs, p: dict) -> None:
+        """The finished round p to the scorer; its audio is dropped from self.placed, which keeps every round."""
+        jobs.put(self._round_job(p))
+        p.pop("m")
+        p.pop("ref")
+
     def _levels(self, s: dict, pos: float) -> None:
         a = int((pos - s["P"]) * SR)
         if 0 < a <= s["n"]:
@@ -319,7 +327,7 @@ class ReaperRun(L.LiveRun):
                     if mic >= p["T"] + p["n"] + int(L.MAX_LAG_S * SR):
                         pending.remove(p)
                         p["done"] = True
-                        jobs.put(self._round_job(p))
+                        self._score(jobs, p)
                 if not pending or time.time() - stop_at > L.MAX_LAG_S + 2:
                     trace.close()
                     return
@@ -360,7 +368,8 @@ class ReaperRun(L.LiveRun):
             else:
                 if self.next_i < len(self.slots) and pos >= self.slots[self.next_i]["P"]:
                     s = self.slots[self.next_i]
-                    p = dict(s, done=False, T=mic_at(s["P"]) - int(MARGIN_S * SR))
+                    p = dict(s, done=False, T=mic_at(s["P"]) - int(MARGIN_S * SR), m=self.test.rebuild(s["r"]))
+                    del s["ref"]
                     with self.lock:
                         self.current = p
                         self.placed.append(p)
@@ -370,7 +379,8 @@ class ReaperRun(L.LiveRun):
                     self._levels(cur, pos)
                     if pos >= cur["P"] + cur["n"] / SR:
                         pending.append(cur)
-                        self.current = None
+                        if self.current is cur:              # not the next round, which starts in the same pass
+                            self.current = None
                 if self.next_i >= len(self.slots) and self.current is None and not pending and pos >= self.end_P:
                     trace.close()
                     return
@@ -378,4 +388,4 @@ class ReaperRun(L.LiveRun):
                 if mic >= p["T"] + p["n"] + int(L.MAX_LAG_S * SR):
                     pending.remove(p)
                     p["done"] = True
-                    jobs.put(self._round_job(p))
+                    self._score(jobs, p)

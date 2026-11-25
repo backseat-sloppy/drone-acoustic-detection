@@ -320,6 +320,10 @@ class LiveRun:
         # flown in turn by Send drone and over again; its rounds are made as they happen (test.rounds grows)
         self.templates = [r for r in self.test.rounds if r["drone"] is not None]
         self.order = [] if self.manual else list(self.test.rounds)
+        i, n = plan.live.get("part", (1, 1))                 # part i of a plan split into n runs: its rounds, in order
+        k = len(self.order)
+        self.skip_s = k * (i - 1) // n * plan.length_s       # where this part's soundscape goes on from (reaper_live)
+        self.order = self.order[k * (i - 1) // n:k * i // n]
         if self.manual:
             self.test.rounds = []
         self.k_tpl = 0                                       # manual: the next drone setting

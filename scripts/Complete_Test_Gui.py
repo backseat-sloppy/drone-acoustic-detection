@@ -54,6 +54,7 @@ Synthetic scaffolding (CLAUDE.md section 5): numbers from these mixes are not de
 """
 from __future__ import annotations
 
+import copy
 import json
 import os
 import queue
@@ -1044,6 +1045,12 @@ class LivePage(Page):
         self.cb_stereo = ttk.Checkbutton(dev, text="REAPER: stereo test (the 39 speakers folded to 2 channels, left/right)",
                                          variable=self.v_stereo)
         self.cb_stereo.grid(row=2, column=0, columnspan=6, sticky="w", pady=(6, 0))
+        self.v_parts, self.batch = tk.StringVar(value="1"), None
+        parts = ttk.Frame(dev)
+        parts.grid(row=3, column=0, columnspan=6, sticky="w", pady=(6, 0))
+        ttk.Label(parts, text="REAPER, automatic: play the plan as").pack(side="left")
+        ttk.Spinbox(parts, from_=1, to=20, textvariable=self.v_parts, width=4).pack(side="left", padx=6)
+        ttk.Label(parts, text="runs, one after the other by itself (each run saves its own results)").pack(side="left")
         ttk.Label(f, text="Full scale is 110 dB SPL in every file. Playback gain changes only what goes to the speaker "
                           "(not the virtual scores); mic gain scales the recording before the detectors hear it. A speaker "
                           "and a microphone are not calibrated, so with the microphone the detectors do not hear the plan's "
@@ -1366,10 +1373,31 @@ class LivePage(Page):
         if p is None:
             return
         try:
-            out, inp, ch, play, mic = self._devices()
+            dev = self._devices()
+            n = int(self.v_parts.get()) if self.v_parts.get().strip().isdigit() else 0
+            if not 1 <= n <= 20:
+                raise ValueError("runs: a whole number from 1 to 20")
+            if p.live["source"] != "reaper" or p.live["trigger"] != "automatic":
+                n = 1
+            if n > p.count()["total"]:
+                raise ValueError("more runs than rounds")
         except ValueError as e:
             messagebox.showerror(TITLE, str(e), parent=self)
             return
+        self.batch = dict(plan=p, dev=dev, n=n, i=0, tests=[], notes=[], stopped=False)
+        self._start_part()
+
+    def _start_part(self):
+        """The next run of the batch (a batch of 1: the whole plan)."""
+        b = self.batch
+        if b["stopped"]:
+            self._batch_over()
+            return
+        b["i"] += 1
+        p = copy.deepcopy(b["plan"])
+        if b["n"] > 1:
+            p.live["part"] = [b["i"], b["n"]]
+        out, inp, ch, play, mic = b["dev"]
         self.events = queue.Queue()
         if p.live["source"] == "reaper":                     # REAPER plays on the array; playback gain = its master volume
             import reaper_live
@@ -1387,6 +1415,8 @@ class LivePage(Page):
         self.l_status.configure(text="preparing: drones, layers and detectors...")
         self.error = None
         self.run.start()
+        if b["n"] > 1:
+            self.l_status.configure(text=f"run {b['i']} of {b['n']}: preparing")
         self.after(50, self._show_play)
         self.after(100, self._poll)
 
@@ -1398,7 +1428,24 @@ class LivePage(Page):
             self.app.page_canvas.yview_moveto(max(0.0, (self.winfo_y() + self.f_play.winfo_y() - 10) / h))
 
     def _after_run(self):
-        """When a run has ended: its Results window, or why there is none."""
+        """When a run has ended: the batch's next run, or its Results window(s), or why there is none."""
+        b = self.batch
+        if b["n"] > 1:
+            if self.test and self.test.results:
+                b["tests"].append(self.test)
+            if self.error:
+                b["notes"].append(f"run {b['i']}: {self.error}")
+            if self.run.stop_flag.is_set():                  # Stop here or in REAPER ends the batch
+                b["stopped"] = True
+            if b["i"] < b["n"] and not b["stopped"]:         # an error in one run does not cost the others
+                self.b_start.state(["disabled"])
+                self.b_stop.state(["!disabled"])
+                self.b_physical.state(["disabled"])
+                self.l_status.configure(text=f"run {b['i']} of {b['n']} done: the next starts in 5 s (Stop ends here)")
+                self.after(5000, self._start_part)
+                return
+            self._batch_over()
+            return
         if self.test and self.test.results:
             self.b_results.state(["!disabled"])
             self.open_results()
@@ -1409,7 +1456,22 @@ class LivePage(Page):
             messagebox.showinfo(TITLE, "No round was finished, so there are no results: a round is scored when it has "
                                        "played to its end (Stop drops the round that is playing).", parent=self)
 
+    def _batch_over(self):
+        """The last run of a batch has ended: every run's Results, and what went wrong."""
+        b = self.batch
+        self.b_start.state(["!disabled"])
+        self.b_stop.state(["disabled"])
+        self.b_physical.state(["!disabled"])
+        if b["tests"]:
+            self.b_results.state(["!disabled"])
+            for t in b["tests"]:
+                Results(self.app, t)
+        s = f"{len(b['tests'])} of {b['n']} runs with results: " + ", ".join(t.out.name for t in b["tests"])
+        self.l_status.configure(text="  ·  ".join([s, *b["notes"]]))
+
     def stop(self):
+        if self.batch:
+            self.batch["stopped"] = True
         if self.run:
             self.run.stop()
             self.l_status.configure(text="stopping: the round that is playing is dropped; finished rounds are kept...")
