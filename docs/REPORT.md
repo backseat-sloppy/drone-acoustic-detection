@@ -18814,3 +18814,156 @@ widening `src/dad/sealed.py`. Two consequences are recorded here:
   these two files are for scoring finished models only.
 
 No model, threshold or setting is changed.
+
+## 296 - Bug fix: automatic REAPER live tests lost every second round
+
+- Date: 2026-11-25
+- Type: Bug fix, test 3
+- Commit: uncommitted, on `master` at 7022171; `scripts/reaper_live.py`, `tests/test_reaper_live.py` (new)
+
+**Fault.** In an automatic run the rounds play back to back. The pass of `ReaperRun._loop` that starts round k+1 also ends round k, and
+ending it cleared `self.current`, which was already round k+1. That round played but was never queued: not recorded in `heard/`, not scored.
+
+**Runs affected** (read from `live.json`): the finished run of 10:15 today, 64 planned, 32 scored (ids 1, 3, .. 63), and of 10:58,
+48 planned, 24 scored; every stopped automatic run since 2026-11-23 10:41 with two or more rounds scored holds odd ids only. Their
+missing rounds cannot be recovered. Their results cover half of the plan's rounds, so a setting that varies between neighbouring
+rounds (the drone's start) is sampled unevenly. Entry 292's two runs had one round each and are not affected.
+
+The 10:58 run's input was the MacBook Pro Microphone, channel 0; the 10:15 run's was the Fireface, `8,9`.
+
+**Fix.** `self.current` is cleared only if it is still the round that ended. `tests/test_reaper_live.py` plays six back-to-back
+rounds through `_loop` with a fake REAPER and clock: rounds 1, 3, 5 before the fix, 1 to 6 after. Not run: a live test on the array.
+
+(Restored from the session's transcript, first written as entry 295; see entry 300. The code is in 7153cdb.)
+
+## 297 - Cleanup: REAPER playback WAVs of old live runs deleted
+
+- Date: 2026-11-25
+- Type: Housekeeping (Marius's approval)
+- Commit: uncommitted; git-ignored files only
+
+Deleted 1559 WAVs (31.9 GB) from `reaper/` in 30 `*_live_reaper_*` folders under `artifacts/complete_test` up to 20261125_105844: runs whose
+input was not the Fireface, or that did not finish. Kept: their scores, `heard/`, `live.json`, `live.RPP` and `transport.csv`, and
+every file of the Fireface runs 100225, 100315 and 101556. Those projects can no longer be replayed in REAPER. No file in `data/` was touched.
+
+(Restored from the session's transcript, first written as entry 296; see entry 300.)
+
+## 298 - Automatic REAPER live tests no longer keep every round's audio in memory
+
+- Date: 2026-11-25
+- Type: Bug fix, test 3 (Marius plans about 3 hours)
+- Commit: uncommitted, on `master` at 7022171; `scripts/reaper_live.py`, `tests/test_reaper_live.py`
+
+The run kept the parts, the mix and the reference of every planned round from its start: 20.5 MB per 20 s round with five layers, so 11.1 GB
+for 540 rounds (computed). The parts and mix are now made again with `LiveTest.rebuild` when a round starts (about 5 ms) and dropped
+when it goes to the scorer; a waiting round keeps 1.3 MB (the reference, float32, the type the delay search used already), 0.7 GB for
+540. Manual runs keep their few drone settings as before.
+
+Checked: six rounds of run 105844's plan are the same arrays when made again (parts, mix, truth); `tests/test_reaper_live.py`
+passes and now also checks that no round keeps its audio after scoring. Not checked: the memory of a real long run, the GUI's own live view data,
+a live test on the array. Disk use is unchanged: 25 MB per round.
+
+(Restored from the session's transcript, first written as entry 297; see entry 300. The code is in 7153cdb.)
+
+## 299 - A live REAPER plan can be played as several runs, one after the other by itself
+
+- Date: 2026-11-25
+- Type: Evaluation tooling for test 3 (requested by Marius)
+- Commit: uncommitted, on `master` at 7022171; `scripts/Complete_Test_Gui.py`, `live_test_engine.py`, `reaper_live.py`, `tests/test_live_batch.py` (new)
+
+The Live page has "play the plan as N runs" (1 to 20; REAPER, automatic). The plan's rounds, in order, are cut into N parts; each part is
+a run with its own folder and results (saved at its end), and the next starts 5 s later. Run i's soundscape goes on where run
+i-1's rounds ended, apart from its own 3 s lead-in. The part is in `config.json` (`plan.live.part`). An error in one run does not stop the others;
+Stop, or a stop in REAPER, ends the batch. The Results windows open after the last run. N = 1 is as before. Before each project opens, a new REAPER tab is made (action
+40859), so REAPER does not ask to save the last project: that question would have blocked an unattended batch.
+
+Checked: `uv run pytest` on `tests/test_live_batch.py` and `tests/test_reaper_live.py`: 7 passed (the parts cover every round once; the
+page's start, next-run, error and stop logic with a fake run). The GUI was built hidden: the box is there, locks and unlocks. Action 40859 by the web remote
+made a new empty tab in REAPER with a modified project open, no question. Not checked: a real batch on the array.
+
+(Restored from the session's transcript, first written as entry 298; see entry 300. The code is in 7153cdb.)
+
+## 300 - Test 3: the three runs of the 488-round plan combined into one run folder
+
+- Date: 2026-11-25
+- Type: Evaluation tooling and the reading of a finished live test (requested by Marius)
+- Commit: uncommitted, on `master` at 7153cdb; `scripts/combine_live_runs.py` (new)
+- Command: `uv run python scripts/combine_live_runs.py artifacts/complete_test/20261125_{114710,124342,134037}_live_reaper_automatic`
+
+**First real batch** (entry 299's "not checked"): all three parts finished by themselves, rounds 1-162, 163-325 and 326-488, so 488 of
+488 (entry 296's fix holds). Microphone correlation 0.21 to 0.67 (the limit is 0.05), delay 542 to 627 ms, no round below the limit.
+
+**Combined** into `20261125_114710_live_reaper_automatic_combined`: nothing is scored again. Plan, thresholds and devices are the same in the
+parts. Checked against them: the 976 rows of rounds.csv, every array of scores (976), window_snr (960) and layer_snr (6776) are identical; the
+soundscape goes on by 20 s at every round, also from part to part. `load_test` opens it with 488 of 488 rounds and
+writes summary.csv. `heard/` is hard-linked; the REAPER projects stay in the parts, which are unchanged. Not checked: the Results and Conclusions windows on screen.
+
+**Conditions.** Array room, 39 speakers, Fireface Mic 9 and 10 averaged (`8,9`), play gain 0 dB, detectors at their own thresholds (it30 0.4646,
+it30.5 0.4539), 20 s rounds: 480 with a drone (4 files x 5 speeds x 3 starts x 8 backgrounds, 80 dB at 1 m) and 8 without. War soundscape and
+wind in the plan; cars, helicopter and insects on or off. Recall is the share of drone windows over the threshold; false-alarm share is rounds with at least
+one. The digital SNR averages -5 to -2 dB by file. The run did not include the baselines (`comb`, `lgbm`), so it has none to report beside these.
+
+| | it30 CRNN half s1 | it30.5 CRNN ir s0 |
+|---|---|---|
+| Recall, all 480 drone rounds | 0.290 | 0.290 |
+| False positive rate of the drone rounds' no-drone windows | 0.018 | 0.012 |
+| Drone rounds detected | 0.723 | 0.715 |
+| Drone rounds with a false alarm | 0.371 | 0.288 |
+| False positive rate, the 8 no-drone rounds | 0.009 | 0.006 |
+| Recall, drone1_2 (own clip) | 0.595 | 0.557 |
+| Recall, drone_2 (own clip) | 0.390 | 0.377 |
+| Recall, Steady_07 (ITU ARIS) | 0.175 | 0.226 |
+| Recall, Steady_10 (ITU ARIS) | 0.003 | 0.002 |
+| Recall, helicopter off / on (50 dB) | 0.372 / 0.209 | 0.383 / 0.199 |
+| False-alarm share, helicopter off / on | 0.613 / 0.129 | 0.446 / 0.129 |
+
+Two of the four drones are ITU ARIS files: this scores finished models on the test set, and is logged as such (CLAUDE.md section 5). Nothing is
+tuned on it. Steady_10 is nearly never detected, at any speed, at an SNR like the others'; why is not looked into here.
+
+**Lost entries.** Entries on the skipped rounds, the WAV cleanup, the memory fix and the batch were written as 295-298 this morning but
+were not in the file any more and in no commit, stash or git object (the pull to c242613 brought another 295). They are restored above as 296-299, text
+unchanged but for the numbers and, in one, the commit they were on.
+
+## 301 - plan_modified (488 rounds, virtual) run on the JupyterLab server; the runner follows a live plan's timeline
+
+- Date: 2026-11-25
+- Type: Scoring run requested by Marius, and evaluation tooling
+- Commit: uncommitted, on `master` at 7153cdb; `scripts/complete_test_run.py`. Server: a new clone `~/ct_25_11` of `master` with that file
+- Command (server): `.venv/bin/python -u scripts/complete_test_run.py artifacts/complete_test/plan_modified.json --out artifacts/complete_test/20261125_jupyter_plan_modified`
+
+**Runner.** `complete_test_run.py` gave every round the same 20 s of soundscape. For a live plan (virtual, automatic; others are refused) each round now goes on
+from the one before, at the offsets `live_test_engine` plays (start + 3 s lead-in + 20 s a round), and live.json holds them for the GUI. The merge now
+also keeps window_snr.npz and layer_snr.npz. Plans that are not live are mixed as before.
+
+**Run.** 488 of 488 rounds x 2 detectors, 3 workers, one TITAN X each, 14:56:38 to 14:57:10 (32 s with loading; about 0.12 s a round per worker, not real time).
+The four Pure Data renders were uploaded, MD5 checked. Results downloaded with the MD5 of the server's file, in
+`artifacts/complete_test/20261125_jupyter_plan_modified`. Checked: `load_test` opens 488 rounds, and the SNR of rounds 1 and 200 rebuilt on the Mac agrees
+with the server's to 12 digits. Not checked: the Results windows on screen.
+
+**Conditions.** As entry 300 (same drones, speeds, starts, levels, backgrounds, detectors and thresholds) with three differences: digital mix (no speakers,
+room or microphones), 16 kHz from the mix directly, and the war soundscape is `WarSoundScape/WarSoundScape.wav`, where entry 300 used `artifacts/war_stems/mix.wav`.
+So the two do not isolate the room. No baselines (`comb`, `lgbm`) in the plan. Two of the four drones are ITU ARIS: finished models only are scored.
+
+| | it30 CRNN half s1 | it30.5 CRNN ir s0 |
+|---|---|---|
+| Recall, all 480 drone rounds | 0.200 | 0.216 |
+| False positive rate of the drone rounds' no-drone windows | 0.033 | 0.022 |
+| Drone rounds detected | 0.692 | 0.702 |
+| Drone rounds with a false alarm | 0.435 | 0.354 |
+| False positive rate, the 8 no-drone rounds | 0.038 | 0.034 |
+| Recall, drone1_2 (own clip) | 0.481 | 0.504 |
+| Recall, drone_2 (own clip) | 0.238 | 0.256 |
+| Recall, Steady_07 (ITU ARIS) | 0.076 | 0.099 |
+| Recall, Steady_10 (ITU ARIS) | 0.007 | 0.003 |
+| Recall, helicopter off / on (50 dB) | 0.261 / 0.140 | 0.286 / 0.145 |
+
+## 302 - The two 488-round results of entries 300 and 301 are versioned
+
+- Date: 2026-11-25
+- Type: Housekeeping (requested by Marius)
+- Commit: the commit that adds this entry, branch `test3-results-2026-11-25`
+
+`artifacts/complete_test/20261125_114710_live_reaper_automatic_combined` and `20261125_jupyter_plan_modified` (config.json, live.json, rounds.csv,
+scores.npz, window_snr.npz, layer_snr.npz, summary.csv) and `plan_modified.json` are added with `git add -f`; `artifacts/*` stays ignored. Not
+versioned: every WAV, so `heard/` (the recordings, some of them of ITU ARIS drones, test only) and the REAPER projects of the three parts stay on
+Marius's Mac. Nothing is scored again; no model, threshold or setting is changed.

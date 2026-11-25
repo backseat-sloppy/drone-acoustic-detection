@@ -6,7 +6,9 @@ PLAN.json is a plan saved with "Save plan..." in Complete_Test_Gui.py, or the co
 run (then its soundscape start is kept too). The rounds are dealt out round-robin to N worker processes;
 worker k sees only GPU k (CUDA_VISIBLE_DEVICES=k) and scores the networks there, while mixing and comb
 stay on its CPU. Worker k writes OUT/shard_k/; at the end the shards are merged into OUT/ (rounds.csv,
-scores.npz, summary.csv, config.json), which "Open results..." in the GUI opens like any other run.
+scores.npz, window_snr.npz, layer_snr.npz, summary.csv, config.json), which "Open results..." in the GUI opens like any other run.
+A live plan (automatic, virtual) is scored on its one continuous timeline, as live_test_engine plays it: each
+round's soundscape goes on from the round before (offset_s in live.json), but not in real time.
 --gpus defaults to every GPU torch sees; --gpus 0 runs one worker on the CPU.
 
 Drone files in the plan are found from their "data/" folder on (complete_test_engine.portable), so a
@@ -34,9 +36,22 @@ def load_plan(path) -> tuple[E.Plan, float | None]:
     return E.Plan(**d["plan"]), d.get("soundscape_start_s")
 
 
+LEAD_IN_S = 3.0                                             # live_test_engine's (not imported: sounddevice, no PortAudio here)
+
+
+class Continuous(E.Test):
+    """A live plan's rounds one after the other in the soundscape, as live_test_engine plays them."""
+
+    def offset(self, r: dict) -> float:
+        return self.start_s + LEAD_IN_S + (r["round"] - 1) * self.plan.length_s
+
+    def rebuild(self, r: dict) -> dict:
+        return E.mix_round(r, self.plan, self.layers_for(r), self.drones, self.offset(r))
+
+
 def worker(a):
     plan, start = load_plan(a.plan)
-    t = E.Test(plan, a.out / f"shard_{a.shard}", device=a.device)
+    t = (Continuous if plan.live else E.Test)(plan, a.out / f"shard_{a.shard}", device=a.device)
     if start is not None:
         t.start_s = start
     t.rounds = t.rounds[a.shard::a.of]
@@ -45,25 +60,32 @@ def worker(a):
 
 def merge(out: Path, n: int):
     shards = [out / f"shard_{k}" for k in range(n)]
-    rows, fields, scores = [], None, {}
+    rows, fields, npz = [], None, {f: {} for f in ("scores", "window_snr", "layer_snr")}
     for s in shards:
         with open(s / "rounds.csv", newline="", encoding="utf-8") as fh:
             r = csv.DictReader(fh)
             fields = r.fieldnames
             rows += list(r)
-        with np.load(s / "scores.npz") as d:
-            scores.update({k: d[k] for k in d.files})
+        for f, got in npz.items():
+            with np.load(s / f"{f}.npz") as d:
+                got.update({k: d[k] for k in d.files})
     rows.sort(key=lambda r: int(r["round"]))                # stable: detectors keep their order within a round
     with open(out / "rounds.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fields)
         w.writeheader()
         w.writerows(rows)
-    np.savez_compressed(out / "scores.npz", **scores)
+    for f, got in npz.items():
+        np.savez_compressed(out / f"{f}.npz", **got)
     (out / "config.json").write_bytes((shards[0] / "config.json").read_bytes())
     plan, start = load_plan(out / "config.json")
     t = E.Test(plan, out)
     t.start_s, t.results = start, E.read_results(out)
     E.write_summary(t)
+    if plan.live:                                            # where each round sits, for the GUI to rebuild it
+        c = Continuous(plan, out)
+        c.start_s = start
+        (out / "live.json").write_text(json.dumps(dict(source="virtual", trigger="automatic", lead_in_s=LEAD_IN_S,
+            stopped=False, rounds={str(r["round"]): dict(offset_s=c.offset(r)) for r in c.rounds}), indent=1), encoding="utf-8")
     want = len(plan.rounds())
     print(f"merged {n} shards: {len(t.results)} of {want} rounds -> {out}", flush=True)
     if len(t.results) != want:
@@ -84,6 +106,8 @@ def main():
 
     plan, _ = load_plan(a.plan)
     probs = plan.check()
+    if plan.live and (plan.live["source"], plan.live["trigger"]) != ("virtual", "automatic"):
+        probs.append("only an automatic, virtual live plan can be run here")
     if probs:
         raise SystemExit("\n".join(probs))
     if a.gpus is None:
