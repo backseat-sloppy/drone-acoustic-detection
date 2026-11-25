@@ -1938,6 +1938,7 @@ SPARE_COLORS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"
 SUMMARY_LAYERS = (("War soundscape summary", ("war soundscape",)), ("Wind summary", ("wind", "wind (Pd)")),
                   ("Car summary", ("cars",)), ("Helicopter summary", ("helicopter",)), ("Insect summary", ("insects",)))
 TOP_IN, HEAD_IN, ROW_IN, NOTE_IN = 0.7, 0.55, 3.1, 0.4       # heights on the Conclusions page, inches
+LINE_IN = 0.26                                               # one headline row at the top of the Conclusions page
 
 
 def parameter_values(test: E.Test) -> dict[str, list]:
@@ -2100,13 +2101,38 @@ def confidence_over_time(test: E.Test, det: str, scores: dict) -> dict[float, di
     return out
 
 
+def nodrone_mask(test: E.Test, rnd: int, det: str, n: int) -> np.ndarray:
+    """The hops of round `rnd`'s score grid (n long) that are no-drone windows for `det`: every hop of a
+    no-drone round; in a drone round the windows wholly before the drone's sound or wholly after its end
+    plus the buffer, labelled as score_round labels them (window_labels on the truth with the buffer, at
+    the detector's own window; windows straddling a start or an end are left out). Mads, 2026-11-24: the
+    false-alarm windows come from the drone rounds too, not only from the no-drone rounds."""
+    r = test.by_round[rnd]
+    if r["drone"] is None:
+        return np.ones(n, bool)
+    s0, s1, _ = test.drones.span[r["drone"]]
+    truth = E.with_buffer(E.Truth([dict(start_s=r["start_s"] + s0, end_s=r["start_s"] + s1)]), test.plan.buffer_after_s)
+    win = DEFAULT.window_seconds if det == "comb" else E.dwg.model_cfg(det).window_seconds
+    return E.window_labels(E.SimpleNamespace(t_end=E.grid_t_end(n)), truth, win) == 0
+
+
+def nodrone_scores(test: E.Test, det: str, scores: dict) -> list[np.ndarray]:
+    """`det`'s scores in every no-drone window of the run: all of each no-drone round, and the parts of each
+    drone round without the drone (nodrone_mask). Raw scores, NaN hops still in."""
+    out = []
+    for rnd in test.results:
+        s = scores.get(f"{rnd}|{det}")
+        if s is not None:
+            out.append(s[nodrone_mask(test, rnd, det, len(s))])
+    return out
+
+
 def fa_threshold(test: E.Test, det: str, scores: dict, pct: float) -> tuple[float | None, int]:
-    """Up to 100: the confidence that `pct` % of `det`'s windows in the no-drone rounds lie below (all
-    backgrounds together; each 1 s window one value, comb squashed as drawn elsewhere); 100 is the highest
-    one. Above 100: that highest one times pct / 100, so 101 is just above every no-drone window (a
-    threshold over 1 can never be reached). -> (threshold, windows)."""
-    vals = [scores[f"{rnd}|{det}"] for rnd in test.results
-            if test.by_round[rnd]["drone"] is None and f"{rnd}|{det}" in scores]
+    """Up to 100: the confidence that `pct` % of `det`'s no-drone windows lie below (the no-drone rounds
+    and the drone rounds' parts without the drone, all backgrounds together; each 1 s window one value,
+    comb squashed as drawn elsewhere); 100 is the highest one. Above 100: that highest one times pct / 100,
+    so 101 is just above every no-drone window (a threshold over 1 can never be reached). -> (threshold, windows)."""
+    vals = nodrone_scores(test, det, scores)
     if not vals:
         return None, 0
     v = np.concatenate(vals)
@@ -2159,6 +2185,52 @@ def curve_lead(curves: dict, rounds: list, thr: float) -> dict:
         if n * 2 >= len(rs) and tot / n >= thr:
             return dict(lead=k * hop, rounds=len(rs), k=k)
     return dict(lead=None, rounds=len(rs), k=None)
+
+
+def fa_events(test: E.Test, det: str, scores: dict, thr: float) -> dict:
+    """The false alarms at `thr` (a confidence; comb squashed): in each round, a run of consecutive no-drone
+    windows (nodrone_mask) at or above thr is one alarm, however many hops it lasts; a hop below thr or
+    outside the no-drone windows ends it. Counted for the no-drone rounds and for the drone rounds' parts
+    without the drone. -> group -> dict(alarms, above = windows at or above thr, windows, hours of no-drone
+    time = windows x hop)."""
+    hop = DEFAULT.samples_per_hop / E.SR
+    out = {g: dict(alarms=0, above=0, windows=0) for g in ("no-drone rounds", "drone rounds, outside the drone", "all")}
+    for rnd in test.results:
+        s = scores.get(f"{rnd}|{det}")
+        if s is None:
+            continue
+        y = E.dwg.squash(s, test.thr[det]) if det == "comb" else s
+        ok = nodrone_mask(test, rnd, det, len(y)) & np.isfinite(y)
+        a = ok & (np.nan_to_num(y, nan=-1.0) >= thr)
+        starts = int(np.sum(a & ~np.r_[False, a[:-1]]))
+        g = "no-drone rounds" if test.by_round[rnd]["drone"] is None else "drone rounds, outside the drone"
+        for k in (g, "all"):
+            out[k]["alarms"] += starts
+            out[k]["above"] += int(a.sum())
+            out[k]["windows"] += int(ok.sum())
+    for v in out.values():
+        v["hours"] = v["windows"] * hop / 3600
+    return out
+
+
+def round_leads(curves: dict, thr: float) -> dict[int, float | None]:
+    """Per drone round (round_curves), its own time before impact at thr: the earliest window at least half
+    drone and no later than impact whose confidence is at or above thr. None: never before impact."""
+    hop = DEFAULT.samples_per_hop / E.SR
+    out = {}
+    for rnd, (k, y, _) in curves.items():
+        hit = y >= thr
+        out[rnd] = float(k[hit].max() * hop) if hit.any() else None
+    return out
+
+
+def group_lead(curves: dict, rounds: list, thr: float) -> dict:
+    """The time before impact of a group of rounds, as the headline gives it (Mads, 2026-11-24; replaces
+    curve_lead in the false-alarm graphs): each round's own lead (round_leads), and the mean over the rounds
+    that detect. -> dict(lead = that mean or None if none detect, hit, rounds)."""
+    ld = round_leads({r: curves[r] for r in rounds if r in curves}, thr)
+    hit = [x for x in ld.values() if x is not None]
+    return dict(lead=float(np.mean(hit)) if hit else None, hit=len(hit), rounds=len(ld))
 
 
 SNR_BIN_DB = 2.0                                             # width of an SNR bin
@@ -2402,17 +2474,20 @@ class Conclusions(tk.Toplevel):
             s["curves"] = curves if s["title"] == "Speed summary" else {}
             s["cells"] = len(s["charts"]) + len(s["curves"])
             s["rows"] = (s["cells"] + 1) // 2
-        height = TOP_IN + sum(HEAD_IN + (s["rows"] * ROW_IN if s["cells"] else NOTE_IN) for s in secs)
+        head = self._headline([det])
+        top_in = TOP_IN + len(head) * LINE_IN + 0.1
+        height = top_in + sum(HEAD_IN + (s["rows"] * ROW_IN if s["cells"] else NOTE_IN) for s in secs)
         self.fig.clear()
         self.fig.set_size_inches(self.fig.get_figwidth(), height, forward=False)
         self.canvas.get_tk_widget().configure(height=int(height * self.fig.dpi))
+        self._draw_headline(head, height)
         name = det if det != "comb" else "DSP (comb)"
         self.fig.text(0.012, 1 - 0.28 / height, f"{name}: mean confidence on drone windows (true) and no-drone windows (false)",
                       fontsize=12, weight="bold", va="center")
         self.fig.text(0.012, 1 - 0.54 / height, ("THE FINAL EVALUATION, sealed car.  " if self.test.plan.final_evaluation else "")
                       + "Each bar or point pools every round at that value, over all the other settings.",
                       fontsize=9, color=MUTED, va="center")
-        lines, y = [], TOP_IN
+        lines, y = head[:], top_in
         for s in secs:
             top = 1 - y / height
             self.fig.add_artist(Line2D([0.012, 0.988], [top, top], color="#c9ced6", lw=1, transform=self.fig.transFigure))
@@ -2539,11 +2614,11 @@ class Conclusions(tk.Toplevel):
         return SPARE_COLORS[self.test.plan.detectors.index(det) % len(SPARE_COLORS)]
 
     def _nodrone_windows(self) -> int:
-        """Windows in the no-drone rounds (the first detector's): what the false-alarm threshold is taken from."""
+        """No-drone windows (the first detector's; no-drone rounds and the drone rounds' parts without the
+        drone): what the false-alarm threshold is taken from."""
         t = self.test
         det = t.plan.detectors[0] if t.plan.detectors else None
-        return int(sum(np.sum(~np.isnan(self.scores[f"{r}|{det}"])) for r in t.results
-                       if t.by_round[r]["drone"] is None and f"{r}|{det}" in self.scores))
+        return int(sum(np.sum(~np.isnan(v)) for v in nodrone_scores(t, det, self.scores))) if det else 0
 
     def _sync_fa_hours(self) -> None:
         """The hours box and the note from the % box: the rate it means, and whether this run can resolve it."""
@@ -2582,6 +2657,50 @@ class Conclusions(tk.Toplevel):
         self._sync_fa_hours()
         self.draw()
 
+    def _headline(self, dets: list) -> list[str]:
+        """The report at the top of the page (Mads, 2026-11-24): per detector, at its own false-alarm threshold
+        (fa_threshold from the % box), how many false alarms there were (fa_events: separate alarms in every
+        no-drone window) and its average detection before impact (round_leads: each drone round's earliest
+        window at or above the threshold, at least half drone and no later than impact; the mean over the
+        rounds that detect, with how many never did)."""
+        t = self.test
+        try:
+            pct = fa_pct(self.v_fa.get())
+        except ValueError as e:
+            return [str(e)]
+        if not self.scores:
+            return ["scores.npz is missing from the run folder: no false alarms to count."]
+        if not self._nodrone_windows():
+            return ["No no-drone windows in this run: no false-alarm threshold, so no count."]
+        modified = t.plan.kind == "modified" and t.drones is not None
+        out = []
+        for d in dets:
+            thr, _ = fa_threshold(t, d, self.scores, pct)
+            name = d if d != "comb" else "DSP (comb)"
+            if thr is None:
+                out.append(f"{name}: no no-drone windows, no threshold.")
+                continue
+            ev = fa_events(t, d, self.scores, thr)["all"]
+            s = (f"{name}: {ev['alarms']} false alarm{'s' * (ev['alarms'] != 1)} "
+                 f"({60 * ev['hours']:.1f} min without drone)")
+            if modified:
+                ld = list(round_leads(round_curves(t, d, self.scores), thr).values())
+                hit = [x for x in ld if x is not None]
+                s += (f"  ·  average detection {np.mean(hit):.1f} s before impact ({len(hit)} of {len(ld)} rounds"
+                      f"{'' if len(hit) == len(ld) else f'; {len(ld) - len(hit)} never'})"
+                      if hit else f"  ·  never detected before impact ({len(ld)} rounds)")
+            out.append(s + f"  ·  threshold {100 * thr:.1f} %")
+        out.append(f"Each detector at its own threshold from the {pct:g} % false-alarm setting. A false alarm = consecutive "
+                   "no-drone windows above it, counted once (no-drone rounds and the drone rounds outside the drone and its buffer).")
+        return out
+
+    def _draw_headline(self, rows: list[str], height: float) -> None:
+        """The headline rows under the page title, from TOP_IN down: one bold row per detector, a muted note last."""
+        for i, row in enumerate(rows):
+            last = i == len(rows) - 1 and len(rows) > 1
+            self.fig.text(0.012, 1 - (TOP_IN + 0.12 + i * LINE_IN) / height, row, va="center",
+                          fontsize=8 if last else 10.5, weight="normal" if last else "bold", color=MUTED if last else "#202124")
+
     def _fa_section(self, dets: list) -> dict:
         """The top section: from the false-alarm % (front page, or the box here), each detector's threshold =
         that percentile of its no-drone windows, then the time before impact at that threshold for all
@@ -2593,11 +2712,12 @@ class Conclusions(tk.Toplevel):
             return dict(title=title, cells=0, note=str(e), fa=None)
         if t.plan.kind != "modified":
             return dict(title=title, cells=0, note="Time before impact needs a modified drone test: only it has an impact.", fa=None)
-        if not any(t.by_round[r]["drone"] is None for r in t.results):
-            return dict(title=title, cells=0, fa=None,
-                        note="No no-drone rounds in this run: tick \"add one no-drone round per background\" to get a threshold.")
         if not self.scores:
             return dict(title=title, cells=0, note="scores.npz is missing from the run folder.", fa=None)
+        if not self._nodrone_windows():
+            return dict(title=title, cells=0, fa=None,
+                        note="No no-drone windows in this run (no no-drone rounds, and no drone round with time "
+                             "outside the drone and its buffer): no threshold.")
         per = {}
         for d in dets:
             thr, nwin = fa_threshold(t, d, self.scores, pct)
@@ -2634,7 +2754,7 @@ class Conclusions(tk.Toplevel):
             pct = fa_pct(self.v_fa.get())
         except ValueError:
             pct = None
-        has_nd = any(t.by_round[r]["drone"] is None for r in t.results)
+        has_nd = self._nodrone_windows() > 0
         per = {}
         for d in dets:
             thr, how = None, ""
@@ -2735,22 +2855,23 @@ class Conclusions(tk.Toplevel):
                    f"{pct:g} % of the highest of its {p['nwin']} no-drone windows: above every one"
                    + ("; over 100 % confidence, so never reached" if p["thr"] > 1 else ""))
             lines.append(f"False alarms {pct:g} % · {d}: threshold {100 * p['thr']:.1f} % confidence ({how})")
-            meds = []
+            meds, tags = [], []
             for g, rnds in fa["groups"]:
-                s = curve_lead(p["curves"], rnds, p["thr"])
-                meds.append(0.0 if s["rounds"] and s["lead"] is None else s["lead"])
+                s = group_lead(p["curves"], rnds, p["thr"])
+                meds.append(None if not s["rounds"] else 0.0 if s["lead"] is None else s["lead"])
+                tags.append(f"{s['hit']}/{s['rounds']}")
                 if s["rounds"]:
-                    lines.append(f"    {g}: the mean confidence of its {s['rounds']} rounds first reaches the threshold "
-                                 + ("never before impact (0 s)" if s["lead"] is None else f"{s['lead']:.2f} s before impact"))
+                    lines.append(f"    {g}: {s['hit']} of its {s['rounds']} rounds detected before impact"
+                                 + ("" if s["lead"] is None else f", on average {s['lead']:.2f} s before impact"))
             xs = np.arange(len(names)) + (j - (len(dets) - 1) / 2) * w
             ax.bar(xs, [0 if m is None else m for m in meds], w * 0.9, color=col(d),
                    label=f"{d}: threshold {100 * p['thr']:.0f} %")
-            for x, m in zip(xs, meds):
+            for x, m, tag in zip(xs, meds, tags):
                 if m is not None:
-                    ax.text(x, m + 0.15, f"{m:.1f}", ha="center", fontsize=7)
+                    ax.text(x, m + 0.15, f"{m:.1f}\n{tag}", ha="center", fontsize=6.5)
         ax.set_xticks(range(len(names)), names, fontsize=8)
         ax.set(ylim=(0, E.DRONE_S + 1), ylabel="seconds before impact")
-        ax.set_title(f"when the mean confidence first reaches the {pct:g} % false-alarm threshold (s before impact)",
+        ax.set_title(f"avg detection before impact, {pct:g} % threshold (detected/all)",
                      fontsize=10, loc="left", weight="bold")
         ax.axhline(3, color="#888", ls="--", lw=1)
         ax.grid(axis="y", color="#e8e8e8", lw=0.5)
@@ -2770,7 +2891,7 @@ class Conclusions(tk.Toplevel):
                     by.setdefault(setting(t.by_round[rnd], key), []).append(rnd)
 
                 def lead(v):
-                    s = curve_lead(p["curves"], by.get(v, []), p["thr"])
+                    s = group_lead(p["curves"], by.get(v, []), p["thr"])
                     return None if not s["rounds"] else 0.0 if s["lead"] is None else s["lead"]
                 mean = [lead(v) for v in nums]
                 ax.plot(xs, [np.nan if m is None else m for m in mean], "-o", color=col(d), lw=2, ms=4, label=d)
@@ -2783,7 +2904,7 @@ class Conclusions(tk.Toplevel):
                 ax.set_xticks(xs, [v if len(v) <= 14 else v[:13] + "~" for v in map(str, nums)], rotation=20, fontsize=8)
             ax.set(ylim=(0, E.DRONE_S + 1), ylabel="seconds before impact")
             ax.set_xlabel(label + ("; dotted = layer off" if "off" in vals else ""))
-            ax.set_title(f"{label}: time before impact at the threshold", fontsize=10, loc="left", weight="bold")
+            ax.set_title(f"{label}: avg detection before impact", fontsize=10, loc="left", weight="bold")
             ax.axhline(3, color="#888", ls="--", lw=1)
             ax.grid(color="#e8e8e8", lw=0.5)
             if len(dets) > 1 and ax is axes[1]:
@@ -2828,15 +2949,18 @@ class Conclusions(tk.Toplevel):
                      note="No drone round with a background layer: no drone-vs-distractor SNR to measure.")]
         for s in secs:
             s["rows"] = (s["cells"] + 1) // 2
-        height = TOP_IN + sum(HEAD_IN + (s["rows"] * ROW_IN if s["cells"] else NOTE_IN) for s in secs)
+        head = self._headline(dets)
+        top_in = TOP_IN + len(head) * LINE_IN + 0.1
+        height = top_in + sum(HEAD_IN + (s["rows"] * ROW_IN if s["cells"] else NOTE_IN) for s in secs)
         self.fig.clear()
         self.fig.set_size_inches(self.fig.get_figwidth(), height, forward=False)
         self.canvas.get_tk_widget().configure(height=int(height * self.fig.dpi))
+        self._draw_headline(head, height)
         self.fig.text(0.012, 1 - 0.28 / height, "Comparison: " + ", ".join(d if d != "comb" else "DSP (comb)" for d in dets),
                       fontsize=12, weight="bold", va="center")
         self.fig.text(0.012, 1 - 0.54 / height, ("THE FINAL EVALUATION, sealed car.  " if t.plan.final_evaluation else "")
                       + "Each point pools every round at that value, over all the other settings.", fontsize=9, color=MUTED, va="center")
-        lines, y, axes_of = [], TOP_IN, []
+        lines, y, axes_of = head[:], top_in, []
         for s in secs:
             top = 1 - y / height
             self.fig.add_artist(Line2D([0.012, 0.988], [top, top], color="#c9ced6", lw=1, transform=self.fig.transFigure))

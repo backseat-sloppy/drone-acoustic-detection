@@ -18462,3 +18462,333 @@ Marius keeps both microphones as one (channel box `8,9`, entry 289) for the test
 quieter than one mic in playback and about 6 dB at 1-4 kHz, and the networks trained on one microphone at a time. Claude's
 recommendation was one microphone. Results taken this way carry "Mic 9 + Mic 10 averaged" as a condition and are not compared
 directly with one-mic runs. `scripts/record_mics.py` beside a run keeps both raw, so one mic can be scored afterwards.
+## 271 - Complete test 20261123_133846_modified: it30 CRNN beats it22 PCEN CRNN on hits and on false alarms, with or without a threshold
+
+- Date: 2026-11-23
+- Type: Evaluation (a check asked for by Nicolai)
+- Commit: on `master` at 8697a6e; uncommitted
+
+**Why.** Nicolai reported that Mads had been told that `it22 CRNN pcen s1` is the best model when false alarms are weighed against true positives, and asked whether that holds in the run `artifacts/complete_test/20261123_133846_modified`. The claim cannot be found in this report, and the conversation it came from was not available to check.
+
+**The run** (from its `config.json`, a modified-drone Complete test, not a final evaluation): two drone clips (`drone1_2_Audio_2_raw_00m14-00m24.wav`, `drone_2_Audio_2_raw_0127-0137.wav`) at 80 dB, at 50, 100 and 150 km/h, with Doppler and a ground reflection; war soundscape at 60 dB, wind (Pd) at 25 or 50 dB or off, one car at 5 dB or off; 20 s rounds, 11 starts; 396 drone rounds and 6 no-drone rounds per detector. 1 s windows, 0.125 s hop, a 1 s buffer after impact counted as drone. Each detector at its own threshold from the 95th percentile of the no-drone rounds: it22 0.647, it30 0.465. Windows: 28,836 drone, 27,114 no drone (about 52/48). The baselines `comb` and `lgbm` were not in this run, so they cannot be reported next to the two networks here.
+
+**Result 1: at the run's thresholds** (`summary.csv`, written by the GUI):
+
+| | it22 CRNN pcen s1 | it30 CRNN half s1 |
+|---|---|---|
+| Recall, drone windows | 0.288 | 0.564 |
+| False-positive rate, windows in drone rounds | 0.0175 | 0.0057 |
+| Drone rounds with any false alarm | 47.5 % | 14.9 % |
+| False-positive rate, no-drone rounds | 0.038 (all 6 rounds) | 0.0 (no round) |
+| Delay to first alarm | 3.89 s | 2.11 s |
+| Mean confidence, drone / no drone | 0.428 / 0.165 | 0.547 / 0.060 |
+
+**Result 2: without a threshold.** The two thresholds differ, so the per-window scores in `scores.npz` were relabelled with the engine's own `window_labels` and `with_buffer` truth, and a ROC was taken over all windows of all 402 rounds (windows left out at the ends excluded). The relabelling reproduces every round's tp and fp in `rounds.csv` (0 mismatches).
+```
+uv run python artifacts/complete_test/20261123_133846_modified_analysis/roc_check.py artifacts/complete_test/20261123_133846_modified
+```
+| | AUC | Recall at FPR 0.1 % | at 1 % | at 5 % |
+|---|---|---|---|---|
+| it22 CRNN pcen s1 | 0.773 | 0.100 | 0.221 | 0.399 |
+| it30 CRNN half s1 | 0.846 | 0.259 | 0.624 | 0.685 |
+
+The script and its output are saved in `artifacts/complete_test/20261123_133846_modified_analysis/`.
+
+**Where it22 loses.** Its false alarms come from wind: with wind at 50 dB its false-positive rate is 0.044 and 88 % of rounds have a false alarm, against 0.004 and 27 % with wind at 25 dB or off. it30 stays at 0.004-0.006 in all three wind settings. This is the weakness found when iteration 22 was judged (entry 213: PCEN networks gave 37-50 % confidence on wind alone), the reason that iteration failed.
+
+**Assessment.** In this run the claim does not hold: it30 CRNN half s1 finds more drone windows at every false-alarm level and raises fewer false alarms at its threshold. One run, two development drone clips, one seed per model, synthetic wind and car layers: this compares the two models under these conditions, not their detection performance in general. No model, split, threshold or design choice is changed by this entry.
+
+## 272 - Review of every Complete_Test run: few fair head-to-heads, and where the "it22 is best" reading likely came from
+
+- Date: 2026-11-23
+- Type: Evaluation (review asked for by Nicolai)
+- Commit: on `master` at 8697a6e; uncommitted
+
+**How.** Every run under `artifacts/complete_test/2026*` with a `summary.csv` was read (235 runs: 76 real, 65 modified, 2 synthetic, 92 live). For modified runs with `drone_spans` and `scores.npz`, the window scores were relabelled as in entry 271, giving a threshold-free window AUC and the mean confidence 3-7 s before impact (the test 2 figure of REQUIREMENTS.md). Models were then compared only inside the same run, where they heard the same audio.
+```
+uv run python artifacts/complete_test/all_runs_review_20261123/allruns.py artifacts/complete_test/all_runs_review_20261123/allruns.json
+uv run python artifacts/complete_test/all_runs_review_20261123/table.py artifacts/complete_test/all_runs_review_20261123/allruns.json
+```
+Outputs: `head_to_head.txt` and `per_run_table.txt` in the same folder.
+
+**What the runs hold.** Detector appearances: it9 CRNN 162, it19 CRNN colour s1 85, comb 57, it16 600k s1 39, it6 CNN 20, it25 15, it23 relabel 600k 9, it22 pcen s1 5, it30 half s1 5, others 1-7. `lgbm` appears in none. Most runs are single-detector, with 1-30 no-drone rounds, and the conditions vary from run to run (AUC 0.60-1.00 for the same model), so numbers across runs cannot be compared.
+
+**Head-to-heads inside a run** (A beats B in w of n runs, n small):
+- it19 colour s1 vs it9: AUC 5/5, lower no-drone confidence 8/8; it9 has the higher recall 6/8 and drone confidence about equal. it19 separates better.
+- it19 vs it16 600k s1: drone confidence 7/7, 3-7 s confidence 6/6; it16 is quieter without a drone 6/7; AUC 3/6.
+- it9 vs comb: drone confidence 12/12 (comb's squashed confidence is near 0).
+- it30 half: compared only against its own seeds and it22 s1 (entry 271). **No run puts it30 or it25 next to it9 or it19.**
+
+**it22 pcen.** In every run that holds it, its confidence without a drone is the highest (0.14-0.18, against 0.02-0.06 for the others). In run 20261112_102524 (drone_2 at 100 km/h, war 60 dB, wind 20-50 dB) it22 s0-s2 gave drone confidence 0.40-0.42, recall 0.28-0.31 and 3-7 s confidence 0.23-0.27. Run 20261112_103320 has the same plan (except `buffer_after_s`, 0 there, absent before; random pitch may differ) with it16 and it19: drone confidence 0.20-0.22, recall 0.15-0.17, 3-7 s confidence 0.04-0.07. By drone confidence and recall, it22 looks about twice as good there, which is probably where the claim of entry 271 came from. Without a threshold it is not: AUC 0.74-0.75 for it22 against 0.79 for it19 (0.70 for it16), and it22 has a false-positive rate of 0.5-1.2 % where the others have 0. it22 is louder overall, with and without a drone.
+
+**Assessment.**
+- REQUIREMENTS.md ranks models by confidence with a drone first. Read alone, that rewards a model whose confidence is higher everywhere, as it22's is. Drone confidence should always be read next to no-drone confidence or a threshold-free measure (AUC, or recall at a fixed false-alarm rate). This is raised for Mads and Nicolai; the requirement is not changed.
+- The archive cannot rank the current candidates against each other: it30 and it25 have never been run next to it9 or it19, and `comb` and `lgbm` are missing from almost every recent run. A fair comparison needs one plan run with all candidates and both baselines, with more no-drone rounds.
+- The "real" runs score ITU ARIS. Reading them here is scoring finished models; if they are used to choose the deployed model, that choice is made on the test set and must be reported as such.
+
+## 273 - Complete test 20261123_140959_modified: it30 half s1 against it19 colour s1 on the same audio
+
+- Date: 2026-11-23
+- Type: Evaluation (test run by Nicolai; analysis asked for by him)
+- Commit: on `master` at 8697a6e; uncommitted
+
+**Why.** Entry 272 found that it30 had never been run next to it19 or it9. Nicolai ran the two candidates on one plan.
+
+**The run** (`config.json`): the plan of entry 271 with a helicopter layer added. Two drone clips at 80 dB, at 50, 100 and 150 km/h, Doppler, ground reflection; war soundscape 60 dB; wind (Pd) 25 or 50 dB or off; one car 5 dB or off; helicopter 50 dB or off. 20 s rounds, 11 starts, 792 drone rounds and 12 no-drone rounds per detector. 1 s window, 0.125 s hop, 1 s buffer after impact. Thresholds at the 95th percentile of the no-drone rounds: it19 0.612, it30 0.465. Windows: 57,672 drone, 54,228 no drone. `comb` and `lgbm` were not in the run. Check: the helicopter-off half reproduces entry 271's it30 numbers exactly (recall 0.5635, AUC 0.846).
+
+**At the run's thresholds** (`summary.csv`):
+
+| | it19 colour s1 | it30 half s1 |
+|---|---|---|
+| Recall | 0.109 | 0.469 |
+| False-positive rate, drone rounds / no-drone rounds | 0.0 / 0.0 | 0.0041 / 0.0011 |
+| Drone rounds with any false alarm | 0 % | 15.0 % (32 % at wind 50 dB) |
+| Delay to first alarm | 6.30 s | 3.57 s |
+| Mean confidence, drone / no drone | 0.243 / 0.055 | 0.462 / 0.052 |
+
+**Without a threshold** (relabelled windows as in entry 271, 0 mismatches against `rounds.csv`):
+```
+uv run python artifacts/complete_test/20261123_140959_modified_analysis/breakdown.py artifacts/complete_test/20261123_140959_modified
+```
+| Condition | Model | AUC | Recall at FPR 0.1 % / 1 % / 5 % | Confidence 3-7 s before impact | Mean confidence, no-drone windows |
+|---|---|---|---|---|---|
+| all | it19 | 0.791 | 0.120 / 0.176 / 0.383 | 0.178 | 0.055 |
+| all | it30 | 0.785 | 0.338 / 0.519 / 0.587 | 0.374 | 0.051 |
+| helicopter off | it19 | 0.823 | 0.164 / 0.343 / 0.544 | 0.120 | 0.024 |
+| helicopter off | it30 | 0.846 | 0.259 / 0.624 / 0.685 | 0.507 | 0.059 |
+| helicopter 50 dB | it19 | 0.791 | 0.165 / 0.199 / 0.324 | 0.235 | 0.087 |
+| helicopter 50 dB | it30 | 0.726 | 0.353 / 0.418 / 0.491 | 0.241 | 0.043 |
+| wind 50 dB | it19 | 0.768 | 0.153 / 0.217 / 0.413 | 0.137 | 0.053 |
+| wind 50 dB | it30 | 0.763 | 0.476 / 0.545 / 0.598 | 0.411 | 0.084 |
+
+The car layer changes nothing for either model (rows equal to the third decimal). Outputs are in `artifacts/complete_test/20261123_140959_modified_analysis/`.
+
+**Reading.**
+- At every false-alarm rate up to 5 %, and in every condition, it30 finds more drone windows: about three times as many at 1 % overall (0.52 against 0.18). Its confidence 3-7 s before impact (the test 2 figure) is twice it19's overall.
+- The overall AUCs are equal (0.79). it19's AUC is earned at false-alarm rates above 5 %, which no detector would run at. AUC alone would have called this a tie.
+- it19 at its own threshold is very cautious: no false alarms, but recall 0.11 and a first alarm 6.3 s after onset.
+- **it30's weak spot is the helicopter.** With a 50 dB helicopter its AUC falls from 0.846 to 0.726 and its 3-7 s confidence from 0.51 to 0.24. Its no-drone confidence does not rise (0.043): the helicopter masks the drone for it30 rather than being taken for one. it19 does the opposite: drone and no-drone confidence both rise with the helicopter (no-drone 0.024 to 0.087), and its ranking holds.
+- Wind at 50 dB gives it30 its false alarms (32 % of rounds).
+
+**Assessment.** On this test, it30 half s1 is the better of the two under the requirements' ranking. It has higher confidence with a drone, the same no-drone confidence, and more hits at any usable false-alarm rate. The helicopter is where it30 loses most; it is the next thing to look at. Limits: one run, two development drone clips, one seed each, synthetic layers, no `comb` or `lgbm`. No model, threshold or design choice is changed by this entry.
+
+## 274 - Complete test Conclusions: the false-alarm threshold also uses the drone rounds' parts without the drone
+
+- Date: 2026-11-24
+- Type: Bug fix (evaluation display; asked for by Mads)
+- Commit: on `master` at 8697a6e; uncommitted
+
+**Why.** In a run without no-drone rounds, the Conclusions page showed nothing in its top section ("False alarms: the threshold, and the time before impact at it"). Mads noticed after turning off "add one no-drone round per background". The 95 % (or other) false-alarm threshold came only from the no-drone rounds. The drone rounds also hold no-drone time before the drone's sound and after its end plus buffer, and that time was ignored. With the box ticked, part of the evidence was thrown away; with it unticked, there was no threshold at all. The SNR section's detection graph fell back to each detector's own threshold for the same reason.
+
+**Change** (`scripts/Complete_Test_Gui.py`):
+- New `nodrone_mask(test, round, detector, n)`: the score-grid hops that are no-drone windows. That is every hop in a no-drone round. In a drone round it is each window wholly before the drone's sound or wholly after its end plus `buffer_after_s`, at the detector's own window (1 s, or 2 s). This is the same rule `score_round` uses for its labels (`window_labels` on `with_buffer(truth)`), so windows that straddle a start or end are left out. Truth comes from `test.drones.span`; no audio is rebuilt.
+- `fa_threshold`, the window count beside the false-alarm box and the SNR section now use every no-drone window of the run. The top section now needs at least one no-drone window, not at least one no-drone round.
+- Earlier runs: the threshold is computed from `scores.npz` each time Conclusions opens, so every old run gets the new threshold on its next opening. No file is rewritten. Numbers already in the report (thresholds read from older Conclusions pages, such as entries 271 and 273) were taken from no-drone rounds only. Opening those runs now gives a different threshold. `Complete_Test_Gui22k.py` is not changed.
+- Unchanged: the mean no-drone confidence, the false-positive rates in `rounds.csv` and the distractor SNR graphs already counted the drone rounds' no-drone windows (the engine labels every round).
+
+**Check** (scratchpad `fa_drone_rounds_check.py`): a small modified plan with an X500 3 m clip at 80 dB and 100 km/h, war soundscape 60 dB, 16 s rounds, 3 starts, 1 s buffer, it9 CRNN and comb. It was run once without and once with no-drone rounds.
+- In every round and for both detectors, the mask's window count equals the engine's `fp + tn` from `rounds.csv` (0 mismatches in both runs).
+- Without no-drone rounds: 100 no-drone windows; 95 % threshold it9 CRNN 0.049, comb 0.970. The top section and the SNR section draw.
+- With no-drone rounds: 221 windows (the 100 plus 121 from the no-drone round); it9 CRNN 0.069, comb 0.961.
+
+These are check numbers on 3 rounds of one development clip, not detection performance.
+
+## 275 - Complete test Conclusions: how many false alarms at the threshold, and each round's time before impact
+
+- Date: 2026-11-24
+- Type: Evaluation display (asked for by Mads)
+- Commit: on `master` at 8697a6e; uncommitted
+
+**Why.** Mads wants a section showing how many false alarms there were at the calculated false-alarm threshold, and the time before impact at that threshold. The top section (entry 274) gives only the threshold and the moment the *mean* confidence curve of a group of rounds reaches it. It does not count false alarms or show how individual rounds spread.
+
+**Change** (`scripts/Complete_Test_Gui.py`). A new section, "At the false-alarm threshold: how many false alarms, and each round's time before impact", directly under the threshold section. It appears in both the single-detector view and the comparison view.
+- `fa_events`: at each detector's threshold from `fa_threshold` (the % or "1 per hours" box), a false alarm is a run of consecutive no-drone windows at or above the threshold. It is counted once however many hops it lasts, the same "separate alarms" idea as the Live page's table. A window below the threshold, or the drone with its buffer, ends it. No-drone windows come from `nodrone_mask` (entry 274). Counts are given for the no-drone rounds, for the drone rounds outside the drone, and for both together. Each count is also given as alarms per hour of no-drone time (windows x 0.125 s hop) and as the share of windows at or above the threshold.
+- `round_leads`: each drone round's own time before impact at the threshold. This is the earliest window that is at least half drone, no later than impact, and at or above the threshold (the same windows as `round_curves`). The graph shows, per detector, the share of drone rounds whose first alarm comes at least x s before impact, with a mark at 3 s. Only modified tests have an impact; other kinds get the count graph only.
+- The text under the page gives each count, its rate, the share of rounds alarming 3 s or more before impact, the share never alarming before impact, and median times.
+- Earlier runs get the section on their next opening; it is computed from `scores.npz`.
+
+**Check** (scratchpad `fa_count_check.py`): a small modified plan with an X500 3 m clip at 80 dB, 100 and 150 km/h, war soundscape 60 dB, helicopter 50 dB or off, no-drone rounds, 16 s rounds, 1 s buffer, it9 CRNN and comb; 16 drone rounds.
+- `fa_events` equals a plain hop-by-hop count of rising edges: 20 for both detectors at their 95 % thresholds (it9 CRNN 0.097, comb 0.955).
+- `round_leads` equals a direct scan for round 1: 7.375 s for it9 CRNN, never for comb.
+- Both views draw.
+
+At a 95 % threshold, 5.6 % (it9 CRNN) and 5.4 % (comb) of no-drone windows are at or above it rather than exactly 5 %, because tied and interpolated percentile values sit on the threshold. These are check numbers on one development clip, not detection performance.
+
+## 276 - Complete test Conclusions: a headline report at the top replaces entry 275's graph section
+
+- Date: 2026-11-24
+- Type: Evaluation display (asked for by Mads; corrects entry 275)
+- Commit: on `master` at 8697a6e; uncommitted
+
+**Why.** Entry 275's section (two graphs: false-alarm counts and the share of rounds alarmed x s before impact) was not what Mads asked for. He wants a plain report at the top of the page: "There have been X false alarms and the average detection before impact is Y", each detector at its own calculated threshold.
+
+**Change** (`scripts/Complete_Test_Gui.py`):
+- Entry 275's section and its methods (`_count_section`, `_draw_count`) are removed. Its helpers `fa_events` and `round_leads` stay, because the headline uses them.
+- New `_headline` / `_draw_headline`: under the page title there is one bold row per detector. A row in the single-detector view reads, for example: "it9 CRNN: 20 false alarms (1.6 min without drone) · average detection 8.2 s before impact (16 of 16 rounds) · threshold 9.7 %". The comparison view has one row per detector.
+  - The threshold is the detector's own threshold from the false-alarm % box (`fa_threshold`, entry 274).
+  - X is the number of separate false alarms in every no-drone window (`fa_events`, entry 275): consecutive windows at or above the threshold count once. The windows come from the no-drone rounds and from the drone rounds outside the drone and its buffer.
+  - Y is the mean, over the drone rounds that detect, of each round's earliest window at or above the threshold that is at least half drone and no later than impact (`round_leads`). The row gives how many rounds that is and how many never detected before impact. Y appears only in modified tests (the only kind with an impact).
+  - A muted line under the rows states these definitions.
+- The same rows are at the top of the text under the page. The page grows by one row height per row, so nothing below moves into it.
+
+**Check** (scratchpad `fa_count_check.py`, the run of entry 275). Headline rows:
+- it9 CRNN: 20 false alarms, average detection 8.2 s before impact (16 of 16 rounds), threshold 9.7 %.
+- comb: 20 false alarms, 1.9 s (2 of 16 rounds; 14 never), threshold 95.5 %.
+
+The counts equal the plain hop-by-hop count, and the per-round lead equals a direct scan (entry 275). Both views were drawn and inspected; the rows fit the page width. These are check numbers on one development clip, not detection performance.
+
+## 277 - Run 20261124_095238_modified: thresholds from a false-alarm-rate target instead of the 95 % percentile
+
+- Date: 2026-11-24
+- Type: Evaluation (analysis asked for by Mads; no code or setting changed)
+- Commit: on `master` at 8697a6e; uncommitted
+
+**Why.** At the Conclusions page's default 95 % setting, the headline (entry 276) showed over a thousand false alarms per hour for it30. That follows from the definition: 95 % leaves 5 % of no-drone windows above the threshold, and at a 0.125 s hop that is 1,440 windows an hour. Mads asked for thresholds based on a target number of false alarms instead.
+
+**Sealed data left out.** Two of the run's four drone clips are `data/extracted/steady_peek/Steady_07.wav` and `Steady_10.wav` (ITU ARIS, test only; CLAUDE.md section 5). Their 240 rounds are left out of everything here, so no threshold is chosen with them and no number below comes from them. The other two clips are `drone1_2_Audio_2_raw_00m14-00m24.wav` and `drone_2_Audio_2_raw_0127-0137.wav` from `Downloads/aup3_wav`. Their provenance is not recorded in `docs/datasets.md`; not checked.
+
+**Method** (scratchpad `fa_targets.py`, on `scores.npz`). The run has no no-drone rounds, so the no-drone windows are the drone rounds' parts outside the drone and its 1 s buffer (entry 274): 33.1 min, 15,888 windows per detector. For each target rate, the threshold is the lowest one whose separate false alarms (`fa_events`, entry 275) per hour of no-drone audio are at most the target, found by bisection over the observed no-drone confidences. Average detection is `round_leads` (entry 276) over the 240 kept drone rounds.
+
+| Detector | Threshold rule | Threshold | False alarms (per hour) | Average detection before impact | Rounds detected |
+|---|---|---|---|---|---|
+| it9 CRNN | 95 % percentile (default) | 15.7 % | 341 (618) | 5.3 s | 232/240 |
+| it9 CRNN | own frozen threshold | 48.3 % | 0 (0) | 2.4 s | 140/240 |
+| it9 CRNN | at most 1 per minute | 27.2 % | 20 (36) | 3.3 s | 200/240 |
+| it9 CRNN | at most 1 per 10 min / per hour | 27.3 % | 0 (0) | 3.2 s | 200/240 |
+| it23 relabel colour s1 | 95 % percentile | 15.3 % | 250 (453) | 4.9 s | 240/240 |
+| it23 relabel colour s1 | own frozen threshold | 69.4 % | 0 (0) | 1.2 s | 72/240 |
+| it23 relabel colour s1 | at most 1 per minute | 37.8 % | 30 (54) | 2.5 s | 196/240 |
+| it23 relabel colour s1 | at most 1 per 10 min / per hour | 39.5 % | 0 (0) | 2.2 s | 196/240 |
+| it30 half s1 | 95 % percentile | 19.1 % | 624 (1131) | 6.3 s | 240/240 |
+| it30 half s1 | own frozen threshold | 46.5 % | 73 (132) | 4.8 s | 240/240 |
+| it30 half s1 | at most 1 per minute | 57.3 % | 18 (33) | 4.3 s | 240/240 |
+| it30 half s1 | at most 1 per 10 min | 74.9 % | 3 (5) | 3.7 s | 236/240 |
+| it30 half s1 | at most 1 per hour | 83.9 % | 0 (0) | 3.4 s | 234/240 |
+
+**Reading.**
+- A rate target gives far fewer false alarms than 95 %, at a cost of 1-3 s of warning. it30 at "at most 1 per hour" still detects 234 of 240 rounds, on average 3.4 s before impact. That is the best trade-off of the three models here.
+- At their own frozen thresholds, it9 and it23 have no false alarms but miss many rounds (58 % and 30 % detected). it30's frozen threshold gives 132 false alarms per hour on this background.
+- **Limit: the no-drone audio is not independent.** For it9 and it23 the count drops from 20 or 30 straight to 0 with a threshold change of under 2 points. That fits a few background moments (the same soundscape segments at different round starts) repeated across many rounds. So 33 minutes here is worth much less than 33 minutes of fresh audio. Not verified. "1 per hour" cannot really be measured from 33 minutes either; there it means "above every no-drone window of this run".
+- These thresholds are chosen on this run's own no-drone windows and scored on the same run, so the detection numbers are optimistic. A threshold for use belongs on the validation split, with hours of independent no-drone audio. No model, threshold or setting is changed by this entry.
+
+## 278 - Every complete-test run: which model warns earliest at no more than 1 false alarm per hour
+
+- Date: 2026-11-24
+- Type: Evaluation (analysis asked for by Mads; no code or setting changed)
+- Commit: on `master` at 8697a6e; uncommitted
+
+**Question.** Across all runs in `artifacts/complete_test`, which model gives the most time before impact when each model's threshold is set to at most 1 false alarm per hour?
+
+**Method** (scratchpad `all_runs_1perh.py`, then `compare_1perh.py`). Every modified run with `scores.npz` was read without `prepare()`, so no `config.json` was rewritten. Thresholds and drone spans come from `config.json`.
+- **Sealed data.** Rounds whose drone is ITU ARIS-derived (`steady_peek`, `sealed_peek`, `ITU_ARIS`, `CleanDrone`, `All`) are dropped before anything is computed. 70 runs have only such drone rounds and are skipped. 90 runs remain (89 after one with no usable detector rows), with 169 detector rows and no failures.
+- **Threshold.** Per run and detector, the lowest threshold with at most 1 separate false alarm (`fa_events`) per hour of no-drone audio (`nodrone_mask`, entry 274).
+- **Lead.** `round_leads` per drone round. "Mean lead" counts rounds that never detect before impact as 0 s.
+- **Comparison.** Models are compared only head to head, inside one run on the same audio. A pooled table across runs mixes very different audio and is not used for the answer.
+
+**The big limit.** The median run has 0.6 min of no-drone audio; only 3 runs have 60 min or more. In nearly every run, "at most 1 per hour" therefore means "above the highest no-drone window of this run". The thresholds are also chosen and scored on the same run. Both effects apply equally to the models inside a run, so head-to-heads stay fair, but every absolute lead is optimistic.
+
+**Head-to-heads in runs with 20 min or more of no-drone audio** (mean lead over all drone rounds, never = 0):
+
+| Run | No-drone audio | Rounds | Mean lead (rounds detected) |
+|---|---|---|---|
+| 20261123_133846 | 56 min | 396 | it30 half s1 3.38 s (340); it22 pcen s1 2.40 s (294) |
+| 20261123_140959 | 113 min | 792 | it30 half s1 2.59 s (643); it19 colour s1 2.23 s (594) |
+| 20261124_095238 | 33 min | 240 | it30 half s1 3.32 s (234); it9 2.69 s (200); it23 relabel colour s1 1.79 s (196) |
+| 20261112_133831 | 32 min | 220 | it23 relabel 600k s1 4.79 s; it23 relabel colour s1 3.81 s; it19 3.21 s; it16 3.07 s (all 220) |
+| 20261111_120310 | 21 min | 132 | it9 6.97 s; it21 uav16 s2 5.88 s, s0 4.67 s, s1 4.58 s |
+| 20261120_100605 | 30 min | 198 | it9 2.31 s (135); it19 2.18 s (164) |
+| 20261122_130719 | 30 min | 128 | it30 half s1 5.58 s, s0 5.49 s, s2 4.79 s (all 128) |
+
+Over all runs, head to head: it9 beats it19 in 13 of 15 runs. it23 relabel 600k s1 beats it16 in 3 of 4 runs and beats it19 and it23 relabel colour in its one shared run. it30 half s1 is ahead in every run it shares with another family: it9 (2 runs, 245 rounds, 3.44 against 2.82 s), it19, it22 and it23 relabel colour.
+
+**Answer.** **it30 CRNN half s1** gives the most time before impact at no more than 1 false alarm per hour. It is ahead of every other model family it has been run against, on the same audio. The margin is 0.4-1.5 s, and it detects more rounds before impact (643 against 594 of 792 rounds against it19).
+
+**Open.**
+- it23 CRNN relabel 600k s1 was strong in its runs (4.8 s, all rounds detected, against it16, it19 and it23 colour) but has never been run next to it30 or it9. It is the one untested challenger.
+- Runs 20261122_130102 and 20261122_130719 give identical it30 s0 numbers (probably the same audio twice).
+- One seed per model in most runs, development drone clips, synthetic backgrounds.
+- A threshold for use belongs on validation data with hours of independent no-drone audio.
+
+No model, threshold or setting is changed by this entry.
+
+## 279 - Conclusions: the false-alarm graphs use each round's own detection time, as the headline does
+
+- Date: 2026-11-24
+- Type: Tooling (GUI; changes how a figure is computed, not a model, threshold or split)
+- Commit: on `master` at 8697a6e; uncommitted
+
+**Why.** Mads saw the headline (entry 276) and the graphs under "False alarms: the threshold, and the time before impact at it" give very different times before impact at the same threshold. In run 20261124_111751_modified at the 99.9 % setting, it30 CRNN half s1 showed 4.8 s in the headline and 0.0 s in the graph. The cause was two different rules:
+- The headline uses `round_leads`: each drone round's earliest window at or above the threshold, averaged over the rounds that detect.
+- The graphs used `curve_lead` (Mads, 2026-11-11): all rounds' confidence averaged moment by moment, then the first moment that mean reaches the threshold. With thresholds near 87-88 %, the mean of rounds that cross at different moments never got there before impact, so it showed 0 s ("never").
+
+Mads chose the headline's rule for the graphs.
+
+**Change** (`scripts/Complete_Test_Gui.py`).
+- New `group_lead(curves, rounds, thr)`: `round_leads` over a group of rounds, the mean over the rounds that detect, and how many did.
+- `_draw_fa` uses it for the bar graph (all rounds, each layer on and off) and for the per-setting line graphs. Bars are labelled with the mean and "detected/all".
+- Titles read "avg detection before impact".
+- `curve_lead` is kept for the SNR-at-threshold text (`snr_at_alarm`) and in `Complete_Test_Gui22k.py`, which is unchanged.
+
+**Check** (scratchpad `group_lead_check.py`, run 20261124_111751_modified, 99.9 %; `config.json` backed up and restored). The bars now equal the headline:
+
+| Detector | Threshold | Headline | New bar, all rounds | Old graph (`curve_lead`) |
+|---|---|---|---|---|
+| It9B | 46.0 % | 5.60 s, 151/174 | 5.60 s, 151/174 | 1.25 s |
+| it27 CRNN quiet s2 | 88.3 % | 5.15 s, 172/174 | 5.15 s, 172/174 | never (0) |
+| it30 CRNN half s1 | 87.4 % | 4.82 s, 168/174 | 4.82 s, 168/174 | never (0) |
+
+The page was drawn and looked at; the titles no longer overlap.
+
+**Caveats.**
+- The mean over detected rounds leaves out rounds that never detect. Read it together with the detected/all count.
+- This run includes Steady_07 (ITU ARIS) rounds. The check is only that two figures agree, and it is used for nothing else.
+- The same run shows 12-20 false alarms in 77 min at the "99.9 %" setting, so this setting is far from 1 per hour.
+
+Old runs show the new graphs when opened. No model, threshold or setting is changed.
+
+## 283 - Pull onto master (19 commits, to c84c4b0): no conflicts; entry numbers 271-279 are used again
+
+- Date: 2026-11-25
+- Type: Repository housekeeping ("fix my merge")
+- Commit: `master` fast-forwarded from 8697a6e to `origin/master` c84c4b0; uncommitted: entries 271-279 and their `Complete_Test_Gui.py` changes
+
+**State before.** Local `master` was 19 commits behind `origin/master` (iteration 30.5, the REAPER array and live
+source, the phys IR networks, entries up to 282). Entries 271-279 above (Complete test Conclusions: the false-alarm
+threshold from the drone rounds' parts without the drone, the headline report, `group_lead`) and their changes to
+`scripts/Complete_Test_Gui.py` were uncommitted.
+
+**What was done.**
+1. The uncommitted work was stashed and `master` fast-forwarded to c84c4b0.
+2. The stash was brought back. `docs/REPORT.md` and `scripts/Complete_Test_Gui.py` merged on their own: upstream's
+   GUI changes (the REAPER live source, the stereo test box, the it30.5 and phys IR colours) sit near the top of the
+   file, the local ones (`nodrone_mask`, `fa_events`, `round_leads`, `group_lead`, the headline) in the Conclusions
+   page. Nothing from either side was dropped.
+3. Nothing was committed or pushed.
+
+Checked: no conflict markers; `Complete_Test_Gui` parses and imports, with both `group_lead` and the
+`("reaper", "manual")` live mode present. `uv run python -m pytest -q --ignore=tests/test_dronesynth.py`: all 171
+passed. `tests/test_dronesynth.py` fails 3 tests on this PC because `data/processed/stems` is not built here
+(FileNotFoundError, unrelated to the pull). Not checked: the GUI drawn on a run since the pull.
+
+**Entry numbers used again.** Entries 271-279 of 2026-11-23/24 (Complete test Conclusions) were written before this
+pull, and upstream had already used 271-282 (the REAPER war scene, physical test prep, iteration 30.5). Per section 1
+nothing is renumbered. Those entries are cited by title and date, or as "271-279 (Conclusions, 2026-11-24)", and new
+entries continue from 284.
+## 294 - Pull onto master (1 commit, to 7022171): no conflicts; entry 283 above is now used twice
+
+- Date: 2026-11-25
+- Type: Repository housekeeping ("do it again": the same pull as entry 283 (pull, 2026-11-25))
+- Commit: `master` fast-forwarded from c84c4b0 to `origin/master` 7022171; uncommitted: entries 271-279 (Conclusions, 2026-11-24), entry 283 (pull, 2026-11-25), this entry and their `Complete_Test_Gui.py` changes
+
+**What was done.** The uncommitted work was stashed, `master` fast-forwarded to 7022171 (Garioo: GUI monitor, mic
+recorder, two microphones averaged, array playback on MADI 1-39; entries 283-293), and the stash brought back.
+`docs/REPORT.md` and `scripts/Complete_Test_Gui.py` merged on their own; nothing from either side was dropped.
+Nothing was committed or pushed.
+
+Checked: no conflict markers; `Complete_Test_Gui` parses and imports; `uv run python -m pytest -q
+--ignore=tests/test_dronesynth.py` all 171 passed (`tests/test_dronesynth.py` skipped as in entry 283 (pull,
+2026-11-25): `data/processed/stems` is not built on this PC). Not checked: the GUI drawn on a run.
+
+**Entry numbers.** Entry 283 (pull, 2026-11-25) said new entries continue from 284; that is wrong now, because
+7022171 uses 283-293. Nothing is renumbered (section 1). The pull entry is cited as "283 (pull, 2026-11-25)", and
+new entries continue from 295.
