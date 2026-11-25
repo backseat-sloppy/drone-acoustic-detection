@@ -131,7 +131,7 @@ def stereo_fold() -> np.ndarray:
 class ReaperRun(L.LiveRun):
     """A LiveRun whose sound REAPER plays on the array; scored on the microphone."""
 
-    def __init__(self, plan: E.Plan, events, in_dev=None, in_channel: int = 0, play_gain_db: float = 0.0,
+    def __init__(self, plan: E.Plan, events, in_dev=None, in_channel: int | str = 0, play_gain_db: float = 0.0,
                  mic_gain_db: float = 0.0):
         WS.load(SR)                                          # the war soundscape as stems: its layer is their sum
         plan.war_file = str((WS.OUT / "mix.wav").relative_to(RA.ROOT))
@@ -209,7 +209,8 @@ class ReaperRun(L.LiveRun):
         if self.clipped:
             self.events.put(("warn", f"{self.clipped} samples clipped in the speaker files: lower a level"))
         f = d / "live.RPP"
-        f.write_text(RA.project(RA.track("Live test (39 speakers)", items), marks, extra))
+        f.write_text(RA.project(RA.track("Live test (39 speakers)", items), marks, extra,
+                                out0=0 if self.stereo else RA.OUT0))
         RA.install_jsfx(d)
         self.tag = tag
         return f
@@ -235,9 +236,8 @@ class ReaperRun(L.LiveRun):
         import sounddevice as sd
         say = lambda s: self.events.put(("status", s))     # noqa: E731
         in_ch = int(sd.query_devices(self.in_dev, "input")["max_input_channels"])
-        if not 0 <= self.in_channel < in_ch:                 # before anything is built: a wrong channel fails at once
-            raise ValueError(f"input channel {self.in_channel}: the microphone has {in_ch} channel(s), "
-                             f"numbered from 0 (use 0{f' to {in_ch - 1}' if in_ch > 1 else ''})")
+        L.check_channels(self.in_channels, in_ch)            # before anything is built: a wrong channel fails at once
+        in_ch = max(self.in_channels) + 1                    # not all: PortAudio's callback overflows its stack at 94
         self.rp.transport()                                  # and REAPER's web remote answers
         t = self.test
         t.prepare(say)
@@ -250,14 +250,15 @@ class ReaperRun(L.LiveRun):
         in_sr = L.pick_rate(self.in_dev, in_ch, "input")
         name = f"{sd.query_devices(self.in_dev, 'input')['name']} ({in_sr} Hz) <- REAPER, " + \
                ("2 speakers (stereo test: the 39 folded to left/right)" if self.stereo else "39 speakers")
-        self.plan.live.update(sample_rate=None, input_sample_rate=in_sr, device=name, reaper_project=str(f))
+        self.plan.live.update(sample_rate=None, input_sample_rate=in_sr, device=name, reaper_project=str(f),
+                              input_channels=self.in_channels)
         self.res_in = L.Resampler(in_sr, SR)
         self.heard = L.Ring(L.RING_S)
         self.live_sc = L.LiveScorer(t.scorers, t.thr)
         inq: queue.Queue = queue.Queue()
 
         def cb_in(indata, frames, ti, status):
-            inq.put(indata[:, self.in_channel].copy())
+            inq.put(L.mix_in(indata, self.in_channels))
 
         jobs, scorer = self._open_results()
         t_wall = time.time()

@@ -18259,3 +18259,206 @@ shifted operating point entry 230 saw, not a measured change in separation. One 
 `Complete_Test_Gui` and `detect_gui`. `drone_war_grid._detectors` loads both with thresholds 0.652 and 0.671.
 An import check of `detect_gui` printed nothing within 120 s and was not repeated; the GUIs were not opened and
 `pytest` was not run.
+
+## 283 - A view-only web page of the Complete Test GUI, to follow a live test from another room
+
+- Date: 2026-11-25
+- Type: Evaluation tooling for test 3 (requested by Marius)
+- Commit: uncommitted, on `master` at c84c4b0; `scripts/gui_monitor.py` (new)
+
+**What.** The live REAPER test runs in another room than the tester. `uv run scripts/gui_monitor.py`, beside the GUI
+on the Mac that runs the test, serves a page with a picture of the GUI's windows, every 2 s while someone is watching.
+It is a process of its own (nothing in the GUI, the engine or REAPER changed) and view-only: there is no request that
+changes anything. The address holds a random key, new at every start; the traffic is plain http. The page says when
+the picture is old, when the GUI is gone and when the Mac cannot be reached. The display is kept awake meanwhile.
+Its one dependency (`pyobjc-framework-Quartz`, macOS only) is in the script's own header, not in `pyproject.toml`.
+
+**Check** (this Mac, `--host 127.0.0.1`, the real GUI open on its first page, no test started): the page showed the
+GUI window, 2360 x 1898 px. Without the key, with a wrong key and with `..` in the path: 404; POST: 501. With the GUI
+closed the list said so; with the monitor stopped the page is meant to say "No contact with the test Mac".
+
+Not checked: from another device, the network of the test room, the load on the Mac during a live REAPER run, several
+windows at once, and the Screen Recording permission of Marius's own terminal.
+
+## 284 - The GUI monitor sends small pictures: it lagged over Tailscale
+
+- Date: 2026-11-25
+- Type: Evaluation tooling for test 3 (fix of entry 283)
+- Commit: uncommitted, on `master` at c84c4b0; `scripts/gui_monitor.py`
+
+Marius opened the page of entry 283 from a Windows PC over Tailscale (the monitor bound to the Mac's Tailscale address
+with `--host`): it worked, but lagged. Measured: one picture of the GUI was 834,019 bytes (3014 x 1898 JPEG), every
+2 s, and the page asked for the next one before the last had arrived.
+
+Now: WebP, at most `--width` 1600 pixels wide, quality 50: 91,036 bytes for the same window, text readable. A picture is sent only
+when the window changed, one at a time, and the page asks again after it has arrived. The default is one picture per
+second. Adds `pillow` to the script's own header. The monitor process used 1.6 % CPU (average since start).
+
+Check (127.0.0.1): the GUI standing still gave 6 status requests and 1 picture load; a clock window changed its picture
+version at each reading. Not checked: the speed over Tailscale, and the load during a live REAPER run.
+
+## 285 - The GUI monitor no longer prints a traceback when a browser drops a picture
+
+- Date: 2026-11-25
+- Type: Evaluation tooling for test 3 (fix of entry 283)
+- Commit: uncommitted, on `master` at c84c4b0; `scripts/gui_monitor.py`
+
+Marius's running monitor (entry 283's version) printed `BrokenPipeError` tracebacks: the PC's browser had dropped slow
+pictures. Harmless, the server kept serving. They are now ignored. Checked: the file compiles; not run, a live REAPER
+run was playing.
+
+## 286 - The array's REAPER projects now play on MADI 1-39, not on outputs 1-39
+
+- Date: 2026-11-25
+- Type: Bug fix, test 3 array playback (first session at the array)
+- Commit: uncommitted, on `master` at c84c4b0; `scripts/reaper_array.py`
+
+**Setup.** RME Fireface UFX+ over USB 3 (driver dkusb 1.0.62, firmware v67), 94 in / 94 out, 48 kHz, 512 samples in
+REAPER 7.47. Its outputs by CoreAudio name: 1-8 analog, 9-12 phones, 13-14 AES, 15-30 ADAT, 31-94 MADI 1-64.
+
+**Fault.** Entry 248's routing (speaker N to output N, ASSUMED) put speakers 1-30 on analog, phones, AES and ADAT, and
+only speakers 31-39 on MADI (1-9). The array is on MADI. Any array playback made on this unit with the old routing
+would have had the wrong speakers playing; whether any recorded test used it was not looked into.
+
+**Change.** `OUT0 = 30` in `reaper_array.py`: master channel N goes to output 30 + N = MADI N. `reaper_live.py` builds
+its projects with the same function, so the live test gets it too. The master channels and WAVs are unchanged.
+
+**Check.** The two projects open in REAPER were shifted by a script first. Marius heard the speaker check: the first
+burst came from the top speaker, and the sequence rotates anticlockwise, as the layout assumes (90 = left). A copy of
+that project saved by REAPER has the same 39 output lines as `reaper_array.project()` now writes.
+
+Not checked: the viewpoint of "anticlockwise" (assumed seen from above), that the first speaker of each ring is at the
+front, each speaker's place one by one, the level calibration, a live test with the new routing, and `pytest`. In
+TotalMix the playback faders visible in the AN 1/2 submix, through MADI 9/10, stood at 0 dB into Main (AN 1/2); not
+changed. Projects built before this entry, on disk, still have the old routing.
+
+## 287 - The array's front confirmed by ear
+
+- Date: 2026-11-25
+- Type: Test 3 array check (follow-up of entry 286)
+- Commit: uncommitted, on `master` at c84c4b0; `scripts/reaper_array.py` (comments and figure labels only)
+
+Marius confirmed that each ring of the speaker check starts at the front. With entry 286 (speaker 1 at the top, rings
+anticlockwise) the layout's conventions are confirmed by ear and the "ASSUMED" notes in `reaper_array.py` are removed.
+
+Not checked: each of the 39 speakers' place measured one by one, the viewpoint of "anticlockwise" (taken as seen from
+above), the level calibration, and a live test with the new routing.
+
+## 288 - The live test's stereo mode stays on outputs 1-2
+
+- Date: 2026-11-25
+- Type: Bug fix of entry 286
+- Commit: uncommitted, on `master` at c84c4b0; `scripts/reaper_array.py`, `scripts/reaper_live.py`
+
+Entry 286 also moved the live test's stereo mode, whose two channels would have gone to MADI 1-2. `project()` now
+takes `out0` and `reaper_live.py` passes 0 in stereo mode. Checked: the output lines of both cases (array 31-69,
+`out0=0` 1-39). Not checked: a live test in either mode.
+
+## 289 - The live test can hear two microphones as one (their average)
+
+- Date: 2026-11-25
+- Type: Evaluation tooling for test 3 (requested by Marius)
+- Commit: uncommitted, on `master` at c84c4b0; `scripts/live_test_engine.py`, `reaper_live.py`, `Complete_Test_Gui.py`
+
+**What.** The live page's channel box takes one input channel (from 0) or several, as `8,9`. Several are averaged sample
+by sample before mic gain, recording and detectors; `heard/` holds the average. The channels are saved as
+`input_channels` under the plan's live settings in `config.json`. One channel gives the same samples as before.
+
+**The two microphones today** (Fireface Mic 9 and Mic 10, 4.5 s of room noise, 48 kHz, levels and correlations only; no
+audio kept; one listening, scratch script): -73.0 and -73.9 dBFS, every other input 1-12 near -118. Correlation at lag 0,
+60 Hz-20 kHz, 0.51, and 0.83 at 60-250 Hz: same polarity. The strongest correlation is at a lag of 0.23 ms (0.10 to 0.25 ms
+up to 4 kHz). The average was 1.2 dB below one mic's power overall (0.4 dB at 60-250 Hz, 2.7 dB at 1-4 kHz).
+
+**What it means.** (1) For one clear source the lag makes a comb in the average: a 0.23 ms lag puts the first dip near
+2.2 kHz, and it moves with the source's direction. The networks trained on one microphone at a time; averaging is not
+what they saw. Averaged runs are not comparable with one-mic runs. (2) The measurement of 2026-11-23 (entries 272,
+277) has `in3` and `in4` as opposite polarity (-0.99996; 0.04 ms apart by this reading, broadband cancellation of
+-38 dB in their average). Marius says mic 1 was left and mic 2 right. Two separate microphones would not be that
+alike, so either one microphone path was recorded twice or the files do not hold two. If the inputs ever come
+back wired with opposite polarity, the average cancels: check it.
+
+Checked: parsing (accepts `8`, `8,9`, `8 + 9`; refuses `7-8`, `-1`, `8,8`, empty), the average, float32, a copy of the driver's
+buffer, and one channel unchanged; the files parse. Not run: the GUI, a live test, `pytest`, any scoring of one mic against two.
+
+## 290 - Two microphones scored separately: written and taken out again
+
+- Date: 2026-11-25
+- Type: Evaluation tooling for test 3 (Marius's decision)
+- Commit: uncommitted, on `master` at c84c4b0
+
+Scoring each microphone on its own in one run was written after entry 289 and never run. Marius then chose both as one,
+so it is removed and entry 289's average stands (channel box `8,9`). Checked again after the removal: parsing and average as
+in entry 289. Not run: the GUI, a live test, `pytest`.
+
+## 291 - A recorder for both test microphones beside a live test
+
+- Date: 2026-11-25
+- Type: Evaluation tooling for test 3
+- Commit: uncommitted, on `master` at c84c4b0; `scripts/record_mics.py` (new)
+
+Marius can only test at the array now, and says the two microphones are the ones of the impulse response of 2026-11-23.
+`scripts/record_mics.py` writes both raw (Fireface Mic 9 left, Mic 10 right, 48 kHz, 24 bit) to `artifacts/mic_recordings/`
+while the GUI runs, so one mic, the average and separate scores can all be computed later. Advice given: score the live test
+on one microphone (channel 8 or 9), as the networks were trained; the average of entry 289 stays available as `8,9`.
+
+Checked: `--seconds 3` wrote 2.8 s, 2 channels, 48 kHz, PCM_24, 0 overflows, -69.6 and -69.1 dBFS (room noise; file deleted).
+Not checked: beside a running live test, or over a long run. The pairing with a run's rounds (delay) is not written.
+
+## 292 - Live-test crash on the Fireface fixed; one microphone against both averaged, one 30 s round each
+
+- Date: 2026-11-25
+- Type: Bug fix, and a check of the test-3 microphone setup (requested by Marius)
+- Commit: uncommitted, on `master` at c84c4b0; `scripts/live_test_engine.py`, `reaper_live.py`
+
+**Crash.** Two Python crash reports (09:46:35 and 10:01:18): "Thread stack size exceeded" in PortAudio's `AudioIOProc`. The
+live test opened all 94 Fireface inputs, at 16 kHz. It now opens only the highest chosen channel + 1. Two complete runs since without a
+crash. The run folders 20261125_094602 and 20261125_100114 are from before the fix and incomplete.
+
+**This morning's three finished REAPER runs** (084806, 085444, 085818) list the MacBook Pro Microphone as input, with a
+correlation to what was played of 0.005-0.018 in the rounds read. They do not measure the array through the test microphones.
+
+**Setup.** Scratch script over `reaper_live.ReaperRun` (not the GUI), twice: plan of run 085818 (drone1-2_1.wav, 80 dB at 1 m,
+100 km/h, round 16, azimuth 221.4, climb 9.0; war soundscape 60 dB only; one detector live), changed to one 30 s round, drone at
+15-25 s; playback -10 dB, mic gain 0. Run A: channel 8 (Mic 9). Run B: `8,9` averaged. `record_mics.py` ran beside both, so
+Mic 9, Mic 10 and their average were also scored afterwards on the same playback (48 to 16 kHz, `E.score_round`).
+
+**Live result, `it30 CRNN half s1`** (threshold 0.465): A recall 0.642, delay 3.6 s, correlation with the played sound 0.558;
+B recall 0.568, delay 3.9 s, correlation 0.422; no false positive in either.
+
+**Rescored, recall at the frozen threshold (mean of the two runs; 1 drone round each):**
+
+| Detector | Mic 9 | Mic 10 | Average |
+|---|---|---|---|
+| it30 CRNN half s1 | 0.586 | 0.494 | 0.519 |
+| it30.5 CRNN ir s1 | 0.537 | 0.469 | 0.525 |
+| phys IR CRNN relabel colour s1 | 0.068 | 0.185 | 0.130 |
+| phys IR it9 CRNN | 0.278 | 0.457 | 0.333 |
+| phys IR It9B | 0.611 | 0.549 | 0.562 |
+| phys IR it9 CRNN 600k | 0.019 | 0.037 | 0.062 |
+| phys IR It9B 600k | 0.086 | 0.290 | 0.167 |
+| comb (baseline) | 0.747 | 0.611 | 0.685 |
+
+Window false-positive rate: 0 for it30, it30.5, relabel colour and both 600k in every case; phys IR it9 CRNN up to 0.029, It9B 0.014-0.130,
+comb 0.268-0.406. `lgbm` was not run. Mean over the seven networks: 0.312, 0.354, 0.328.
+
+**Why.** During playback the average is 4.0 dB quieter than one mic: -0.1 dB below 125 Hz, -2.3 at 250-500 Hz, -3.3 at 0.5-1 kHz,
+-5.8 to -6.2 at 1-4 kHz, -4.3 at 4-8 kHz (both runs alike). The mics are the same polarity with a strongest lag of 0.40 ms. This corrects
+entry 289, where a short room-noise sample made the average look safe.
+
+**Verdict.** The average does not beat the better single mic: it lies between them in recall in most rows and cancels treble.
+One microphone is the recommended setup. Which one must be fixed by position, not by these scores.
+
+**Limits.** One round, one drone file, one direction, two playbacks: run-to-run and alignment differences are up to about 0.15 in
+recall (rescored Mic 9, run A: 0.593 against 0.642 live), so the rows do not rank detectors or prove a difference. The
+drone file is the live demo's. Not a detection result (CLAUDE.md section 5). The GUI was open on older code meanwhile.
+
+## 293 - Decision: the live tests use both microphones averaged
+
+- Date: 2026-11-25
+- Type: Decision (Marius), test 3
+- Commit: uncommitted, on `master` at c84c4b0; no code change
+
+Marius keeps both microphones as one (channel box `8,9`, entry 289) for the tests, knowing entry 292's check: the average is about 4 dB
+quieter than one mic in playback and about 6 dB at 1-4 kHz, and the networks trained on one microphone at a time. Claude's
+recommendation was one microphone. Results taken this way carry "Mic 9 + Mic 10 averaged" as a condition and are not compared
+directly with one-mic runs. `scripts/record_mics.py` beside a run keeps both raw, so one mic can be scored afterwards.

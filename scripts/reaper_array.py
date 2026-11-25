@@ -9,7 +9,7 @@ Writes into --out:
     allday.RPP          --hours of background, drones at random times (one per slot of 3600 / per-hour s)
     demo.RPP            a background-only region to loop, then one region per drone; marker N jumps to drone N
     media/              background_loop.wav (60 s), event_NNN.wav (the drone pool), speaker_check.wav; 39 ch, 48 kHz
-    speakers.csv        the layout (row N = hardware output N) and the VBAP triangles; speakers.png draws it
+    speakers.csv        the layout (row N = speaker N = MADI N) and the VBAP triangles; speakers.png draws it
     background.csv      every layer on every speaker: source, loop offset, gain, level (the war sources: their gain)
     war_positions.csv   every war source in every segment: start, end, azimuth at the start, elevation, degrees/s
     pool.csv            every rendered drone event: path, speed, file, geometry
@@ -22,7 +22,8 @@ Writes into --out:
     verify.csv          (--verify) REAPER's render of the speaker check, of the first drone and of the war sources'
                         first 30 s, against the WAVs (the war: against this script's own VBAP of the same automation)
 
-Routing: the master bus has 40 channels and sends channel N to hardware output N (N = 1..39). Tracks of 40
+Routing: the master bus has 40 channels and sends channel N to hardware output OUT0 + N
+(MADI N of the RME UFX+, N = 1..39). Tracks of 40
 channels feed it: Background (the loop: wind, cars, helicopter, insects), one "War: <source>" track per war soundscape
 source (war_stems.py), Drones, Speaker check (muted; 1 s of pink noise per speaker in turn).
 
@@ -31,7 +32,8 @@ and gains as here) whose Azimuth and Elevation are automated. The automation is 
 (all day: per drone slot; demo: the background region and each drone's region), the whole scene in one direction
 (war_stems.place). Move a source by editing its envelopes in REAPER; war_positions.csv has what was written.
 
-Conventions (ASSUMED until Mads/Marius confirm): azimuth counter-clockwise from the front (90 = left), elevation up;
+Conventions (heard by Marius at the array, entries 286-287: speaker 1 at the top, rings from the front, anticlockwise):
+azimuth counter-clockwise from the front (90 = left), elevation up;
 the listener (microphone) at the array's centre. Levels in WAV units: full scale = 110 dB SPL; the speakers are not
 calibrated, so project.json carries calibration_db = null until someone measures the speaker check at the centre.
 Left out: the engine's ground reflection and outdoor reverb (written for 16 kHz; the room adds its own).
@@ -63,6 +65,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LAYOUT = [(0, 90), (0, 60), (60, 60), (120, 60), (180, 60), (240, 60), (300, 60),
           *[(a, 30) for a in range(0, 360, 36)], *[(a, 0) for a in range(0, 360, 30)], *[(a, -30) for a in range(0, 360, 36)]]
 N = len(LAYOUT)                                              # 39
+OUT0 = 30                                                    # speaker N on output OUT0 + N: MADI N of the UFX+ (entry 286)
 DRONE_DIR = ROOT / "data/recordedDroneClipped"                # the live test's drone files (not ITU ARIS)
 DRONE_DB = 80.0                                              # dB SPL at 1 m, the live test's level
 SPEEDS = (50.0, 100.0, 150.0)                                # km/h, the live test's speeds
@@ -460,9 +463,9 @@ def track(name, items, mute=False, fx=""):
             f'    MAINSEND 1 0\n{fx}{"".join(items)}  >\n')
 
 
-def project(tracks: str, markers: list[str], extra: str = "") -> str:
-    """A REAPER project: master of 40 channels, channel N to hardware output N, the speaker view on the master."""
-    hw = "".join(f"  MASTERHWOUT {i | 1024} 0 1 0 0 0 {i | 1024} -1\n" for i in range(N))   # master ch N -> output N
+def project(tracks: str, markers: list[str], extra: str = "", out0: int = OUT0) -> str:
+    """A REAPER project: master of 40 channels, channel N to hardware output out0 + N, the speaker view on the master."""
+    hw = "".join(f"  MASTERHWOUT {i + out0 | 1024} 0 1 0 0 0 {i | 1024} -1\n" for i in range(N))
     view = ("  <MASTERFXLIST\n    SHOW 0\n    LASTSEL 0\n    DOCKED 0\n    BYPASS 0 0 0\n"
             f'    <JS "{JSFX}" ""\n      30 80' + " -" * 62 + "\n    >\n    FLOAT 120 80 640 680\n    WAK 0 0\n  >\n")
     return ('<REAPER_PROJECT 0.1 "7.84/macOS-arm64" 0\n  SAMPLERATE 48000 1 0\n  MASTER_NCH 40 2\n'
@@ -561,7 +564,7 @@ def main():
     meta = dict(command="uv run python scripts/reaper_array.py " + " ".join(sys.argv[1:]), commit=commit, seed=a.seed,
                 hours=a.hours, per_hour=a.per_hour, pool=a.pool, sample_rate=SR, wav="PCM_16, 39 channels",
                 full_scale_db_spl=E.FULL_SCALE_DB, calibration_db=None,
-                conventions="azimuth counter-clockwise from the front (90 = left), elevation up; row N = output N (ASSUMED)",
+                conventions=f"azimuth counter-clockwise from the front (90 = left), elevation up; row N = speaker N = MADI N, REAPER output {OUT0} + N",
                 drone=dict(dir=str(DRONE_DIR.relative_to(ROOT)), level_db_spl_1m=DRONE_DB, speeds_kmh=SPEEDS,
                            towards_s=TOWARDS_S, across_s=ACROSS_S, closest_m=CLOSEST_M,
                            towards_climb_deg=[5, 40], across_height_m=[10, 60], across_offset_m=[5, 50]),
@@ -676,15 +679,15 @@ def draw_array(f: Path):
     a.annotate("front (0)", (0, 128), ha="center"), a.annotate("left (90)", (-128, 0), ha="center", rotation=90, va="center")
     a.annotate("right (270)", (128, 0), ha="center", rotation=-90, va="center"), a.annotate("back (180)", (0, -132), ha="center")
     a.set(xlim=(-140, 140), ylim=(-140, 140), aspect="equal", xticks=[], yticks=[],
-          title="From above: centre = straight up, rings at 60, 30, 0, -30 degrees elevation\n(numbers = hardware outputs; grey = VBAP triangles)")
+          title="From above: centre = straight up, rings at 60, 30, 0, -30 degrees elevation\n(numbers = speakers; grey = VBAP triangles)")
     b.set(xlim=(-15, 345), ylim=(-45, 100), xticks=range(0, 360, 30), yticks=[-30, 0, 30, 60, 90],
-          xlabel="azimuth (degrees, counter-clockwise from the front: 90 = left, ASSUMED)", ylabel="elevation (degrees)",
+          xlabel="azimuth (degrees, counter-clockwise from the front: 90 = left)", ylabel="elevation (degrees)",
           title="Azimuth and elevation of each output")
     b.grid(alpha=0.3)
     for s in (a, b):
         for sp in s.spines.values():
             sp.set_visible(s is b)
-    fig.suptitle("39-speaker array (row N of the layout = output N, ASSUMED)", y=0.995)
+    fig.suptitle("39-speaker array (speaker N = MADI N)", y=0.995)
     fig.tight_layout()
     fig.savefig(f, dpi=120)
     plt.close(fig)

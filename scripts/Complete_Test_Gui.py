@@ -1036,7 +1036,7 @@ class LivePage(Page):
         self.mic_widgets = [ttk.Label(dev, text="microphone"),
                             ttk.Combobox(dev, textvariable=self.v_in, values=[a for a, _ in self.ins], state="readonly", width=60),
                             ttk.Label(dev, text="mic gain (dB)"), ttk.Entry(dev, textvariable=self.v_mic_gain, width=6),
-                            ttk.Label(dev, text="channel"), ttk.Entry(dev, textvariable=self.v_in_ch, width=6)]
+                            ttk.Label(dev, text="channel (8,9 = both)"), ttk.Entry(dev, textvariable=self.v_in_ch, width=6)]
         places = [("w", 0), ("w", (8, 0)), ("e", (12, 4)), ("w", 0), ("e", (12, 4)), ("w", 0)]   # (sticky, padx) per column
         for col, (w, (sticky, padx)) in enumerate(zip(self.mic_widgets, places)):
             w.grid(row=1, column=col, sticky=sticky, padx=padx, pady=(6, 0))
@@ -1323,9 +1323,11 @@ class LivePage(Page):
         out = dict(self.outs)[self.v_out.get()]
         inp = dict(self.ins)[self.v_in.get()]
         try:
-            play, mic, ch = float(self.v_play_gain.get()), float(self.v_mic_gain.get()), int(self.v_in_ch.get())
+            play, mic, ch = float(self.v_play_gain.get()), float(self.v_mic_gain.get()), self.v_in_ch.get()
+            L.parse_channels(ch)
         except ValueError:
-            raise ValueError("playback gain and mic gain must be numbers of dB, the channel a whole number") from None
+            raise ValueError("playback gain and mic gain must be numbers of dB, the channel a whole number "
+                             "from 0, or several to average, such as 8,9") from None
         if not (-60 <= play <= 40 and -60 <= mic <= 60):
             raise ValueError("playback gain from -60 to 40 dB, mic gain from -60 to 60 dB")
         return out, inp, ch, play, mic

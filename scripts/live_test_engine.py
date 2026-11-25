@@ -265,6 +265,25 @@ class LiveScorer:
 
 # ------------------------------------------------------------------ devices
 
+def parse_channels(x) -> list[int]:
+    """Input channels, numbered from 0: 8, "8", "8,9" or "8+9" (several are averaged into one signal, mix_in)."""
+    ch = [x] if isinstance(x, int) else [int(p) for p in str(x).replace("+", ",").split(",")]
+    if min(ch) < 0 or len(set(ch)) != len(ch):
+        raise ValueError(f"input channels {x!r}: whole numbers from 0, each once, for example 8 or 8,9")
+    return ch
+
+
+def check_channels(ch: list[int], n: int) -> None:
+    if max(ch) >= n:
+        raise ValueError(f"input channel {max(ch)}: the microphone has {n} channel(s), "
+                         f"numbered from 0 (use 0{f' to {n - 1}' if n > 1 else ''})")
+
+
+def mix_in(indata: np.ndarray, ch: list[int]) -> np.ndarray:
+    """The chosen channels' mean: two microphones as one. Same polarity assumed: opposite ones cancel (entry 289)."""
+    return indata[:, ch].mean(axis=1)
+
+
 def pick_rate(dev, channels: int, kind: str) -> int:
     """A sample rate the device takes: 16 kHz first (no resampling), then its own, 48 and 44.1 kHz."""
     import sounddevice as sd
@@ -286,13 +305,13 @@ class LiveRun:
     """One live test. start() returns at once; the work runs in threads and reports to `events` as
     (kind, payload): status, round_start, round_done, dec, lag, warn, done, error."""
 
-    def __init__(self, plan: E.Plan, events: queue.Queue, out_dev=None, in_dev=None, in_channel: int = 0,
+    def __init__(self, plan: E.Plan, events: queue.Queue, out_dev=None, in_dev=None, in_channel: int | str = 0,
                  play_gain_db: float = 0.0, mic_gain_db: float = 0.0):
         self.plan, self.events = plan, events
         self.source = plan.live["source"]
         self.trigger = plan.live["trigger"]
         self.mic = self.source == "microphone"
-        self.out_dev, self.in_dev, self.in_channel = out_dev, in_dev, int(in_channel)
+        self.out_dev, self.in_dev, self.in_channels = out_dev, in_dev, parse_channels(in_channel)
         self.play_gain = 10 ** (play_gain_db / 20)
         self.mic_gain = 10 ** (mic_gain_db / 20)
         self.test = LiveTest(plan, out_folder(plan))
@@ -500,8 +519,9 @@ class LiveRun:
         out_ch = int(sd.query_devices(self.out_dev, "output")["max_output_channels"])
         out_ch = min(out_ch, 2)
         in_ch = int(sd.query_devices(self.in_dev, "input")["max_input_channels"]) if self.mic else 0
-        if self.mic and not 0 <= self.in_channel < in_ch:
-            raise ValueError(f"input channel {self.in_channel}: the microphone has {in_ch} channel(s)")
+        if self.mic:
+            check_channels(self.in_channels, in_ch)
+            in_ch = max(self.in_channels) + 1                # not all: PortAudio's callback overflows its stack at 94
         sr = pick_rate(self.out_dev, out_ch, "output")
         in_sr = pick_rate(self.in_dev, in_ch, "input") if self.mic else None
         self.sr = sr
@@ -520,7 +540,7 @@ class LiveRun:
         def cb_in(indata, frames, ti, status):
             if status.input_overflow:
                 overflows[0] += 1
-            inq.put(indata[:, self.in_channel].copy())
+            inq.put(mix_in(indata, self.in_channels))
 
         # Two streams, not one duplex stream: Windows refuses a duplex stream whose input and output are on
         # different host APIs (MME, WASAPI, ...). The microphone starts first, so the speaker's sound always
@@ -534,7 +554,8 @@ class LiveRun:
             streams.insert(0, sd.InputStream(device=self.in_dev, samplerate=in_sr, channels=in_ch, dtype="float32",
                                              callback=cb_in, **STREAM))
             name = f"{sd.query_devices(self.in_dev, 'input')['name']} ({in_sr} Hz) -> {name}"
-        self.plan.live.update(sample_rate=sr, input_sample_rate=in_sr, device=name)
+        self.plan.live.update(sample_rate=sr, input_sample_rate=in_sr, device=name,
+                              input_channels=self.in_channels if self.mic else None)
         out_lat = float(out_stream.latency)
 
         jobs, scorer = self._open_results()
@@ -542,7 +563,7 @@ class LiveRun:
         produced = 0                                         # timeline samples made
         fed = 0                                              # virtual: timeline samples given to the live display
         self.running = True
-        say(f"playing: {name}, {sr} Hz" + (f", input channel {self.in_channel}" if self.mic else ""))
+        say(f"playing: {name}, {sr} Hz" + (f", input channel {self.in_channels}" if self.mic else ""))
         t_wall = time.time()
         stopped_at = None
         with contextlib.ExitStack() as opened:
