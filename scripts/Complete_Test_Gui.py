@@ -2792,7 +2792,11 @@ class Conclusions(tk.Toplevel):
                 on_set = set(on)
                 groups.append((f"{n} on", on))
                 groups.append((f"{n} off", [rnd for rnd in drone_rounds if rnd not in on_set]))
-        params = []                                          # every setting that varies: speed, file, levels, Pd settings...
+        dist = [n for n in t.plan.layers if n != "war soundscape" and not n.startswith("wind")]   # wind and war are not distractors
+        clean = [rnd for rnd in drone_rounds if all(setting(t.by_round[rnd], n) in (None, "off") for n in dist)]
+        if dist and clean and len(clean) < len(drone_rounds):
+            groups.append(("no distractors", clean))
+        params = []                                        # every setting that varies: speed, file, levels, Pd settings...
         for key, (label, vals) in parameter_values(t).items():
             if key in t.plan.layers and len([v for v in vals if v != "off"]) < 2:
                 continue                                     # only on/off: already a bar on the left

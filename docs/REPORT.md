@@ -19124,3 +19124,110 @@ perfectly dry shots.
 As entry 302: `artifacts/complete_test/20261125_jupyter_plan_modified_mixwav` and `20261125_array_room_plan_modified` (config.json, live.json, rounds.csv, scores.npz, window_snr.npz,
 layer_snr.npz, summary.csv) and `artifacts/array_room/room.npz` (the filters and noise floor of entry 305) are added with `git add -f`. Not versioned: the superseded
 `20261125_array_room_v1_plan_modified`, the shard folders, `plan.json`, and every WAV (the recordings and the speaker files).
+
+## 308 - FINAL TEST without Steady_10: the same two runs, scored on the 368 rounds that remain
+
+- Date: 2026-11-26
+- Type: Evaluation (a subset of an existing test scoring; nothing scored again). Requested: "delete all Drone Steady_10 results"; no reason was given.
+- Commit: uncommitted, on `master` at ca2f37c; `scripts/filter_run.py` (new)
+- Command: `uv run python scripts/filter_run.py "artifacts/complete_test/FINAL TEST/FINAL_PHYS_COMPLETE" "artifacts/complete_test/FINAL TEST/FINAL_PHYS_COMPLETE_VirtualEdition" --drop Steady_10`
+
+**What.** `artifacts/complete_test/FINAL TEST` holds two runs of `plan_modified` (488 rounds). By their summaries, `FINAL_PHYS_COMPLETE` is the array run of entry 300 and
+`FINAL_PHYS_COMPLETE_VirtualEdition` is the digital run with `mix.wav` of entry 304 (not the room run of entry 305). `filter_run.py` copies each into a `_no_Steady_10` folder
+without the 120 rounds whose drone is Steady_10 (ITU ARIS): rounds.csv rows, scores, window and layer SNRs, live.json entries. summary.csv is written again by
+`Complete_Test_Gui.load_test`, the same code as any run. The source folders are untouched; config.json keeps the full plan and gets a `filtered` note.
+Check: every per-drone row of the filtered summaries equals the original one.
+
+**Scores.** Conditions as entry 300 (same windows, hop, own thresholds); no baselines (`comb`, `lgbm`) in the plan. Drone rounds: 480 -> 360 (Steady_07, drone1_2, drone_2,
+120 each); no-drone rounds: 8, unchanged. Recall and false positive rate are means over the rounds of the per-round numbers, as in `write_summary`.
+
+| | Array, all | Array, no Steady_10 | Virtual, all | Virtual, no Steady_10 |
+|---|---|---|---|---|
+| it30 recall | 0.290 | 0.386 | 0.239 | 0.314 |
+| it30 FPR, drone rounds' no-drone windows | 0.018 | 0.020 | 0.070 | 0.074 |
+| it30 precision | 0.867 | 0.946 | 0.720 | 0.809 |
+| it30 drone rounds detected | 0.723 | 0.925 | 0.733 | 0.897 |
+| it30 drone rounds with a false alarm | 0.371 | 0.400 | 0.525 | 0.544 |
+| it30 delay (s) | 2.83 | 2.83 | 3.37 | 3.37 |
+| it30.5 recall | 0.291 | 0.387 | 0.259 | 0.343 |
+| it30.5 FPR, drone rounds' no-drone windows | 0.012 | 0.014 | 0.049 | 0.052 |
+| it30.5 precision | 0.902 | 0.962 | 0.788 | 0.869 |
+| it30.5 drone rounds detected | 0.715 | 0.931 | 0.723 | 0.917 |
+| it30.5 drone rounds with a false alarm | 0.287 | 0.314 | 0.454 | 0.486 |
+| it30.5 delay (s) | 3.13 | 3.12 | 3.60 | 3.62 |
+| FPR, the 8 no-drone rounds (it30 / it30.5) | 0.009 / 0.006 | unchanged | 0.042 / 0.032 | unchanged |
+
+**Caveat.** Steady_10 was removed after its test results were seen (recall about 0.003 in entry 305), so the filtered numbers are a chosen subset of the test, not a
+new held-out result. They are reported next to the full ones, which stay the result of record. Why Steady_10 should be out (for example that it is not audible at these
+levels) is not established here; if that is the reason, it needs its own check.
+
+Not run: `pytest`, the GUI on the new folders.
+
+## 309 - Conclusions: a "no distractors" bar in the time-before-impact chart
+
+- Date: 2026-11-26
+- Type: Evaluation tooling (requested: one more bar for rounds with 0 distractors; wind and the war soundscape are not distractors)
+- Commit: uncommitted, on `master` at ca2f37c; `scripts/Complete_Test_Gui.py` (`Conclusions._fa_section`)
+- Check: the page's `_fa_section` and `_draw_fa` called outside the window (scratch script, Agg backend) on the two `_no_Steady_10` folders of entry 308, false-alarm setting 99.9884 %
+
+**What.** The bar chart "avg detection before impact" gets a last group, `no distractors`: the drone rounds in which every layer other than the war soundscape and wind
+(here cars, helicopter, insects) is off. It is drawn only when such rounds exist and are not all the rounds. Thresholds and the lead computation are unchanged; the
+other bars reproduce the numbers on Mads's screenshot of the array run (147/360 at 3.2 s, 204/360 at 3.4 s, and so on).
+
+**Numbers, 45 rounds without distractors (of 360; Steady_10 left out as entry 308), each detector at its own 99.9884 % threshold:**
+
+| | it30: detected, mean s before impact | it30.5: detected, mean s before impact |
+|---|---|---|
+| Array, all rounds | 147/360, 3.18 | 204/360, 3.39 |
+| Array, no distractors | 23/45, 4.34 | 36/45, 3.65 |
+| Virtual (digital mix.wav), all rounds | 149/360, 3.85 | 94/360, 2.98 |
+| Virtual, no distractors | 32/45, 4.79 | 25/45, 3.90 |
+
+45 rounds is a small group: one round more or less moves the share by 0.02. Same caveat on Steady_10 as entry 308. Not run: `pytest`, the GUI window itself.
+
+## 310 - FINAL TEST without both ITU ARIS drones (Steady_07 and Steady_10): 248 rounds
+
+- Date: 2026-11-26
+- Type: Evaluation (a further subset of the scorings of entry 308; nothing scored again). Requested: "now do it for drone steady_7, so without two drones".
+- Commit: uncommitted, on `master` at ca2f37c; `scripts/filter_run.py` now takes `--drop` more than once
+- Command: `uv run python scripts/filter_run.py "artifacts/complete_test/FINAL TEST/FINAL_PHYS_COMPLETE" "artifacts/complete_test/FINAL TEST/FINAL_PHYS_COMPLETE_VirtualEdition" --drop Steady_10 --drop Steady_07`
+  -> `..._no_Steady_10_Steady_07` folders; charts as entry 309 (scratch script, 99.9884 % setting)
+
+Left: 240 drone rounds (drone1_2 and drone_2, our own recordings, 120 each) and the 8 no-drone rounds. Conditions as entry 300, no baselines in the plan.
+Note on the time-before-impact chart: its threshold comes from the no-drone windows of the run folder, and the drone rounds' parts without the drone are among them, so
+leaving rounds out moves the threshold a little (17112 no-drone windows here against 25056 in entry 309; it30 99.6 %, it30.5 97.8 % on the array). summary.csv uses
+the run's own thresholds and does not move.
+
+| summary.csv, all drone rounds | Array, 480 | no Steady_10, 360 | no Steady_07/10, 240 | Virtual, 480 | no Steady_10, 360 | no Steady_07/10, 240 |
+|---|---|---|---|---|---|---|
+| it30 recall | 0.290 | 0.386 | 0.492 | 0.239 | 0.314 | 0.412 |
+| it30 FPR, drone rounds' no-drone windows | 0.018 | 0.020 | 0.021 | 0.070 | 0.074 | 0.078 |
+| it30 precision | 0.867 | 0.946 | 0.963 | 0.720 | 0.809 | 0.873 |
+| it30 drone rounds detected | 0.723 | 0.925 | 0.996 | 0.733 | 0.897 | 0.988 |
+| it30 drone rounds with a false alarm | 0.371 | 0.400 | 0.421 | 0.525 | 0.544 | 0.542 |
+| it30.5 recall | 0.291 | 0.387 | 0.467 | 0.259 | 0.343 | 0.437 |
+| it30.5 FPR, drone rounds' no-drone windows | 0.012 | 0.014 | 0.015 | 0.049 | 0.052 | 0.054 |
+| it30.5 precision | 0.902 | 0.962 | 0.973 | 0.788 | 0.869 | 0.915 |
+| it30.5 drone rounds detected | 0.715 | 0.931 | 0.988 | 0.723 | 0.917 | 0.983 |
+| it30.5 drone rounds with a false alarm | 0.287 | 0.314 | 0.338 | 0.454 | 0.486 | 0.487 |
+
+| Before impact, 99.9884 % setting, 240 rounds | it30: detected, mean s | it30.5: detected, mean s |
+|---|---|---|
+| Array, all rounds | 127/240, 3.03 | 153/240, 3.37 |
+| Array, no distractors | 18/30, 4.19 | 26/30, 3.63 |
+| Virtual, all rounds | 144/240, 3.73 | 86/240, 2.72 |
+| Virtual, no distractors | 25/30, 4.36 | 19/30, 3.13 |
+
+**Caveat.** As entry 308, and more so: both drones were left out after their test results were seen, and what remains are the two drones from our own recordings.
+These numbers describe those two drones only; the full 488-round result stays the result of record. Not run: `pytest`, the GUI window itself.
+
+## 311 - FINAL TEST folders versioned; two run folders moved into it
+
+- Date: 2026-11-26
+- Type: Housekeeping (requested: "commit and push, be sure to push the results")
+- Commit: the commit that adds this entry, `master`
+
+`20261125_114710_live_reaper_automatic_combined` (entry 300) and `20261125_jupyter_plan_modified_mixwav` (entry 304) were moved by hand to
+`artifacts/complete_test/FINAL TEST/FINAL_PHYS_COMPLETE` and `FINAL_PHYS_COMPLETE_VirtualEdition`; the files are the same as versioned in entries 302 and 307
+(checked against `HEAD`; only line endings differ in three csv files). The old paths are removed from git and `FINAL TEST` is added with `git add -f`: the two runs
+and the four filtered folders of entries 308 and 310 (config.json, live.json, rounds.csv, scores.npz, window_snr.npz, layer_snr.npz, summary.csv; no audio).

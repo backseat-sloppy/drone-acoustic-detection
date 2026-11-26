@@ -1,0 +1,223 @@
+{
+ "plan": {
+  "kind": "modified",
+  "length_s": 20.0,
+  "drones": [
+   "/Users/mariusqvarnstrom/GitHub/drone-acoustic-detection/data/Test Drones/drone_2_Audio_2_raw_0127-0137.wav",
+   "/Users/mariusqvarnstrom/GitHub/drone-acoustic-detection/data/Test Drones/drone1_2_Audio_2_raw_00m14-00m24.wav",
+   "/Users/mariusqvarnstrom/GitHub/drone-acoustic-detection/data/Test Drones/Steady_10.wav",
+   "/Users/mariusqvarnstrom/GitHub/drone-acoustic-detection/data/Test Drones/Steady_07.wav"
+  ],
+  "drone_levels": [
+   80.0
+  ],
+  "layers": {
+   "war soundscape": [
+    60.0
+   ],
+   "wind (Pd)": [
+    25.0
+   ],
+   "cars": [
+    10.0
+   ],
+   "helicopter": [
+    50.0
+   ],
+   "insects": [
+    30.0
+   ]
+  },
+  "detectors": [
+   "it30 CRNN half s1",
+   "it30.5 CRNN ir s0"
+  ],
+  "step_s": 4.0,
+  "no_drone_rounds": true,
+  "soundscape_start_s": null,
+  "synth": {
+   "drone_seed": 1,
+   "pscale": 0.85,
+   "elev_deg": 40.0
+  },
+  "speeds": [
+   80.0,
+   105.0,
+   130.0,
+   155.0,
+   180.0
+  ],
+  "pitches": [
+   1.0
+  ],
+  "pitch_random": true,
+  "approach": {
+   "closest_m": 1.0,
+   "doppler": true,
+   "reverb": false,
+   "ground": true,
+   "angle_deg": 10.0,
+   "mic_h": 1.5,
+   "outdoor_reverb": true,
+   "critical_m": 100.0
+  },
+  "pd_settings": {
+   "wind": {
+    "speed_ms": [
+     10.0
+    ],
+    "reso": [
+     40.0
+    ]
+   },
+   "cars": {
+    "speed_kmh": [
+     50.0
+    ],
+    "dist_m": [
+     50.0
+    ]
+   }
+  },
+  "also_without": [
+   "cars",
+   "helicopter",
+   "insects"
+  ],
+  "final_evaluation": false,
+  "car_engines": null,
+  "car_once": true,
+  "fa_percentile": 95.0,
+  "war_file": "artifacts/war_stems/mix.wav",
+  "live": {
+   "source": "reaper",
+   "trigger": "automatic",
+   "threshold": null,
+   "reaper_channels": 39,
+   "sample_rate": null,
+   "input_sample_rate": 16000,
+   "device": "Fireface UFX+ (24080999) (16000 Hz) <- REAPER, 39 speakers",
+   "input_channels": [
+    8,
+    9
+   ]
+  },
+  "buffer_after_s": 1.0
+ },
+ "soundscape_start_s": 8.0,
+ "thresholds": {
+  "it30 CRNN half s1": 0.46457439661026,
+  "it30.5 CRNN ir s0": 0.4539233446121216
+ },
+ "count": {
+  "starts": 3,
+  "drones": 20,
+  "drone_levels": 1,
+  "backgrounds": 8,
+  "drone_rounds": 480,
+  "total": 488,
+  "detector_runs": 976
+ },
+ "drone_spans": {
+  "drone_2_Audio_2_raw_0127-0137.wav @ 80 km/h": [
+   0.6558492848546387,
+   10.0,
+   10.0
+  ],
+  "drone_2_Audio_2_raw_0127-0137.wav @ 105 km/h": [
+   0.8617249602201758,
+   10.0,
+   10.0
+  ],
+  "drone_2_Audio_2_raw_0127-0137.wav @ 130 km/h": [
+   1.0676012458601045,
+   10.0,
+   10.0
+  ],
+  "drone_2_Audio_2_raw_0127-0137.wav @ 155 km/h": [
+   1.2734778462123708,
+   10.0,
+   10.0
+  ],
+  "drone_2_Audio_2_raw_0127-0137.wav @ 180 km/h": [
+   1.4793546299148295,
+   10.0,
+   10.0
+  ],
+  "drone1_2_Audio_2_raw_00m14-00m24.wav @ 80 km/h": [
+   0.6547416763990264,
+   9.9831875,
+   9.9831875
+  ],
+  "drone1_2_Audio_2_raw_00m14-00m24.wav @ 105 km/h": [
+   0.8602712179372022,
+   9.9831875,
+   9.9831875
+  ],
+  "drone1_2_Audio_2_raw_00m14-00m24.wav @ 130 km/h": [
+   1.065801370778422,
+   9.9831875,
+   9.9831875
+  ],
+  "drone1_2_Audio_2_raw_00m14-00m24.wav @ 155 km/h": [
+   1.2713318388629082,
+   9.9831875,
+   9.9831875
+  ],
+  "drone1_2_Audio_2_raw_00m14-00m24.wav @ 180 km/h": [
+   1.4768624906072985,
+   9.9831875,
+   9.9831875
+  ],
+  "Steady_10.wav @ 80 km/h": [
+   0.6558492848546387,
+   10.0,
+   10.0
+  ],
+  "Steady_10.wav @ 105 km/h": [
+   0.8617249602201758,
+   10.0,
+   10.0
+  ],
+  "Steady_10.wav @ 130 km/h": [
+   1.0676012458601045,
+   10.0,
+   10.0
+  ],
+  "Steady_10.wav @ 155 km/h": [
+   1.2734778462123708,
+   10.0,
+   10.0
+  ],
+  "Steady_10.wav @ 180 km/h": [
+   1.4793546299148295,
+   10.0,
+   10.0
+  ],
+  "Steady_07.wav @ 80 km/h": [
+   0.6558492848546387,
+   10.0,
+   10.0
+  ],
+  "Steady_07.wav @ 105 km/h": [
+   0.8617249602201758,
+   10.0,
+   10.0
+  ],
+  "Steady_07.wav @ 130 km/h": [
+   1.0676012458601045,
+   10.0,
+   10.0
+  ],
+  "Steady_07.wav @ 155 km/h": [
+   1.2734778462123708,
+   10.0,
+   10.0
+  ],
+  "Steady_07.wav @ 180 km/h": [
+   1.4793546299148295,
+   10.0,
+   10.0
+  ]
+ }
+}
