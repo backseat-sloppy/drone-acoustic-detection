@@ -116,6 +116,7 @@ COLORS = {"it6 CNN": "#2a78d6", "it9 CNN": "#e8710a", "it9 CRNN": "#9334e6", "it
           "it28 CRNN vehicle s0": "#33691e", "it28 CRNN vehicle s1": "#7cb342", "it28 CRNN vehicle s2": "#c5e1a5",
           "it30 CRNN half s0": "#01579b", "it30 CRNN half s1": "#0288d1", "it30 CRNN half s2": "#4fc3f7",
           "it30.5 CRNN ir s0": "#4a148c", "it30.5 CRNN ir s1": "#aa00ff", "it30.5 CRNN ir s2": "#ea80fc",
+          "it32 CRNN room s0": "#bf360c", "it32 CRNN room s1": "#f4511e", "it32 CRNN room s2": "#ffab91",
           "phys IR CRNN relabel colour s1": "#ffd600", "phys IR it9 CRNN": "#37474f", "phys IR It9B": "#ad1457",
           "phys IR it9 CRNN 600k": "#90a4ae", "phys IR It9B 600k": "#f48fb1",
           "comb": "#1baf7a"}   # it20-it30.5: the same colours as detect_gui

@@ -133,3 +133,14 @@ def test_apply_ir_is_circular_convolution():
     d[0] = 1.0
     assert np.allclose(apply_ir(d, ir), np.pad(ir, (0, 500)).reshape(-1, 1000).sum(0))
     assert np.allclose(apply_ir(x, ir), np.convolve(np.tile(x, 4), ir)[3000:4000])
+
+
+def test_room_ir_is_direct_sound_plus_a_decaying_tail():
+    from dad import dronesynth as ds
+    rng = np.random.default_rng(0)
+    for _ in range(200):
+        h = ds.room_ir(rng, 16_000)
+        assert h[0] == 1.0
+        drr = -10 * np.log10(np.sum(h[1:] ** 2))
+        assert ds.ROOM_DRR_DB[0] - 1e-6 <= drr <= ds.ROOM_DRR_DB[1] + 1e-6
+        assert ds.ROOM_RT60_S[0] * 16_000 <= len(h) <= (ds.ROOM_RT60_S[1] + ds.ROOM_PREDELAY_S[1]) * 16_000

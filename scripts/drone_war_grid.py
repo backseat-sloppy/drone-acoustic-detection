@@ -120,6 +120,9 @@ MODELS = {"it6 CNN": (RUN, DETECTORS["CNN"]),                # name -> (run file
           # iteration 30 with half the training windows through the array room's measured IR (iteration 30.5, entries 277-280)
           **{f"it30.5 CRNN ir s{s}": (ROOT / f"artifacts/runs/it30_5_ir_s{s}.json", MODEL_DIR / f"it30_5_ir_s{s}_crnn.pt")
              for s in (0, 1, 2)},
+          # iteration 30 with random echo paths and a real noise floor in half the families (iteration 32, entries 314-316)
+          **{f"it32 CRNN room s{s}": (ROOT / f"artifacts/runs/it32_room_s{s}.json", MODEL_DIR / f"it32_room_s{s}_crnn.pt")
+             for s in (0, 1, 2)},
           # it23 relabel colour s1 trained with the measured microphone IR as the last audio step (entries 272-274)
           "phys IR CRNN relabel colour s1": (ROOT / "artifacts/runs/phys_ir_relabel_colour_s1.json",
                                              MODEL_DIR / "phys_ir_relabel_colour_s1_none_simdist_colour_crnn.pt"),

@@ -53,6 +53,7 @@ previous iteration and why. Numbered entries sit inside iterations.
 | Iteration 29 | 256 to 258 | Steady no-drone noises in the iteration 27 simulator: procedural coloured noise (-6 to +3 dB/octave, half low-passed) and synthetic wind, 10 % of beds and 25 % of confusers; ladder kept at 3; threshold on it27's validation set | Entry 256: it27/it28 score steady sounds 0.15-0.55 and wobble 0.1-0.6 in the live demo; council entry 257 | **Stopped at step 0: gate fails.** On validation, it27/it28 give steady beds 0.21-0.31, but also the FSD50K background and wind beds they trained on 0.31-0.34 (war 0.08-0.10): the no-drone level is high on almost every non-war scene, not only steady noise. Not trained (entry 258) |
 | Iteration 30 | 258 to 264 | Training families of 1 scene + 1 drone copy (`--ladder 1`): 50 % drone windows instead of 75 %; everything else as it27; threshold on it27's unchanged validation set | Entry 258: it27/it28 give about 0.3 to almost every non-war no-drone scene; Marius chose to train | **Fails as written, narrowly** (background bed 0.161 > 0.15; UAV16 recall 0.591 < 0.598). No-drone confidence halves (0.193 to 0.102; war 0.085 to 0.039) at unchanged AUC 0.984 and recall 0.915, so mostly a rescaling by the prior; drone confidence at -20 to -10 dB 0.848 to 0.755 (entry 260). In the GUI live mix: mean 0.060, sd 0.065 (it27 0.173 / 0.146), a third less wobble even against its own threshold (entry 262). Steady negatives on top skipped: no weakness on validation (entries 263-264) |
 | Iteration 30.5 | 277 to | it30's recipe with half the training windows heard through the array room: the impulse response measured on 2026-11-23 (`IR_mic_in3.wav`), as a circular convolution of the whole window | Marius's request (2026-11-24): test 3 plays everything through the array's speakers into a microphone; the measured chain cuts below 80 Hz (-10 dB at 50 Hz) and lifts 5-10 kHz by 5-10 dB, which no training window has had | **Fails as written, on two narrow rules; the room effect is fixed.** Through the room, it30's no-drone confidence rises from 0.102 to 0.163 and AUC falls to 0.975; it30.5 gives 0.111 and 0.983. Plain validation unchanged (AUC 0.983, no-drone 0.101). Failed: faint-drone confidence through the room not above it30's (0.749 against 0.750), and UAV16 false alarms 0.083 > 0.078 (recall rose 0.591 to 0.642). Entry 280 |
+| Iteration 32 | 313 to 316 | Random acoustic paths (echo) for drone, confuser and twin, and a real recorded noise floor, in half the training families; otherwise it30 | Entries 306 and 312: echo with a real floor cut false alarms ~4x on the array; the training has neither; Marius wants the model best in real life; council entry 313 | Failed: UAV16 AUC 0.859 vs it30 0.857 on the same windows (+0.002, inside the 0.01 failure band); Nightjar 0.731 vs 0.735. Entry 316 |
 
 ## Templates
 
@@ -19231,3 +19232,209 @@ These numbers describe those two drones only; the full 488-round result stays th
 `artifacts/complete_test/FINAL TEST/FINAL_PHYS_COMPLETE` and `FINAL_PHYS_COMPLETE_VirtualEdition`; the files are the same as versioned in entries 302 and 307
 (checked against `HEAD`; only line endings differ in three csv files). The old paths are removed from git and `FINAL TEST` is added with `git add -f`: the two runs
 and the four filtered folders of entries 308 and 310 (config.json, live.json, rounds.csv, scores.npz, window_snr.npz, layer_snr.npz, summary.csv; no audio).
+## 312 - How much real-world acoustics the current training already has (it30, it30.5)
+
+- Date: 2026-11-26
+- Type: Review of the training simulator, no run (Marius: the goal is a model that works best in real life, not in the array room)
+- Commit: `master` at ca2f37c; read from `src/dad/dronesynth.py`, `scripts/run_worldsim.py`, `src/dad/realrun.py`, `src/dad/propagation.py`, `data/processed/stems/manifest.csv`, `artifacts/runs/it30_half_s1.json`, `it30_5_ir_s0.json`
+
+**In the training (it30: `run_worldsim.py`, 600,000 windows, ladder 1, `p_quiet` 0.2):**
+- Drones: 20 Glasgow drones, hover recordings at 1 m, probably indoors (`real_drone`'s docstring). Each is sent outdoors: rotor speed x0.8-1.25, approach 10-400 m or fly-by 5-200 m,
+  0-60 m/s, 5-120 m high, 1/r, Doppler, ISO 9613-1 air absorption, and one ground reflection (coefficient 0.3-0.9, "a calibration knob, not a measured ground").
+- Beds and confusers: real FSD50K-dev recordings (background 150, wind 30, war 150, distracters 484), with whatever room or outdoor sound they were recorded in. Distracter and war
+  stems were denoised when built (`build_stems.py`, policy "percentile"). They get no distance, echo or propagation of their own (except vehicles in iteration 28, off in it30).
+- Microphone: a random smooth EQ per window (tilt +-3 dB across the mel bands, five-point shape with SD 2 dB). it30.5 also: half the windows through the one measured array IR.
+- Level: `level_normalise` removes each window's level, so loudness only counts relative to the window.
+- Twins: Glasgow's own no-drone recording through the same drone path, half the no-drone windows.
+- Quiet scenes (iteration 27): 20 % of scenes are a near-empty bed; a quarter of those are exact digital silence, the rest white or pink noise at -90 to -50 dB, often with one confuser
+  alone. Added for the Complete Test GUI's exact-zero layers (entry 246).
+
+**Not in it:**
+1. Echo or reverberation added to anything; the drone has only its recording room and one ground reflection.
+2. Distance and air for beds and confusers: a confuser is as close and as bright as its recording.
+3. A real noise floor under every window: the quiet scenes are synthetic, and some are digital silence on purpose, which suits the digital test rather than a microphone.
+4. Microphone effects beyond a smooth EQ: self-noise, low-cut, wind on the capsule, clipping, automatic gain.
+5. Outdoor drone recordings: UAV16 was tried in iteration 26 and failed its stage.
+6. Ground and weather effects that `propagation.py` names as left out: ground absorption, barriers, wind and temperature gradients, turbulence.
+
+**Sim-to-real gap in the run files (CRNN, own frozen threshold):** validation (simulator, held-out drones) AUC 0.985 / recall 0.916; UAV16's held-out outdoor recordings AUC 0.854 /
+recall 0.577 (it30 s1) and 0.862 / 0.633 (it30.5 s0). The LightGBM baseline: 0.949 / 0.779 against 0.750 / 0.225; comb: 0.607 / 0.293 against 0.538 / 0.071.
+
+**What follows, as a proposal only (not started).** Entry 306 found that echo with a real noise floor cut false alarms on the array by about four. The real-life version of that is not
+the array's room but variety: random outdoor and indoor reverberation for drone, beds and confusers; distance and air for the confusers; a real recorded noise floor under every window
+in place of digital silence; and more microphone effects. It would be a new iteration, judged on held-out real recordings (UAV16's held batches and the other real sets), not on the
+simulator and not on the array. Changing the simulator this much is close to "replacing the frontend or the detection algorithm", so the council (section 4) should be convened first.
+
+## 313 - Council: real-world acoustic variety in the training simulator
+
+- Date: 2026-11-26
+- Type: Council (CLAUDE.md section 4; convened at Marius's yes)
+- Commit: `master` at ca2f37c; briefs in the session scratchpad (full brief for the Devil's Advocate and the Problem Solver, a context-free brief for the Scholar)
+
+**Question.** Should the next iteration add real-world acoustic variety to the training simulator, so the model works best in real life rather than in the array room? Options: A keep the
+current recipe (it30) and work on faint-drone confidence (entry 264); B all four parts of entry 312 at once (random reverberation on drone, beds and confusers; distance and air for
+confusers; a real noise floor under every window instead of digital silence; more microphone effects); C train through the array's 39 measured paths (already rejected by Marius); D part of B.
+
+**Devil's Advocate** (against B). Decisive: (1) on real held-out data the failure is recall, not false alarms (UAV16 it30 s1: false alarms 0.061 at the 0.05 design point, recall 0.577 against
+0.916 simulated), while entry 306's evidence is mainly about false alarms; (2) the one-IR pilot it30.5 moved along the same curve (UAV16 AUC 0.855 against 0.857), and a frozen simulator
+threshold will turn a harder simulator into a "recall gain" without better separation. Serious: (3) test 3 steers the design (32 rounds mostly inside the room's fit; ITU ARIS in the 488-round
+headline); (4) removing digital silence may undo iteration 27 on tests 1 and 2, which are digital mixes and ranked first; (5) four bundled parts cannot be attributed; (6) a noise floor from a
+real set that is also scored would leak; (7) UAV16 (one drone model, two batches) is thin against seed noise. Weak: synthetic IRs are an unvalidated prior; cost.
+
+**Scholar** (no project context). Best practice is to put the variability expected at deployment into the synthesised training data, and to judge it only on held-out real recordings from other
+sources, devices and sites, with the threshold fixed on validation at a target false-positive rate, several seeds, and leave-one-out ablations. Pitfall: shortcut cues from processing that only one
+class gets; a synthetic validation set cannot judge an augmentation. On the options: keeping exact digital silence is against practice (no microphone produces it); propagation and paths on
+distractors as well as the target is standard (otherwise "processed by the propagation model" means "target"); a real noise floor under every example is standard; microphone transfer-function
+augmentation is standard and the best supported for drones (Reuter, Ohlenbusch, Rollwage 2026, arXiv 2605.31329, read by the Scholar: out-of-domain TPR at 1 % FPR 0.783 to 0.816; high-pass 60-120 Hz,
+low-pass 6-8 kHz, +-4 dB peaking EQ; that paper uses no RIR augmentation); room-IR augmentation is standard indoors and a defensible variation outdoors, applied to the point sources rather than to
+recorded backgrounds, which carry their own acoustics; reverberating the whole mixture is a defensible variation; one change at a time is accepted, a bundle only as a first "does it help at all" test
+followed by an ablation; fitting to one demo room is against practice as a claim of generalisation. Unsettled: simulated against measured IRs for outdoor non-speech sound; whether wide augmentation
+costs false alarms on confusers. Large-scale pretraining (AudioSet) was the largest single gain in that drone paper (a new model family here: its own council).
+
+**Problem Solver.** Try a modified version: reverberation (random synthetic IR, RT60 about 0.05-0.8 s, random direct-to-reverberant ratio) plus a real recorded floor, together, on half the windows
+(as `--p-ir`), everything else as it30, including the quiet and digital-silence scenes as a guard for tests 1 and 2. 3 seeds on JupyterLab (about 2 h). Success: seed-mean UAV16 AUC at least 0.875
+(it30 0.857) with false alarms not above 0.078; failure: AUC within 0.01 of it30, then stop the line and go to faint drones. Add Nightjar (with `labels/nightjar_relabel.csv`) as a second real
+readout. Guards: simulated validation AUC not below 0.98, digital-silence confidence near it30's, no FPR rise on test 3's own-drone rounds. ITU ARIS and tests 1 and 2 only after the decision.
+Confidence medium-low that it beats the curve, high that the experiment answers the question.
+
+**Weighing.**
+- Objection 1 stands in part: the change is aimed at acoustics, and the real gap may lie in the drone class (20 indoor hovers). It is answered by the success measure: real AUC, which needs
+  better separation, not a lower false-alarm rate. If AUC does not move, the line stops (Problem Solver's failure rule).
+- Objection 2 is built into the experiment the same way: recall at the simulator threshold is reported but never decides. it30.5 used one fixed IR on the whole window; varied paths are a different
+  test, but the risk of the same result is real and stays standing.
+- Objection 3 is accepted and recorded: entry 306 (test 3, on recordings from the array) motivated this. Nothing in the design is fitted to the array, the array result is a readout after the decision
+  only, and ITU ARIS rounds are never read for it.
+- Objection 4: the quiet and digital-silence scenes of iteration 27 stay unchanged in this iteration. This departs from the Scholar (digital silence is against practice) for a reason specific
+  to us: tests 1 and 2 are digital mixes with exact-zero layers and are ranked first in REQUIREMENTS.md. Whether "real life" (Marius, 2026-11-26) should outrank those tests is for Marius and Mads.
+- Objection 5: two parts are bundled (paths and floor) because entry 306 found that neither works alone; the other two (confuser distance as such, microphone effects) are left out. A
+  leave-one-out arm follows only if the bundle wins.
+- Objection 6: the floors come only from training-side material: quiet FSD50K-dev background stems (train split) and the training part of Glasgow's noise recording. Not UAV16's plain recordings: `uav16_real`
+  scores hovers and backgrounds from the same array and site, so a UAV16 floor would make that readout partly familiar.
+- Objection 7: Nightjar is added as a second real readout, and three seeds as usual.
+- **Scholar against Problem Solver** turns on one fact: the beds are recordings with their own acoustics. Following the Scholar, the random path (reverberation over the existing ground reflection) is
+  applied to the point sources, drone and confuser, each its own draw, not to the recorded bed and not to the mixture. That also gives distractors processing like the drone's (the Scholar's shortcut
+  pitfall). It departs from the Problem Solver's "whole scene" and from entry 306's room, which reverberated everything.
+
+**Decision.** Iteration 32, one arm (3 seeds): on 50 % of windows, drone and confuser each through their own random synthetic path, and a real training-side noise floor under the whole window.
+Everything else as it30. Judged by the Problem Solver's rules (UAV16 AUC at least 0.875 with false alarms not above 0.078; failure within 0.01 of 0.857), with Nightjar as a second real readout,
+`comb` and `lgbm` beside it, and the guards (simulated validation AUC, silence and quiet scenes). Next in line, as its own single change: widened microphone transfer-function augmentation (the Scholar's best-supported option).
+Not started: implementation and the server run wait for Marius's go-ahead, since the upload needs him.
+
+# Iteration 32 - Random acoustic paths and a real noise floor
+
+> **Changed from iteration 30 (`it30_half_s0-s2`):** in half the training families (`--p-room 0.5`), the drone, the confuser and the twin each go
+> through their own random path (the direct sound plus an exponential noise tail: RT60 0.05-0.8 s log-uniform, direct-to-reverberant 15 to -5 dB, pre-delay 1-10 ms), and one real
+> recorded floor goes under every window of the family at 30-60 dB below the scene (FSD50K-dev background beds of the train split, or the train part of Glasgow's noise). Recorded beds keep
+> their own acoustics. Families on a quiet or silent bed (iteration 27) never get it.
+>
+> **Why:** entries 306 and 312-313. On the speaker array, echo with a real noise floor cut false alarms about four times; the training has neither for anything but the drone's one ground
+> reflection, and some of its scenes are digital silence. Marius (2026-11-26): the goal is a model that works best in real life, not in the array room. Council entry 313.
+>
+> **Kept the same:** everything else of it30: 20 Glasgow drones (4 held out), beds, confusers, twins, quiet scenes p 0.2, ladder 1, SNR -20 to +10 dB, CRNN, 600,000 windows, seeds 0-2 on
+> JupyterLab. With `--p-room 0` the sampler gives it30's batches bit for bit (checked on three batches). Validation is it27's, unchanged; threshold frozen at 5 % false alarms on it.
+>
+> **Hypothesis:** a model that has heard varied paths and real floors separates drone from no drone better on real recordings it never trained on.
+>
+> **Judged by (council entry 313), seed means:**
+> 1. UAV16 held batches (real, outdoor): AUC at least 0.875 (it30: 0.857) with false alarms not above 0.078. Failure: AUC within 0.01 of it30.
+> 2. Nightjar (real field audio, relabelled, without the mower session; new readout, 8,602 windows of 1 s, 4,306 with a drone): reported beside it, AUC and false alarms.
+> 3. Guards: simulated validation AUC not below 0.98; empty-silence and quiet-bed confidence near it30's.
+> 4. Read after the verdict only: the test 3 rounds with our own drones (through the room model), never ITU ARIS.
+> `comb` and `lgbm` are trained and reported beside the CRNN.
+
+## 314 - Iteration 32 code and server run started
+
+- Date: 2026-11-26
+- Iteration: 32
+- Type: Code and run start
+- Commit: uncommitted, on `master` at ca2f37c: `src/dad/dronesynth.py` (`room_ir`, `SynthSampler(p_room=)`), `scripts/run_worldsim.py` (`--p-room`, `nightjar_real`), `tests/test_dronesynth.py` (one test)
+
+**Code.** `room_ir(rng, fs)`: impulse 1 at 0, a white noise tail decaying 60 dB over RT60, scaled to the drawn direct-to-reverberant ratio. Applied as `apply_ir` (circular) to the drone (before the
+SNR is set, so the SNR is the reverberant drone's), the confuser and the twin of a room family. The floor is drawn once per family at a level set by the scene alone, so it is the same under the
+no-drone and the drone window. Known simplification: the tail has the same decay at every frequency (marked `ponytail:` in the code).
+
+**Checks (Mac).** `--p-room 0` gives it30's batches bit for bit (three batches of 64 against the committed sampler). 300 families at p 1: 236 with the path, 64 on quiet or silent beds, never
+with it. DRR range over 2,000 IRs -4.98 to 15.0 dB, lengths 0.052-0.807 s. A batch of 64 takes 0.36 s against 0.33 s. `uv run pytest tests/test_dronesynth.py`: passed (one skipped, as before).
+
+**Server.** New folder `~/dad32`: `src`, `scripts`, `tests`, `labels` from the clone `~/ct_25_11` (7153cdb; the five files touched here equal ca2f37c's by MD5), the patch applied (MD5 of both changed
+files equal to the Mac's), `data` and `.venv` linked as in `~/dad305`, the processed store linked from `~/drone-acoustic-detection` for Nightjar. Smoke test: Nightjar 8,602 windows, 4,306 drone;
+a batch at p 0.5 built. Started 2026-11-26 09:54 CET, `~/dad32/it32_launch.sh`:
+`run_worldsim.py --name it32_room_s$S --models comb lgbm crnn --p-quiet 0.2 --ladder 1 --p-room 0.5 --windows 600000 --faint-families 500 --device cuda --seed $S --workers 8 --reference it30_half_s{0,1,2}_crnn.pt`,
+one seed per GPU. The it30 references are scored on the new Nightjar readout too, so the comparison is on the same windows.
+
+## 315 - Test 3: the 488 heard rounds joined into one WAV
+
+- Date: 2026-11-26
+- Type: Housekeeping, test 3 (asked for by Marius)
+- Commit: uncommitted, on `master` at ca2f37c; no code change, git-ignored output only
+
+`artifacts/complete_test/20261125_114710_live_reaper_automatic_combined/heard_all.wav`: the 488 files `heard/round_0001.wav` to
+`round_0488.wav` back to back in round order, unchanged (16 kHz, mono, 32-bit float, as the live engine writes them). 156,160,000
+samples = 488 x 320,000, 9,760 s (2 h 42 min), 596 MB. Round k starts at (k - 1) x 20 s. Input: Fireface UFX+, Mic 9 + Mic 10
+averaged (entry 293). Each file is cut at its round's own measured delay, and the run came in three parts, so the joins are cuts,
+not one continuous recording.
+Some rounds hold ITU ARIS drones: test-only material (CLAUDE.md section 5), never for training.
+
+## 316 - Iteration 32 verdict: random acoustic paths and a real floor do not help
+
+- Date: 2026-11-26
+- Iteration: 32
+- Type: Result and verdict
+- Commit: uncommitted code as in entry 314; runs on JupyterLab `~/dad32`, finished 11:37-11:51 CET
+- Outputs: `~/dad32/artifacts/runs/it32_room_s{0,1,2}.json`, logs `~/dad32/artifacts/logs/it32_room_s{0,1,2}.log`, 6,249-7,064 s per seed
+
+Same validation for all models (it27's, seed 25000), threshold at 5 % false alarms on it. UAV16 held batches (real, outdoor):
+4,435 drone and 5,158 no-drone windows of 1 s. Nightjar (real, relabelled, mower session left out): 4,306 drone and 4,296 no-drone
+windows of 1 s. The it30 references are the three `it30_half_s{0,1,2}_crnn.pt` models scored inside these runs, on the same windows.
+
+| Model | Val AUC | UAV16 AUC | UAV16 recall | UAV16 FA | Nightjar AUC | Nightjar recall | Nightjar FA |
+|---|---|---|---|---|---|---|---|
+| it32 CRNN s0 / s1 / s2 | 0.983 / 0.984 / 0.983 | 0.866 / 0.862 / 0.849 | 0.613 / 0.601 / 0.600 | 0.046 / 0.058 / 0.077 | 0.728 / 0.736 / 0.730 | 0.460 / 0.444 / 0.467 | 0.065 / 0.050 / 0.061 |
+| **it32 mean** | 0.983 | **0.859** | 0.605 | 0.060 | **0.731** | 0.457 | 0.059 |
+| it30 CRNN s0 / s1 / s2 | 0.984 / 0.985 / 0.984 | 0.863 / 0.854 / 0.854 | 0.591 / 0.577 / 0.605 | 0.054 / 0.061 / 0.061 | 0.738 / 0.726 / 0.740 | 0.426 / 0.467 / 0.472 | 0.049 / 0.072 / 0.060 |
+| **it30 mean** | 0.984 | **0.857** | 0.591 | 0.059 | **0.735** | 0.455 | 0.060 |
+| `lgbm` (it32 recipe), mean of 3 | 0.947 | 0.767 | 0.215 | 0.049 | 0.603 | 0.373 | 0.202 |
+| `comb` (no ML) | 0.607 | 0.538 | 0.071 | 0.045 | 0.549 | 0.128 | 0.043 |
+
+**Against the rules of entry 313.**
+1. UAV16: seed-mean AUC 0.859 against the target 0.875; +0.002 over it30, inside the 0.01 failure band. The seed spread (0.849-0.866)
+   is larger than the gain. False alarms 0.060 (limit 0.078): met. **Failed.**
+2. Nightjar: AUC 0.731 against it30's 0.735, recall and false alarms equal. No gain on real field audio either.
+3. Guards: validation AUC 0.983 (at least 0.98): met. Quiet-bed confidence with no drone 0.101-0.113 (it30 references 0.096-0.116)
+   and empty-silence confidence 0.003-0.005: tests 1 and 2 kept. Quiet-bed false alarms are a little higher (0.028-0.056 against 0.028-0.037).
+4. The test 3 read-out through the room model was not run: that step only belongs to a passing iteration.
+
+**Verdict.** Iteration 32 fails. Synthetic echo (white tail, RT60 0.05-0.8 s) on drone, confuser and twin, plus a real training-side
+noise floor, in half the families, leaves the model where it30 was on both real readouts. The array finding of entry 306 (echo and
+floor cut false alarms ~4x) does not carry over to UAV16 or Nightjar this way. Either their errors are not caused by missing echo or
+floor, or this simulated echo is too unlike outdoor propagation (no frequency-dependent decay, no ground reflection, no air absorption
+at distance). This run cannot tell the two apart. it30 stays the model; nothing from iteration 32 is promoted.
+
+**Next.** Not decided yet. Two candidates, both needing a decision with Marius and Mads first: (a) look at which UAV16/Nightjar windows
+it30 misses and why, before changing the simulator again; (b) the open question from entry 313 of whether "best in real life" should
+replace the REQUIREMENTS priority on test 1.
+
+
+## 317 - Iteration 32 models added to the GUIs
+
+- Date: 2026-11-26
+- Iteration: 32
+- Type: Housekeeping (asked for by Marius)
+- Commit: uncommitted, on `master` at ca2f37c: `scripts/drone_war_grid.py`, `scripts/detect_gui.py`, `scripts/Complete_Test_Gui.py`
+
+The three iteration 32 CRNNs are in `drone_war_grid.MODELS` as `it32 CRNN room s0`-`s2`, so `detect_gui`, `Complete_Test_Gui` and
+the complete test engine list them; colours #bf360c, #f4511e, #ffab91. Files fetched from JupyterLab `~/dad32` as one archive
+(MD5 5d937728058abb759ba06007289e1498 on both sides): `artifacts/models/it32_room_s{0,1,2}_crnn.pt` and `_lgbm.pkl`,
+`artifacts/runs/it32_room_s{0,1,2}.json`. Check: `drone_war_grid._detectors` loads each one, window 1.0 s, thresholds read from
+the run files 0.455 / 0.486 / 0.439, the same as the run logs (entry 316). Adding them changes nothing about the verdict of entry
+316: iteration 32 failed and it30 stays the model. Nothing was scored with them here.
+
+## 314 - The GUI monitor finds the GUI whatever case its file name is typed in
+
+- Date: 2026-11-26
+- Type: Evaluation tooling for test 3 (fix of entry 283)
+- Commit: uncommitted, on `master` at ca2f37c; `scripts/gui_monitor.py`
+
+Marius started the GUI as `scripts/complete_test_gui.py` (macOS file names ignore case), and the monitor, looking for
+`Complete_Test_Gui.py` with `pgrep -f`, did not find it and showed "the GUI is not running". Now `pgrep -if`: case ignored.
+Check: `gui_windows("Complete_Test_Gui.py")` found the running GUI's window (one id). Not checked: the page from the PC over Tailscale.

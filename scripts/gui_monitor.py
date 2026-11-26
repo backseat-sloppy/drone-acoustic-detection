@@ -48,7 +48,7 @@ setTimeout(tick,EVERY)}tick()</script>"""
 
 def gui_windows(match: str) -> list[int]:
     """Window ids of the Python process whose command line holds `match`, largest first (never another app's)."""
-    pids = {int(p) for p in subprocess.run(["pgrep", "-f", match], capture_output=True, text=True).stdout.split()}
+    pids = {int(p) for p in subprocess.run(["pgrep", "-if", match], capture_output=True, text=True).stdout.split()}
     info = Quartz.CGWindowListCopyWindowInfo(
         Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements, Quartz.kCGNullWindowID)
     area = lambda d: d["kCGWindowBounds"]["Width"] * d["kCGWindowBounds"]["Height"]  # noqa: E731
@@ -134,7 +134,7 @@ def main() -> None:
     p.add_argument("--host", default="0.0.0.0", help="0.0.0.0: the network; 127.0.0.1: this Mac only")
     p.add_argument("--every", type=float, default=1.0, help="seconds between pictures")
     p.add_argument("--width", type=int, default=1600, help="picture width in pixels: lower is faster, e.g. 1200")
-    p.add_argument("--match", default="Complete_Test_Gui.py", help="the GUI is the process with this in its command line")
+    p.add_argument("--match", default="Complete_Test_Gui.py", help="the GUI is the process with this in its command line (any case: macOS runs complete_test_gui.py too)")
     a = p.parse_args()
     key = secrets.token_urlsafe(9)
     server = ThreadingHTTPServer((a.host, a.port), handler(key, a.every))

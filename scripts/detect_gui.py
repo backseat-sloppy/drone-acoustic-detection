@@ -126,6 +126,7 @@ MODEL_COLORS = dict(zip(MODELS, ["#2a78d6", "#e8710a", "#9334e6", "#d93025", "#0
                                  "#33691e", "#7cb342", "#c5e1a5",                       # it28 CRNN vehicle s0-s2
                                  "#01579b", "#0288d1", "#4fc3f7",                       # it30 CRNN half s0-s2
                                  "#4a148c", "#aa00ff", "#ea80fc",                       # it30.5 CRNN ir s0-s2
+                                 "#bf360c", "#f4511e", "#ffab91",                       # it32 CRNN room s0-s2
                                  "#ffd600",                                             # phys IR CRNN relabel colour s1
                                  "#37474f", "#ad1457",                                  # phys IR it9 CRNN, It9B
                                  "#90a4ae", "#f48fb1"]))                                # the same at 600k

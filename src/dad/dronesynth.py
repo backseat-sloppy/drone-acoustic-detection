@@ -70,6 +70,12 @@ VEHICLE_R_REF = 5.0   # FSD50K gives no recording distance; a guess, it only set
 # iteration 29: steady noises as no-drone (council, entry 257). Generic acoustics, not shaped to any test layer
 STEADY_SLOPE_DB_OCT = (-6.0, 3.0)      # power slope of the coloured noise (white 0, pink -3, brown -6)
 STEADY_CONFUSER_SHARE = 0.25           # share of confusers that are a steady noise when p_steady > 0
+# iteration 32 (council, entry 313): each point source (drone, confuser, twin) through its own random path, and a real
+# recorded floor under the window. Generic acoustics, not fitted to any test room
+ROOM_RT60_S = (0.05, 0.8)              # log-uniform: near free field outdoors up to a room
+ROOM_DRR_DB = (-5.0, 15.0)             # direct against reverberant energy
+ROOM_PREDELAY_S = (0.001, 0.01)
+FLOOR_DB = (-60.0, -30.0)              # the floor's in-band power against the scene's
 BED_GROUPS = ("background", "wind")
 CONFUSER_GROUPS = ("distracter", "war")
 
@@ -257,6 +263,20 @@ def synth_wind(rng: np.random.Generator, n: int, fs: int) -> np.ndarray:
     return x / (x.std() + 1e-12)
 
 
+def room_ir(rng: np.random.Generator, fs: int) -> np.ndarray:
+    """A random path: the direct sound and an exponentially decaying noise tail (RT60 from ROOM_RT60_S, energy
+    ROOM_DRR_DB below the direct sound, after ROOM_PREDELAY_S)."""
+    # ponytail: a white tail, the same decay at every frequency; real tails lose treble first. Add a damping
+    # filter if the networks learn to tell this tail from recorded rooms.
+    rt = math.exp(rng.uniform(math.log(ROOM_RT60_S[0]), math.log(ROOM_RT60_S[1])))
+    a = int(rng.uniform(*ROOM_PREDELAY_S) * fs)
+    tail = rng.standard_normal(int(rt * fs)) * np.exp(-6.91 * np.arange(int(rt * fs)) / (rt * fs))
+    h = np.zeros(a + len(tail))
+    h[0] = 1.0
+    h[a:] += tail * math.sqrt(10.0 ** (-rng.uniform(*ROOM_DRR_DB) / 10.0) / np.sum(tail ** 2))
+    return h
+
+
 def steady(rng: np.random.Generator, n: int, fs: int) -> tuple[str, np.ndarray]:
     """One steady no-drone sound: coloured noise or synthetic wind, equally likely."""
     return ("colour_noise", colour_noise(rng, n, fs)) if rng.random() < 0.5 else ("synth_wind", synth_wind(rng, n, fs))
@@ -284,7 +304,7 @@ class SynthSampler:
                  drones: list[tuple[np.ndarray, float]] | None = None, twin: tuple[np.ndarray, float] | list | None = None,
                  p_twin: float = 0.5, ladder: int = 0, stem_split: str | None = None,
                  bed_groups: tuple[str, ...] = BED_GROUPS, confuser_groups: tuple[str, ...] = CONFUSER_GROUPS,
-                 ir: np.ndarray | None = None, p_ir: float = 0.0) -> None:
+                 ir: np.ndarray | None = None, p_ir: float = 0.0, p_room: float = 0.0) -> None:
         self.cfg, self.seed, self.n = cfg, seed, cfg.samples_per_window
         self.p_drone, self.p_confuser, self.snr_db, self.confuser_db = p_drone, p_confuser, snr_db, confuser_db
         self.p_rig_bed = p_rig_bed if rig_recs else 0.0
@@ -297,6 +317,13 @@ class SynthSampler:
         self.confusers = _by_group(_load_stems(confuser_groups, cfg.sample_rate, stem_split))
         self.p_steady, self.p_steady_confuser = p_steady, p_steady_confuser   # iteration 29
         self.ir, self.p_ir = ir, (p_ir if ir is not None else 0.0)            # iteration 30.5: the array room
+        self.p_room = p_room                                                  # iteration 32
+        if p_room and not ladder:
+            raise ValueError("p_room needs ladder families: the path and the floor are drawn once per family")
+        # the floors: training-side recordings only (council, entry 313): FSD50K-dev background beds and the train
+        # part of the twin recordings (Glasgow's noise); never UAV16 or another scored set
+        self.floors = {"background": self.beds.get("background", []),
+                       "twin": [t[0].astype(np.float64) / 32767.0 for t in self.twin or []]} if p_room else {}
         self.p_vehicle = p_vehicle   # share of confusers that are a road vehicle driving past (iteration 28)
         self.vehicles = [(np.round(np.clip(x, -1, 1) * 32767).astype(np.int16), VEHICLE_R_REF) for _, x in
                          _load_stems(("distracter",), cfg.sample_rate, stem_split, VEHICLE_CLS)] if p_vehicle else []
@@ -318,7 +345,8 @@ class SynthSampler:
                 + (f", quiet scenes p={self.p_quiet:g} (confuser alone p={self.p_quiet_confuser:g})" if self.p_quiet else "")
                 + (f", vehicle pass-bys ({len(self.vehicles)} stems) as p={self.p_vehicle:g} of confusers" if self.p_vehicle else "")
                 + (f", steady beds p={self.p_steady:g} and steady confusers p={self.p_steady_confuser:g}" if self.p_steady else "")
-                + (f", through the measured IR p={self.p_ir:g}" if self.p_ir else ""))
+                + (f", through the measured IR p={self.p_ir:g}" if self.p_ir else "")
+                + (f", random paths and a real floor p={self.p_room:g}" if self.p_room else ""))
 
     def _crop(self, rng: np.random.Generator, x: np.ndarray) -> np.ndarray:
         if len(x) < self.n:
@@ -361,11 +389,16 @@ class SynthSampler:
                 return g, x
         raise RuntimeError("could not draw a non-silent bed")
 
+    def path(self, rng: np.random.Generator, x: np.ndarray, info: dict) -> np.ndarray:
+        """A point source through its own random path, in a room family (iteration 32); else as it is."""
+        return apply_ir(x, room_ir(rng, self.cfg.sample_rate)) if info.get("room") else x
+
     def scene(self, rng: np.random.Generator) -> tuple[np.ndarray, dict]:
         """A no-drone scene: a bed and, with p_confuser, one confuser stem."""
+        room = bool(self.p_room) and rng.random() < self.p_room
         g, x = self._bed(rng)
-        info = dict(bed=g, confuser="none")
         quiet = g in ("quiet", "silence")
+        info = dict(bed=g, confuser="none", room=room and not quiet)   # iteration 27's quiet scenes stay as they are
         if rng.random() < (self.p_quiet_confuser if quiet else self.p_confuser):
             if self.p_steady and rng.random() < self.p_steady_confuser:
                 cg, c = steady(rng, self.n, self.cfg.sample_rate)
@@ -376,6 +409,7 @@ class SynthSampler:
             else:
                 cg, stem = self._pick(rng, self.confusers)
                 c = self._crop(rng, stem)
+            c = self.path(rng, c, info)
             pc = rr.inband_power(c)
             if pc > rr.SILENCE_POWER:     # a crop can land in a stem's quiet stretch
                 if g == "silence":        # alone: any level, level_normalise removes it
@@ -386,10 +420,12 @@ class SynthSampler:
                 info["confuser"] = cg
         return x, info
 
-    def drone(self, rng: np.random.Generator) -> np.ndarray:
+    def drone(self, rng: np.random.Generator, info: dict | None = None) -> np.ndarray:
         if self.drones:
-            return real_drone(rng, self.drones[int(rng.integers(0, len(self.drones)))], self.n, self.cfg.sample_rate)[0]
-        return drone(rng, self.n, self.cfg.sample_rate)[0]
+            d = real_drone(rng, self.drones[int(rng.integers(0, len(self.drones)))], self.n, self.cfg.sample_rate)[0]
+        else:
+            d = drone(rng, self.n, self.cfg.sample_rate)[0]
+        return self.path(rng, d, info or {})
 
     @staticmethod
     def mix(x: np.ndarray, d: np.ndarray, snr_db: float) -> np.ndarray:
@@ -404,7 +440,8 @@ class SynthSampler:
         if self.twin and rng.random() < self.p_twin:
             info["twin"] = True
             src = self.twin[int(rng.integers(0, len(self.twin)))]
-            return self.mix(x, real_drone(rng, src, self.n, self.cfg.sample_rate)[0], rng.uniform(*self.snr_db))
+            return self.mix(x, self.path(rng, real_drone(rng, src, self.n, self.cfg.sample_rate)[0], info),
+                            rng.uniform(*self.snr_db))
         return x
 
     def window(self, rng: np.random.Generator, with_drone: bool) -> np.ndarray:
@@ -416,11 +453,16 @@ class SynthSampler:
     def family(self, rng: np.random.Generator) -> list[tuple[np.ndarray, int, float, dict]]:
         """(audio, label, snr_db, scene info): the scene alone, then with one drone at `ladder` SNRs."""
         x, info = self.scene(rng)
-        d = self.drone(rng)
+        d = self.drone(rng, info)
         neg_info = dict(info)
         out = [(self.negative(rng, x, neg_info), 0, float("nan"), neg_info)]
         for snr in np.sort(rng.uniform(*self.snr_db, self.ladder))[::-1]:
             out.append((self.mix(x, d, float(snr)), 1, float(snr), info))
+        if info["room"]:   # one floor for the whole family, at a level set by the scene alone: no label cue
+            _, f = self._pick(rng, {k: v for k, v in self.floors.items() if v})
+            f = self._crop(rng, f)
+            f = f * math.sqrt(rr.inband_power(x) * 10.0 ** (rng.uniform(*FLOOR_DB) / 10.0) / max(rr.inband_power(f), 1e-20))
+            out = [(a + f, y, v, i) for a, y, v, i in out]
         return out
 
     def batch(self, index: int, batch_size: int) -> tuple[np.ndarray, np.ndarray]:

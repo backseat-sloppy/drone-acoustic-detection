@@ -94,6 +94,28 @@ def steady_probe(n_families: int) -> dict:
                 twin=np.zeros(len(w), dtype=bool))
 
 
+NIGHTJAR_WINDOWS = 20_000   # iteration 32: a second real readout, at most this many 1 s windows, drawn with NIGHTJAR_SEED
+NIGHTJAR_SEED = 32_000
+
+
+def nightjar_real() -> dict | None:
+    """Real Nightjar field audio as 1 s windows (no overlap), relabelled by ear (labels/nightjar_relabel.csv, CLAUDE.md
+    section 6), without the lawn-mower session. Never trained on in this simulator. None if the store is not here."""
+    from dad import chains as ch
+    from dad import rangerun as rg
+    from dad import realdata
+    if not (realdata.PROCESSED / "manifest.csv").exists():
+        return None
+    m = realdata.relabel(realdata.load_manifest(), REPO / "labels" / "nightjar_relabel.csv")
+    recs = [r for r in m if r.source == "nightjar" and ch.session(r) not in rg.CONFUSER]
+    n = DEFAULT.samples_per_window
+    cw = ch.chain_windows(recs, n, n)
+    keep = np.sort(np.random.default_rng(NIGHTJAR_SEED).permutation(len(cw))[:NIGHTJAR_WINDOWS])
+    cw = cw.subset(keep)
+    return dict(audio=np.stack([cw.audio(i, n) for i in range(len(cw))]).astype(np.float32), y=np.asarray(cw.y),
+                range_m=np.nan_to_num(np.asarray(cw.range_m, float), nan=1.0))   # unranged drones count as near
+
+
 def uav16_real() -> dict:
     """Real, unsimulated UAV16 audio as 1 s windows (no overlap): every hover of the two held batches
     (5-70 m) as drone, and the 24 backgrounds that are not plain environment (fans, exhausts, a car,
@@ -189,6 +211,8 @@ def main() -> None:
     p.add_argument("--p-ir", type=float, default=0.0,
                    help="iteration 30.5: share of training windows heard through the measured array-room IR (IR_FILE); "
                         "> 0 also reads out validation through the IR")
+    p.add_argument("--p-room", type=float, default=0.0,
+                   help="iteration 32: share of families with random paths on drone, confuser and twin and a real floor")
     p.add_argument("--snr-lo", type=float, default=-20.0,
                    help="iteration 31: training drones from SNR-LO to +10 dB (default -20, as before). Validation unchanged")
     p.add_argument("--faint-families", type=int, default=0,
@@ -207,6 +231,9 @@ def main() -> None:
     val_ir = dict(val, audio=np.stack([ds.apply_ir(a, ir) for a in val["audio"]])) if ir is not None else None
     faint = faint_probe(args.faint_families, args.p_quiet, args.p_vehicle) if args.faint_families else None
     u16 = uav16_real() if ds.UAV16.exists() else None
+    nj = nightjar_real()
+    if nj is not None:
+        print(f"nightjar real: {int(nj['y'].sum())} drone, {int((nj['y'] == 0).sum())} no-drone windows", flush=True)
     if u16 is not None:
         print(f"uav16 real: {int(u16['y'].sum())} drone, {int((u16['y'] == 0).sum())} no-drone windows", flush=True)
     neg = val["y"] == 0
@@ -216,7 +243,7 @@ def main() -> None:
     drones, twins = sources("train", train_ids, args.uav16)
     sampler = ds.SynthSampler([], seed=args.seed, drones=drones, twin=twins, ladder=args.ladder, stem_split="train",
                               bed_groups=BEDS, p_quiet=args.p_quiet, p_vehicle=args.p_vehicle, p_steady=args.p_steady,
-                              snr_db=(args.snr_lo, 10.0), ir=ir, p_ir=args.p_ir)
+                              snr_db=(args.snr_lo, 10.0), ir=ir, p_ir=args.p_ir, p_room=args.p_room)
     print(f"training: {sampler.describe()}", flush=True)
     results = []
 
@@ -227,6 +254,8 @@ def main() -> None:
                  val=readout(s, val, thr), **extra)
         if u16 is not None:
             r["uav16_real"] = real_readout(scorer.score(u16["audio"]), u16, thr)
+        if nj is not None:
+            r["nightjar_real"] = real_readout(scorer.score(nj["audio"]), nj, thr)
         if probe is not None:
             r["steady_probe"] = readout(scorer.score(probe["audio"]), probe, thr)
         if val_ir is not None:   # the same windows and threshold, heard through the array room
@@ -253,6 +282,10 @@ def main() -> None:
             print(f"  {'':<28} uav16 real: AUC {q['auc']:.3f} recall {q['recall_at_thr']:.3f} (<20 m "
                   f"{q['recall_range_0_20']:.3f}, 20-40 {q['recall_range_20_40']:.3f}, 40-80 {q['recall_range_40_80']:.3f})"
                   f" FA {q['fa_at_thr']:.3f}", flush=True)
+        if nj is not None:
+            q = r["nightjar_real"]
+            print(f"  {'':<28} nightjar real: AUC {q['auc']:.3f} recall {q['recall_at_thr']:.3f} FA {q['fa_at_thr']:.3f} "
+                  f"conf drone {q['conf_drone']:.3f} no drone {q['conf_no_drone']:.3f}", flush=True)
         out.write_text(json.dumps(dict(args=vars(args), val_drones=VAL_DRONES, train_drones=train_ids,
                                        results=results), indent=2))
 
