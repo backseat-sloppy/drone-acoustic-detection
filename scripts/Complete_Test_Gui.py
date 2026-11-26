@@ -2163,19 +2163,25 @@ def confidence_over_time(test: E.Test, det: str, scores: dict) -> dict[float, di
     return out
 
 
-def nodrone_mask(test: E.Test, rnd: int, det: str, n: int) -> np.ndarray:
-    """The hops of round `rnd`'s score grid (n long) that are no-drone windows for `det`: every hop of a
-    no-drone round; in a drone round the windows wholly before the drone's sound or wholly after its end
-    plus the buffer, labelled as score_round labels them (window_labels on the truth with the buffer, at
-    the detector's own window; windows straddling a start or an end are left out). Mads, 2026-11-24: the
-    false-alarm windows come from the drone rounds too, not only from the no-drone rounds."""
+def window_classes(test: E.Test, rnd: int, det: str, n: int) -> np.ndarray:
+    """The label of every hop of round `rnd`'s score grid (n long) for `det`, as score_round labels them:
+    1 drone, 0 no drone, -1 left out (window_labels on the truth with the buffer, at the detector's own
+    window; windows straddling a start or an end are left out). A no-drone round is all 0."""
     r = test.by_round[rnd]
     if r["drone"] is None:
-        return np.ones(n, bool)
+        return np.zeros(n, int)
     s0, s1, _ = test.drones.span[r["drone"]]
     truth = E.with_buffer(E.Truth([dict(start_s=r["start_s"] + s0, end_s=r["start_s"] + s1)]), test.plan.buffer_after_s)
     win = DEFAULT.window_seconds if det == "comb" else E.dwg.model_cfg(det).window_seconds
-    return E.window_labels(E.SimpleNamespace(t_end=E.grid_t_end(n)), truth, win) == 0
+    return E.window_labels(E.SimpleNamespace(t_end=E.grid_t_end(n)), truth, win)
+
+
+def nodrone_mask(test: E.Test, rnd: int, det: str, n: int) -> np.ndarray:
+    """The hops of round `rnd`'s score grid (n long) that are no-drone windows for `det`: every hop of a
+    no-drone round; in a drone round the windows wholly before the drone's sound or wholly after its end
+    plus the buffer (window_classes == 0). Mads, 2026-11-24: the false-alarm windows come from the drone
+    rounds too, not only from the no-drone rounds."""
+    return window_classes(test, rnd, det, n) == 0
 
 
 def nodrone_scores(test: E.Test, det: str, scores: dict) -> list[np.ndarray]:
@@ -2204,6 +2210,100 @@ def fa_threshold(test: E.Test, det: str, scores: dict, pct: float) -> tuple[floa
     if not v.size:
         return None, 0
     return (float(np.percentile(v, pct)) if pct <= 100 else float(v.max()) * pct / 100), int(v.size)
+
+
+ROC_AT_FPR = (0.1, 0.01, 0.001)                            # false-positive rates the ROC text reads the hit rate at
+
+
+ROC_ALL, ROC_NONE, ROC_EVERY = "all rounds", "no distractors", "all distractors on"
+
+
+def distractors(test: E.Test) -> list[str]:
+    """The distractor layers the ROC can tell apart: every background layer but the war soundscape (as on the
+    comparison page) that is off in some round. A layer on in every round is background as set, like the war
+    soundscape, so "no distractors" still has rounds."""
+    on = (lambda r, n: setting(r, n) not in (None, "off"))  # noqa: E731
+    return [n for n in test.plan.layers if n != "war soundscape" and not all(on(r, n) for r in test.rounds)]
+
+
+def roc_choices(test: E.Test) -> list[str]:
+    """What the ROC can be drawn over: all rounds, the rounds without any distractor, the rounds with every
+    distractor on, and per distractor the rounds with it on (the others as set)."""
+    dist = distractors(test)
+    if not dist:
+        return [ROC_ALL]
+    return [ROC_ALL, ROC_NONE, *([ROC_EVERY] if len(dist) > 1 else []), *(f"{n} on" for n in dist)]
+
+
+def roc_rounds(test: E.Test, choice: str) -> list[int]:
+    """The rounds (drone and no-drone) of a roc_choices() choice; the war soundscape and any layer on in every
+    round are as set in every one."""
+    dist = distractors(test)
+    on = (lambda rnd, n: setting(test.by_round[rnd], n) not in (None, "off"))  # noqa: E731
+    rnds = list(test.results)
+    if choice == ROC_NONE:
+        return [r for r in rnds if not any(on(r, n) for n in dist)]
+    if choice == ROC_EVERY:
+        return [r for r in rnds if all(on(r, n) for n in dist)]
+    if choice.endswith(" on") and choice[:-3] in dist:
+        return [r for r in rnds if on(r, choice[:-3])]
+    return rnds
+
+
+def roc_scores(test: E.Test, det: str, scores: dict, rounds: list | None = None,
+               before_s: float | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """`det`'s confidence in every labelled window of the run, or of `rounds` (comb squashed as drawn elsewhere,
+    NaN hops left out): (drone windows, no-drone windows), labelled as score_round labels them (window_classes:
+    the drone's sound plus the buffer is drone; windows straddling a start or an end are in neither).
+    before_s: the drone windows are only those ending in the last before_s seconds before impact (end at or
+    before the impact, at most before_s before it); a drone without an impact gives none. The no-drone
+    windows do not change."""
+    pos, neg = [], []
+    for rnd in test.results if rounds is None else rounds:
+        s = scores.get(f"{rnd}|{det}")
+        if s is None:
+            continue
+        y = E.dwg.squash(s, test.thr[det]) if det == "comb" else s
+        lab = window_classes(test, rnd, det, len(y))
+        ok = np.isfinite(y)
+        drone = lab == 1
+        if before_s is not None and drone.any():
+            imp = test.drones.span[test.by_round[rnd]["drone"]][2]
+            if imp is None:
+                drone[:] = False
+            else:
+                left = test.by_round[rnd]["start_s"] + imp - E.grid_t_end(len(y))   # seconds before impact at the window's end
+                drone &= (left >= -1e-9) & (left <= before_s + 1e-9)
+        pos.append(y[ok & drone])
+        neg.append(y[ok & (lab == 0)])
+    cat = (lambda v: np.concatenate(v).astype(float) if v else np.array([]))  # noqa: E731
+    return cat(pos), cat(neg)
+
+
+def roc_curve(pos: np.ndarray, neg: np.ndarray) -> dict | None:
+    """The ROC of drone windows (pos) against no-drone windows (neg), every distinct confidence a threshold
+    ("alarm at or above"): false-positive and true-positive rate from (0, 0) to (1, 1), the area under it
+    (trapezoids, so a tie is a diagonal step and AUC = P(drone window > no-drone window) + half the ties),
+    and the threshold at each point. None without both classes."""
+    if not pos.size or not neg.size:
+        return None
+    s = np.concatenate([pos, neg])
+    y = np.r_[np.ones(pos.size), np.zeros(neg.size)]
+    o = np.argsort(-s, kind="mergesort")
+    s, y = s[o], y[o]
+    last = np.r_[np.flatnonzero(np.diff(s)), s.size - 1]    # the last window at each distinct confidence
+    tp, fp = np.cumsum(y)[last], np.cumsum(1 - y)[last]
+    tpr, fpr = np.r_[0.0, tp / pos.size], np.r_[0.0, fp / neg.size]
+    auc = float(np.sum(np.diff(fpr) * (tpr[1:] + tpr[:-1]) / 2))
+    return dict(fpr=fpr, tpr=tpr, thr=np.r_[np.inf, s[last]], auc=auc, npos=int(pos.size), nneg=int(neg.size))
+
+
+def tpr_at_fpr(c: dict, fpr: float) -> float | None:
+    """The highest true-positive rate whose false-positive rate is at most `fpr`; None if the run has too few
+    no-drone windows to resolve that rate (fewer than 1 / fpr)."""
+    if c["nneg"] * fpr < 1:
+        return None
+    return float(c["tpr"][c["fpr"] <= fpr + 1e-12].max())
 
 
 def round_curves(test: E.Test, det: str, scores: dict) -> dict[int, tuple]:
@@ -2474,6 +2574,20 @@ class Conclusions(tk.Toplevel):
         self.v_det = tk.StringVar(value=test.plan.detectors[0])
         choices = [*test.plan.detectors, *([COMPARE] if len(test.plan.detectors) > 1 else [])]
         ttk.Combobox(bar, textvariable=self.v_det, values=choices, state="readonly", width=14).pack(side="left")
+        bar_roc = ttk.Frame(self, padding=(12, 0, 12, 6))    # the ROC section's own settings, on a row of their own
+        bar_roc.pack(fill="x")
+        ttk.Label(bar_roc, text="ROC over").pack(side="left", padx=(0, 4))   # which rounds the ROC section uses
+        roc = roc_choices(test)
+        self.v_roc = tk.StringVar(value=roc[0])
+        ttk.Combobox(bar_roc, textvariable=self.v_roc, values=roc, state="readonly",
+                     width=max(14, max(map(len, roc)))).pack(side="left")
+        ttk.Label(bar_roc, text="true positives: drone windows in the last").pack(side="left", padx=(20, 4))
+        self.v_roc_s = tk.StringVar()                        # blank: every drone window
+        e_roc_s = ttk.Entry(bar_roc, textvariable=self.v_roc_s, width=6)
+        e_roc_s.pack(side="left")
+        ttk.Label(bar_roc, text="s before impact  (blank = every drone window; Enter to apply)",
+                  style="Muted.TLabel").pack(side="left", padx=(2, 0))
+        e_roc_s.bind("<Return>", lambda e: self.draw())
         self.scores = {}                                     # per-hop scores: over time, false alarms, window SNR
         p = test.out / "scores.npz"
         with np.load(p) if p.exists() else nullcontext({}) as d:
@@ -2514,6 +2628,7 @@ class Conclusions(tk.Toplevel):
         self.scroll.pack(side="left", fill="both", expand=True)
         self.bind("<MouseWheel>", self._wheel)               # replaces matplotlib's, and stops the App's scrolling too
         self.v_det.trace_add("write", lambda *_: self.draw())
+        self.v_roc.trace_add("write", lambda *_: self.draw())
         self.draw()
 
     def _wheel(self, e):
@@ -2528,9 +2643,9 @@ class Conclusions(tk.Toplevel):
             return self._draw_compare()
         thr = 0.5 if det == "comb" else self.test.thr[det]
         curves = confidence_over_time(self.test, det, self.scores)
-        secs = [self._fa_section([det]), self._snr_section([det]), *summary_sections(self.test)]
+        secs = [self._fa_section([det]), self._roc_section([det]), self._snr_section([det]), *summary_sections(self.test)]
         for s in secs:
-            if "fa" in s or "snr" in s:                      # cells set by _fa_section / _snr_section
+            if "fa" in s or "snr" in s or "roc" in s:        # cells set by _fa_section / _roc_section / _snr_section
                 s["rows"] = (s["cells"] + 1) // 2
                 continue
             s["curves"] = curves if s["title"] == "Speed summary" else {}
@@ -2560,8 +2675,9 @@ class Conclusions(tk.Toplevel):
                 y += NOTE_IN
                 continue
             axes = [self._axes(i, s["cells"], y, height) for i in range(s["cells"])]
-            if "fa" in s or "snr" in s:
-                lines += self._draw_fa(axes, s["fa"]) if "fa" in s else self._draw_snr(axes, s["snr"])
+            if "fa" in s or "snr" in s or "roc" in s:
+                lines += (self._draw_fa(axes, s["fa"]) if "fa" in s else self._draw_roc(axes, s["roc"]) if "roc" in s
+                          else self._draw_snr(axes, s["snr"]))
                 y += s["rows"] * ROW_IN
                 continue
             for ax, chart in zip(axes, s["charts"]):
@@ -2805,6 +2921,102 @@ class Conclusions(tk.Toplevel):
         fa = dict(pct=pct, per=per, groups=groups, params=params, dets=dets)
         return dict(title=title, cells=1 + len(params), note="", fa=fa)
 
+    def _roc_section(self, dets: list) -> dict:
+        """ROC: each detector's drone windows against its no-drone windows over every threshold (roc_scores,
+        roc_curve), with the operating point at the false-alarm threshold from the % box marked. Drawn over the
+        rounds chosen in "ROC over" (roc_rounds); the threshold stays the one from every no-drone window of the
+        run, so the dot shows how the threshold in use does under that condition."""
+        t, choice = self.test, self.v_roc.get()
+        title = f"ROC: drone windows against no-drone windows, over every threshold · {choice}"
+        raw = self.v_roc_s.get().strip().replace(",", ".")
+        before = None
+        if raw:
+            try:
+                before = float(raw)
+            except ValueError:
+                before = -1.0
+            if not before > 0:
+                return dict(title=title, cells=0, roc=None,
+                            note=f"\"{raw}\" s before impact: give a number of seconds above 0, or leave it blank.")
+            if t.plan.kind != "modified" or t.drones is None:
+                return dict(title=title, cells=0, roc=None,
+                            note="Seconds before impact need a modified drone test: only it has an impact. Leave the box blank.")
+            title += f" · drone windows in the last {before:g} s before impact"
+        if not self.scores:
+            return dict(title=title, cells=0, note="scores.npz is missing from the run folder.", roc=None)
+        rounds = roc_rounds(t, choice)
+        if not rounds:
+            return dict(title=title, cells=0, roc=None, note=f"No round in this run is \"{choice}\".")
+        try:
+            pct = fa_pct(self.v_fa.get())
+        except ValueError:
+            pct = None
+        per = {}
+        for d in dets:
+            pos, neg = roc_scores(t, d, self.scores, rounds, before)
+            c = roc_curve(pos, neg)
+            if c is None:
+                per[d] = None
+                continue
+            thr = fa_threshold(t, d, self.scores, pct)[0] if pct is not None else None
+            how = f"{pct:g} % false-alarm threshold"
+            if thr is None:
+                thr, how = (0.5 if d == "comb" else t.thr[d]), "its own threshold"
+            per[d] = dict(c=c, thr=thr, how=how, tpr=float(np.mean(pos >= thr)), fpr=float(np.mean(neg >= thr)))
+        if not any(per.values()):
+            return dict(title=title, cells=0, roc=None,
+                        note=f"An ROC needs both drone windows and no-drone windows; the {len(rounds)} rounds "
+                             f"\"{choice}\" lack one of them.")
+        return dict(title=title, cells=2, note="", roc=dict(per=per, dets=dets, choice=choice, rounds=len(rounds), before=before))
+
+    def _draw_roc(self, axes, rc: dict) -> list[str]:
+        """Two views of the same curves: linear axes, and the false-positive rate on a log axis (the low
+        false-alarm end is where a detector is run). A dot marks each detector at its threshold."""
+        dets = rc["dets"]
+        col = (lambda d: self._color(d)) if len(dets) > 1 else (lambda d: COLORS.get(d, "#2a78d6"))
+        ax_l, ax_g = axes
+        lines = ["ROC: every 0.125 s hop's window counted once (windows overlap, so they are not independent); drone = "
+                 "the drone's sound plus the buffer, no-drone = the no-drone rounds and the drone rounds outside that, "
+                 "windows straddling a start or an end in neither. Alarm = confidence at or above the threshold. "
+                 f"Over {rc['choice']} ({rc['rounds']} rounds; the war soundscape and layers on in every round as set); "
+                 "the dot's threshold is from every no-drone window of the run."
+                 + ("" if rc["before"] is None else
+                    f" True positives only from drone windows ending in the last {rc['before']:g} s before impact "
+                    "(at or before it); the no-drone windows are unchanged.")]
+        floor = 1.0
+        for d in dets:
+            p = rc["per"][d]
+            if p is None:
+                lines.append(f"ROC · {d}: needs both drone and no-drone windows")
+                continue
+            c = p["c"]
+            floor = min(floor, 1 / c["nneg"])
+            for ax in (ax_l, ax_g):
+                ax.plot(c["fpr"], 100 * c["tpr"], color=col(d), lw=2, label=f"{d}: AUC {c['auc']:.3f}")
+                ax.plot([p["fpr"]], [100 * p["tpr"]], "o", color=col(d), ms=7, mec="white", mew=1.5)
+            at = []
+            for f in ROC_AT_FPR:
+                v = tpr_at_fpr(c, f)
+                at.append(f"{100 * f:g} % FPR " + ("too few no-drone windows" if v is None else f"{100 * v:.1f} %"))
+            lines.append(f"ROC · {rc['choice']} · {d} ({c['npos']:,} drone, {c['nneg']:,} no-drone windows): AUC {c['auc']:.3f};  "
+                         "hit rate at " + ",  ".join(at) + f";  at the {p['how']} ({100 * p['thr']:.1f} %): "
+                         f"hit rate {100 * p['tpr']:.1f} %, false-positive rate {100 * p['fpr']:.3f} %")
+        ax_l.plot([0, 1], [0, 100], color="#999", lw=0.8, ls=":")
+        ax_l.set(xlim=(0, 1), ylim=(0, 102), xlabel="false-positive rate (share of no-drone windows at or above the threshold)")
+        ax_l.set_title("ROC (dot = the threshold in use)", fontsize=10, loc="left", weight="bold")
+        ax_l.legend(loc="lower right", fontsize=8, frameon=False)
+        lo = max(floor / 2, 1e-7)
+        xs = np.logspace(np.log10(lo), 0, 50)
+        ax_g.plot(xs, 100 * xs, color="#999", lw=0.8, ls=":")
+        ax_g.set_xscale("log")
+        ax_g.set(xlim=(lo, 1), ylim=(0, 102), xlabel="false-positive rate, log scale (left edge: half of 1 window in the run)")
+        ax_g.set_title("ROC, the low false-alarm end", fontsize=10, loc="left", weight="bold")
+        for ax in (ax_l, ax_g):
+            ax.set_ylabel("true-positive rate (% of drone windows)")
+            ax.grid(color="#e8e8e8", lw=0.5)
+            ax.xaxis.label.set_size(8)
+        return lines
+
     def _snr_section(self, dets: list) -> dict:
         """Window SNR: the drone's power against the background's in the same seconds, from the separate
         parts. Two views: continuous (confidence and detection against each window's SNR, all windows
@@ -3007,7 +3219,7 @@ class Conclusions(tk.Toplevel):
         curves = {d: confidence_over_time(t, d, self.scores) for d in dets}
         has_time = any(curves.values())
 
-        secs = [self._fa_section(dets), self._snr_section(dets),
+        secs = [self._fa_section(dets), self._roc_section(dets), self._snr_section(dets),
                 dict(title="Confidence before impact", cells=2 if has_time else 0,
                      note="Only a modified drone test has an impact; this test has no confidence over time."),
                 dict(title="Confidence during distractors: no-drone windows (lower is better)", cells=len(layers) + 1, note=""),
@@ -3042,12 +3254,14 @@ class Conclusions(tk.Toplevel):
         if axes_of[0]:
             lines += self._draw_fa(axes_of[0], secs[0]["fa"])
         if axes_of[1]:
-            lines += self._draw_snr(axes_of[1], secs[1]["snr"])
+            lines += self._draw_roc(axes_of[1], secs[1]["roc"])
+        if axes_of[2]:
+            lines += self._draw_snr(axes_of[2], secs[2]["snr"])
         if has_time:
-            lines += self._compare_impact(*axes_of[2], curves)
-        lines += self._compare_distractors(axes_of[3], layers, sums, groups, gnames)
-        if axes_of[4]:
-            lines += self._layer_snr_graphs(axes_of[4], dlayers, sums, drone=True)
+            lines += self._compare_impact(*axes_of[3], curves)
+        lines += self._compare_distractors(axes_of[4], layers, sums, groups, gnames)
+        if axes_of[5]:
+            lines += self._layer_snr_graphs(axes_of[5], dlayers, sums, drone=True)
         self.canvas.draw_idle()
         self.l_text.configure(text="\n".join(lines))
         self.scroll.yview_moveto(0)
